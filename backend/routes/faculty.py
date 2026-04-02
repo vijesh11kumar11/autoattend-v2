@@ -14,12 +14,10 @@ POST /api/hod/approve-request/{device_id}        hod_or_above
 POST /api/hod/reject-request/{device_id}         hod_or_above
 """
 
-import base64
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -46,6 +44,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import hod_or_above, principal_only, teacher_or_above
+from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +560,7 @@ def send_parent_alert(
             continue
 
         # Try Twilio
-        whatsapp_status = _send_twilio_whatsapp(stu.parent_phone, message)
+        whatsapp_status = send_whatsapp_message(stu.parent_phone, message)
 
         log = AlertsLog(
             student_id = sid,
@@ -583,41 +582,6 @@ def send_parent_alert(
     sent  = sum(1 for r in results if r["status"] == "sent")
     failed = sum(1 for r in results if r["status"] == "failed")
     return {"sent": sent, "failed": failed, "results": results}
-
-
-def _send_twilio_whatsapp(phone: str, message: str) -> dict:
-    """
-    Send a WhatsApp message via Twilio.
-    Returns: {"ok": True, "sid": "..."} or {"ok": False, "error": "..."}
-    """
-    try:
-        # Normalise phone → E.164
-        phone = phone.strip()
-        if not phone.startswith("+"):
-            phone = "+" + phone
-
-        credentials = base64.b64encode(
-            f"{settings.TWILIO_ACCOUNT_SID}:{settings.TWILIO_AUTH_TOKEN}".encode()
-        ).decode()
-
-        resp = http_requests.post(
-            f"https://api.twilio.com/2010-04-01/Accounts/"
-            f"{settings.TWILIO_ACCOUNT_SID}/Messages.json",
-            headers={"Authorization": f"Basic {credentials}"},
-            data={
-                "From": settings.TWILIO_WHATSAPP_FROM,
-                "To":   f"whatsapp:{phone}",
-                "Body": message,
-            },
-            timeout=10,
-        )
-        if resp.status_code in (200, 201):
-            return {"ok": True, "sid": resp.json().get("sid")}
-        return {"ok": False, "error": resp.json().get("message", "Twilio error")}
-    except Exception as exc:
-        logger.error("Twilio send failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # GET /api/principal/audit
