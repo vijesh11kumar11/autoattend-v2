@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "AutoAttend AI",
+    "slug": "autoattend-mobile",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a237e"
+    },
+    "scheme": "autoattend",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.autoattend.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera is required for face verification and QR scanning.",
+        "NSLocationWhenInUseUsageDescription": "Location is used to verify attendance proximity.",
+        "NSBluetoothAlwaysUsageDescription": "Bluetooth is used to verify classroom presence."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a237e"
+      },
+      "package": "com.autoattend.mobile",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-location",
+      "expo-barcode-scanner",
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1a237e",
+          "sounds": []
+        }
+      ]
+    ],
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#1a237e",
+      "androidMode": "default"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "TODO: add-eas-project-id"
+      }
+    }
+  }
+}

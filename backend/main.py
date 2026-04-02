@@ -1,0 +1,154 @@
+"""
+AutoAttend AI v2.0 — FastAPI entry point
+"""
+
+import logging
+
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+from config import settings
+from database import Base, engine
+from routes import alerts, attendance, auth, face, faculty, qr, reports, students
+from routes import users
+
+logger = logging.getLogger(__name__)
+
+# Create all tables (idempotent)
+Base.metadata.create_all(bind=engine)
+
+# ── Rate limiter ───────────────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address)
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version="2.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS — allow the Vite dev server and production frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_URL, "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── register routers ───────────────────────────────────────────────────
+app.include_router(auth.router)
+app.include_router(face.router)
+app.include_router(attendance.router)
+app.include_router(qr.router)
+app.include_router(students.router)
+app.include_router(faculty.router)
+app.include_router(reports.router)
+app.include_router(alerts.router)
+app.include_router(users.router)
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "version": "2.0.0"}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# APScheduler — background jobs
+# ═══════════════════════════════════════════════════════════════════════
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from database import SessionLocal
+from routes.attendance import auto_expire_sessions
+from utils.notification_utils import send_push_notification
+
+
+def _auto_expire_job():
+    """Run every minute — expire stale sessions."""
+    db = SessionLocal()
+    try:
+        auto_expire_sessions(db)
+    except Exception as exc:
+        logger.error("auto_expire_sessions failed: %s", exc)
+    finally:
+        db.close()
+
+
+def _daily_low_attendance_alerts():
+    """
+    Run daily at 20:00 — send push notifications to students
+    whose attendance is below the threshold in any subject.
+    """
+    from sqlalchemy import func as sqlfunc
+    from database import (
+        AttendanceRecord, AttendanceSession, AttendanceStatus,
+        Subject, User, UserRole,
+    )
+
+    db = SessionLocal()
+    try:
+        threshold = settings.ATTENDANCE_THRESHOLD
+
+        # Get each student's per-subject attendance %
+        total_sub = (
+            db.query(
+                AttendanceRecord.student_id,
+                AttendanceSession.subject_id,
+                sqlfunc.count(AttendanceRecord.id).label("total"),
+                sqlfunc.sum(
+                    sqlfunc.cast(
+                        AttendanceRecord.status == AttendanceStatus.present, Integer
+                    )
+                ).label("present"),
+            )
+            .join(AttendanceSession, AttendanceSession.id == AttendanceRecord.session_id)
+            .group_by(AttendanceRecord.student_id, AttendanceSession.subject_id)
+            .all()
+        )
+
+        for row in total_sub:
+            pct = (row.present or 0) * 100.0 / row.total if row.total else 100
+            if pct < threshold:
+                needed = 0
+                if row.total > 0:
+                    # How many more present classes to reach threshold
+                    # (present + x) / (total + x) >= threshold/100
+                    import math
+                    x = math.ceil(
+                        (threshold * row.total / 100 - (row.present or 0))
+                        / (1 - threshold / 100)
+                    )
+                    needed = max(x, 1)
+
+                subject = db.query(Subject).filter(Subject.id == row.subject_id).first()
+                subj_name = subject.name if subject else "a subject"
+
+                send_push_notification(
+                    user_id=row.student_id,
+                    title=f"⚠️ Low Attendance Warning",
+                    body=f"Your {subj_name} attendance is {pct:.0f}%. Need {needed} more classes.",
+                    db=db,
+                    data={"type": "low_attendance", "subject_id": row.subject_id},
+                )
+
+        logger.info("Daily low-attendance alerts processed: %d records checked.", len(total_sub))
+    except Exception as exc:
+        logger.error("_daily_low_attendance_alerts failed: %s", exc)
+    finally:
+        db.close()
+
+
+# Need Integer for cast in the job
+from sqlalchemy import Integer
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(_auto_expire_job, "interval", minutes=1, id="auto_expire")
+scheduler.add_job(_daily_low_attendance_alerts, "cron", hour=20, minute=0, id="daily_alerts")
+scheduler.start()
+
