@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     GPS_ACCURACY_THRESHOLD_METERS: float = 50.0
 
     # ── Bluetooth ─────────────────────────────────────────────────────
-    BLUETOOTH_REQUIRED: bool = True
+    BLUETOOTH_REQUIRED: bool = False
 
     class Config:
         env_file = ".env"

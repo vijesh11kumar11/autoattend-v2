@@ -28,6 +28,7 @@ const NAV_ITEMS = {
     { to: '/hod/students',       icon: '🎓', label: 'Students'         },
     { to: '/hod/teachers',       icon: '👩‍🏫', label: 'Teachers'        },
     { to: '/hod/reports',        icon: '📊', label: 'Reports'          },
+    { to: '/hod/alerts',         icon: '🔔', label: 'Alerts'           },
     { to: '/hod/face-reenroll',  icon: '🤳', label: 'Face Re-enroll'  },
   ],
   teacher: [
