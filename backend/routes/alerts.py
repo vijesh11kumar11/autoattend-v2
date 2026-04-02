@@ -8,13 +8,11 @@ Endpoints:
   POST /api/alerts/hod/send-custom      send custom message to one student
 """
 
-import base64
 import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 
-import requests as http_requests
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -35,6 +33,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import hod_or_above
+from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
 
@@ -106,33 +105,6 @@ def _defaulter_student_ids(course_ids: list[int], db: Session) -> list[int]:
     )
     return [r[0] for r in rows]
 
-
-# ── Twilio WhatsApp sender (matches faculty.py implementation) ────────
-
-def _send_twilio_whatsapp(phone: str, message: str) -> dict:
-    try:
-        phone = phone.strip()
-        if not phone.startswith("+"):
-            phone = "+" + phone
-        credentials = base64.b64encode(
-            f"{settings.TWILIO_ACCOUNT_SID}:{settings.TWILIO_AUTH_TOKEN}".encode()
-        ).decode()
-        resp = http_requests.post(
-            f"https://api.twilio.com/2010-04-01/Accounts/{settings.TWILIO_ACCOUNT_SID}/Messages.json",
-            headers={"Authorization": f"Basic {credentials}"},
-            data={
-                "From": settings.TWILIO_WHATSAPP_FROM,
-                "To":   f"whatsapp:{phone}",
-                "Body": message,
-            },
-            timeout=10,
-        )
-        if resp.status_code in (200, 201):
-            return {"ok": True, "sid": resp.json().get("sid")}
-        return {"ok": False, "error": resp.json().get("message", "Twilio error")}
-    except Exception as exc:
-        logger.error("Twilio send failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -250,7 +222,7 @@ def send_bulk_alert(
                              "reason": "No parent phone on record"})
             continue
 
-        wa = _send_twilio_whatsapp(stu.parent_phone, message)
+        wa = send_whatsapp_message(stu.parent_phone, message)
         log = AlertsLog(
             student_id  = sid,
             alert_type  = "low_attendance",
@@ -318,7 +290,7 @@ def send_custom_alert(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "No parent phone number on record for this student.")
 
-    wa = _send_twilio_whatsapp(stu.parent_phone, message)
+    wa = send_whatsapp_message(stu.parent_phone, message)
     log = AlertsLog(
         student_id  = stu.id,
         alert_type  = "custom",

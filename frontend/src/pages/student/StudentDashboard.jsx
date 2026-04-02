@@ -20,6 +20,7 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/DashboardLayout';
+import ScanQRPage from './ScanQRPage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -384,23 +385,191 @@ function StudentHome() {
   );
 }
 
-// ── Stubs for other student routes ────────────────────────────────────
-function ScanQRStub() {
+// ═══════════════════════════════════════════════════════════════════════
+// My Attendance page — per-subject summary + recent records
+// ═══════════════════════════════════════════════════════════════════════
+function MyAttendancePage() {
+  const { user }    = useAuth();
+  const studentId   = user?.id;
+  const [summary,   setSummary]   = useState(null);
+  const [recent,    setRecent]    = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState('');
+
+  useEffect(() => {
+    if (!studentId) return;
+    Promise.all([
+      api.get(`/attendance/student/${studentId}/summary`),
+      api.get(`/attendance/student/${studentId}/recent`, { params: { limit: 50 } }),
+    ])
+      .then(([s, r]) => { setSummary(s.data); setRecent(r.data); })
+      .catch(() => setError('Failed to load attendance data.'))
+      .finally(() => setLoading(false));
+  }, [studentId]);
+
+  if (loading) return (
+    <div className="card p-10 text-center">
+      <div className="spinner mx-auto" />
+      <p className="text-slate-400 text-sm mt-3">Loading attendance…</p>
+    </div>
+  );
+  if (error)   return <div className="card p-8 text-center text-red-500">{error}</div>;
+  if (!summary) return null;
+
+  const subjects = summary.subjects ?? [];
+
   return (
-    <div className="card p-10 text-center text-slate-400 space-y-2">
-      <span className="text-5xl">📷</span>
-      <p className="font-medium text-slate-600">Scan QR — coming soon (mobile app)</p>
+    <div className="space-y-5">
+      <h2 className="text-lg font-bold text-slate-700">✅ My Attendance</h2>
+
+      {/* Subject cards */}
+      {subjects.length === 0 ? (
+        <div className="card p-10 text-center text-slate-400">No attendance records found.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {subjects.map(s => {
+            const meta = statusMeta(s.attendance_status);
+            return (
+              <div key={s.subject_id} className={`card p-4 border ${meta.bg} space-y-2`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">{s.subject_name}</p>
+                    <p className="text-xs text-slate-400 font-mono">{s.subject_code}</p>
+                  </div>
+                  <span className={`text-sm font-bold ${meta.color} flex-shrink-0`}>{s.percentage}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                  <div className={`h-full rounded-full ${pctBarColor(s.percentage)}`}
+                       style={{ width: `${Math.min(s.percentage, 100)}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>{s.present}/{s.total_sessions} classes</span>
+                  <span className={`font-semibold ${meta.color}`}>{meta.icon} {meta.label}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Recent records table */}
+      {recent?.records?.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200">
+            <h3 className="text-sm font-semibold text-slate-700">Recent Records</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  {['Date', 'Subject', 'Status', 'Method'].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {recent.records.map((r, i) => {
+                  const sc = r.status === 'present' ? 'badge-success'
+                           : r.status === 'absent'  ? 'badge-danger'
+                           : 'badge-warning';
+                  return (
+                    <tr key={i} className="hover:bg-slate-50">
+                      <td className="px-4 py-2.5 text-slate-500 text-xs">{r.date}</td>
+                      <td className="px-4 py-2.5">
+                        <p className="font-medium text-slate-800">{r.subject_name}</p>
+                        <p className="text-xs text-slate-400 font-mono">{r.subject_code}</p>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`badge ${sc} capitalize`}>{r.status.replace('_', ' ')}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-slate-500 capitalize">
+                        {r.face_verified ? '🔒 ' : ''}{r.marked_via.replace('_', ' ')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-function AttendanceStub() {
-  return <div className="card p-8 text-center text-slate-400 text-sm">My Attendance — coming soon</div>;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Timetable page — placeholder (no backend timetable API)
+// ═══════════════════════════════════════════════════════════════════════
+function TimetablePage() {
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-slate-700">🗓️ Timetable</h2>
+      <div className="card p-10 text-center space-y-3">
+        <span className="text-5xl block">📱</span>
+        <p className="font-medium text-slate-600">View Timetable on the Mobile App</p>
+        <p className="text-sm text-slate-400 max-w-xs mx-auto">
+          Your class timetable is available in the AutoAttend mobile app.
+          Download it from the App Store or Google Play.
+        </p>
+      </div>
+    </div>
+  );
 }
-function TimetableStub() {
-  return <div className="card p-8 text-center text-slate-400 text-sm">Timetable — coming soon</div>;
-}
-function DownloadStub() {
-  return <div className="card p-8 text-center text-slate-400 text-sm">Download Report — coming soon</div>;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Download Report page
+// ═══════════════════════════════════════════════════════════════════════
+function DownloadReportPage() {
+  const { user }   = useAuth();
+  const studentId  = user?.id;
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState('');
+
+  async function handleDownload() {
+    setError(''); setLoading(true);
+    try {
+      const resp = await api.get(`/reports/student/${studentId}/pdf`, {
+        responseType: 'blob',
+      });
+      const url  = URL.createObjectURL(new Blob([resp.data], { type: 'application/pdf' }));
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `attendance_report_${studentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Failed to generate report. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-slate-700">⬇️ Download Attendance Report</h2>
+      <div className="card p-8 space-y-4 text-center">
+        <span className="text-5xl block">📄</span>
+        <div>
+          <p className="font-medium text-slate-700">Personal Attendance PDF</p>
+          <p className="text-sm text-slate-400 mt-1">
+            Download a PDF report of your attendance across all subjects.
+          </p>
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button
+          onClick={handleDownload}
+          disabled={loading}
+          className="btn-primary flex items-center gap-2 mx-auto disabled:opacity-50"
+        >
+          {loading
+            ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Generating…</>
+            : '⬇️ Download PDF Report'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -412,10 +581,10 @@ export default function StudentDashboard() {
     <DashboardLayout>
       <Routes>
         <Route path="dashboard"  element={<StudentHome />} />
-        <Route path="scan-qr"    element={<ScanQRStub />} />
-        <Route path="attendance" element={<AttendanceStub />} />
-        <Route path="timetable"  element={<TimetableStub />} />
-        <Route path="download"   element={<DownloadStub />} />
+        <Route path="scan-qr"    element={<ScanQRPage />} />
+        <Route path="attendance" element={<MyAttendancePage />} />
+        <Route path="timetable"  element={<TimetablePage />} />
+        <Route path="download"   element={<DownloadReportPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>
