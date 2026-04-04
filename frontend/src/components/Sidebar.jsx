@@ -36,13 +36,13 @@ const NAV_ITEMS = {
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },
+    { to: '/teacher/classes',   icon: '📖', label: 'My Timetable'       },
     { to: '/teacher/qr',        icon: '📱', label: 'Generate QR'        },
-    { to: '/teacher/classes',   icon: '📖', label: 'My Classes'         },
     { to: '/teacher/history',   icon: '📋', label: 'Attendance History' },
     { to: '/teacher/reports',        icon: '📊', label: 'Reports'            },
-    { to: '/teacher/ward-students', icon: '📝', label: 'My Ward Students'  },
-    { to: '/teacher/twm',           icon: '🤝', label: 'TWM Meetings'       },
+    { to: '/teacher/ward-students', icon: '🎓', label: 'Ward Students'     },
     { to: '/teacher/leave-requests', icon: '✋', label: 'Leave Requests'     },
+    { to: '/teacher/twm',           icon: '🤝', label: 'TWM Meetings'       },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },

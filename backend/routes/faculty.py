@@ -37,9 +37,13 @@ from database import (
     Department,
     DeviceRegistry,
     FaceChangeLog,
+    LeaveRequest,
+    LeaveRequestStatus,
+    Section,
     SessionStatus,
     Subject,
     Timetable,
+    TutorAssignment,
     User,
     UserRole,
     get_db,
@@ -1145,4 +1149,397 @@ def reject_device_request(
     )
 
     return {"success": True, "message": "Device deactivated."}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/teacher/dashboard — Master dashboard API (PROMPT 6)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _current_academic_year() -> str:
+    now = datetime.now(tz=timezone.utc)
+    y = now.year
+    if now.month < 6:
+        return f"{y - 1}-{str(y)[-2:]}"
+    return f"{y}-{str(y + 1)[-2:]}"
+
+
+@router.get("/teacher/dashboard")
+def teacher_dashboard(
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    tid = current_user["id"]
+    today = date.today()
+
+    # ── My subjects with stats ──
+    subjects = db.query(Subject).filter(Subject.teacher_id == tid).all()
+    my_subjects = []
+    for s in subjects:
+        sess_count = db.query(func.count(AttendanceSession.id)).filter(
+            AttendanceSession.subject_id == s.id,
+            AttendanceSession.teacher_id == tid,
+            AttendanceSession.status == SessionStatus.ended,
+        ).scalar() or 0
+
+        agg = db.query(
+            func.sum(AttendanceSession.total_students),
+            func.sum(AttendanceSession.present_count),
+        ).filter(
+            AttendanceSession.subject_id == s.id,
+            AttendanceSession.teacher_id == tid,
+            AttendanceSession.status == SessionStatus.ended,
+        ).one()
+        total_s, present_s = agg
+        avg_pct = round(float(present_s) / float(total_s) * 100, 1) if total_s else 0
+
+        # Section name from timetable
+        tt_entry = db.query(Timetable).filter(
+            Timetable.subject_id == s.id,
+            Timetable.teacher_id == tid,
+        ).first()
+        sec_name = ""
+        total_students = 0
+        if tt_entry and tt_entry.section_id:
+            sec = db.query(Section).filter(Section.id == tt_entry.section_id).first()
+            sec_name = sec.name if sec else ""
+            total_students = db.query(func.count(User.id)).filter(
+                User.section_id == tt_entry.section_id,
+                User.role == UserRole.student,
+                User.is_active.is_(True),
+            ).scalar() or 0
+
+        last_sess = db.query(AttendanceSession.date).filter(
+            AttendanceSession.subject_id == s.id,
+            AttendanceSession.teacher_id == tid,
+        ).order_by(AttendanceSession.date.desc()).first()
+
+        my_subjects.append({
+            "subject_id": s.id,
+            "name": s.name,
+            "code": s.code,
+            "section_name": sec_name,
+            "semester": s.semester,
+            "total_students": total_students,
+            "sessions_conducted": sess_count,
+            "avg_attendance_pct": avg_pct,
+            "last_session_date": str(last_sess[0]) if last_sess else None,
+        })
+
+    # ── Recent sessions (last 5) ──
+    recent_sessions = (
+        db.query(AttendanceSession, Subject.name, Subject.code)
+        .join(Subject, AttendanceSession.subject_id == Subject.id)
+        .filter(AttendanceSession.teacher_id == tid)
+        .order_by(AttendanceSession.date.desc(), AttendanceSession.start_time.desc())
+        .limit(5)
+        .all()
+    )
+    recent_list = [{
+        "session_id": s.id,
+        "date": str(s.date),
+        "subject_name": sn,
+        "subject_code": sc,
+        "present": s.present_count or 0,
+        "total": s.total_students or 0,
+        "status": s.status.value,
+    } for s, sn, sc in recent_sessions]
+
+    # ── Ward summary ──
+    year = _current_academic_year()
+    ward_assignments = db.query(TutorAssignment).filter(
+        TutorAssignment.tutor_id == tid,
+        TutorAssignment.academic_year == year,
+        TutorAssignment.is_active.is_(True),
+    ).all()
+    ward_summary = None
+    low_attendance_alerts = []
+    if ward_assignments:
+        ward_ids = [a.student_id for a in ward_assignments]
+        # Count needs_attention
+        needs_att = 0
+        for sid in ward_ids:
+            agg2 = db.query(
+                func.count(AttendanceRecord.id),
+                func.sum(case((AttendanceRecord.status.in_([
+                    AttendanceStatus.present, AttendanceStatus.late
+                ]), 1), else_=0)),
+            ).filter(AttendanceRecord.student_id == sid).one()
+            total_r, present_r = agg2
+            if total_r and total_r > 0:
+                pct = float(present_r or 0) / float(total_r) * 100
+                if pct < settings.ATTENDANCE_THRESHOLD:
+                    needs_att += 1
+                    u = db.query(User).filter(User.id == sid).first()
+                    if u:
+                        low_attendance_alerts.append({
+                            "student_id": sid,
+                            "name": u.name,
+                            "roll_number": u.roll_number,
+                            "pct": round(pct, 1),
+                        })
+
+        pending_leaves = db.query(func.count(LeaveRequest.id)).filter(
+            LeaveRequest.tutor_id == tid,
+            LeaveRequest.status == LeaveRequestStatus.pending,
+        ).scalar() or 0
+
+        ward_summary = {
+            "is_tutor": True,
+            "ward_count": len(ward_ids),
+            "needs_attention_count": needs_att,
+            "pending_leaves": pending_leaves,
+        }
+
+    return {
+        "my_subjects": my_subjects,
+        "recent_sessions": recent_list,
+        "ward_summary": ward_summary,
+        "low_attendance_alerts": sorted(low_attendance_alerts, key=lambda x: x["pct"]),
+        "pending_leave_requests": ward_summary["pending_leaves"] if ward_summary else 0,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/teacher/subject/{subject_id}/analytics — Subject analytics
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/teacher/subject/{subject_id}/analytics")
+def subject_analytics(
+    subject_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    tid = current_user["id"]
+    subject = db.query(Subject).filter(Subject.id == subject_id).first()
+    if not subject:
+        raise HTTPException(404, "Subject not found.")
+    if subject.teacher_id != tid and current_user["role"] not in ("hod", "principal"):
+        raise HTTPException(403, "Not your subject.")
+
+    # Ended sessions for this subject
+    sessions = (
+        db.query(AttendanceSession)
+        .filter(
+            AttendanceSession.subject_id == subject_id,
+            AttendanceSession.status == SessionStatus.ended,
+        )
+        .order_by(AttendanceSession.date)
+        .all()
+    )
+    session_ids = [s.id for s in sessions]
+
+    # Get all students who have records in these sessions
+    if not session_ids:
+        return {
+            "subject": {"id": subject.id, "name": subject.name, "code": subject.code},
+            "per_student": [],
+            "day_pattern": [],
+            "avg_session_duration": None,
+            "defaulter_list": [],
+        }
+
+    student_ids = [
+        r[0] for r in db.query(AttendanceRecord.student_id.distinct())
+        .filter(AttendanceRecord.session_id.in_(session_ids)).all()
+    ]
+
+    # ── Per-student attendance + 4-week trend ──
+    four_weeks_ago = date.today() - timedelta(days=28)
+    per_student = []
+    for sid in student_ids:
+        u = db.query(User).filter(User.id == sid).first()
+        if not u:
+            continue
+        total = db.query(func.count(AttendanceRecord.id)).filter(
+            AttendanceRecord.student_id == sid,
+            AttendanceRecord.session_id.in_(session_ids),
+        ).scalar() or 0
+        present = db.query(func.count(AttendanceRecord.id)).filter(
+            AttendanceRecord.student_id == sid,
+            AttendanceRecord.session_id.in_(session_ids),
+            AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]),
+        ).scalar() or 0
+        pct = round(present / total * 100, 1) if total else 0
+
+        # Weekly trend (last 4 weeks)
+        weekly_trend = []
+        for w in range(4):
+            week_start = four_weeks_ago + timedelta(weeks=w)
+            week_end = week_start + timedelta(days=7)
+            week_sess_ids = [s.id for s in sessions if week_start <= s.date < week_end]
+            if week_sess_ids:
+                wt = db.query(func.count(AttendanceRecord.id)).filter(
+                    AttendanceRecord.student_id == sid,
+                    AttendanceRecord.session_id.in_(week_sess_ids),
+                ).scalar() or 0
+                wp = db.query(func.count(AttendanceRecord.id)).filter(
+                    AttendanceRecord.student_id == sid,
+                    AttendanceRecord.session_id.in_(week_sess_ids),
+                    AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]),
+                ).scalar() or 0
+                weekly_trend.append(round(wp / wt * 100, 1) if wt else 0)
+            else:
+                weekly_trend.append(None)
+
+        per_student.append({
+            "student_id": sid,
+            "name": u.name,
+            "roll_number": u.roll_number,
+            "total": total,
+            "present": present,
+            "pct": pct,
+            "weekly_trend": weekly_trend,
+            "needs_attention": pct < settings.ATTENDANCE_THRESHOLD,
+        })
+
+    # ── Day-of-week pattern ──
+    day_pattern = []
+    for day_name in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]:
+        day_sessions = [s for s in sessions if s.date.strftime("%A").lower() == day_name]
+        if day_sessions:
+            total_s = sum(s.total_students or 0 for s in day_sessions)
+            present_s = sum(s.present_count or 0 for s in day_sessions)
+            day_pattern.append({
+                "day": day_name.capitalize(),
+                "sessions": len(day_sessions),
+                "avg_pct": round(present_s / total_s * 100, 1) if total_s else 0,
+            })
+
+    # ── Average session duration ──
+    durations = []
+    for s in sessions:
+        if s.start_time and s.end_time:
+            start = datetime.combine(s.date, s.start_time)
+            end = datetime.combine(s.date, s.end_time)
+            durations.append((end - start).total_seconds() / 60)
+    avg_duration = round(sum(durations) / len(durations), 0) if durations else None
+
+    # ── Defaulter list (absent 3+ in last 7 days) ──
+    seven_days_ago = date.today() - timedelta(days=7)
+    recent_sess_ids = [s.id for s in sessions if s.date >= seven_days_ago]
+    defaulter_list = []
+    if recent_sess_ids:
+        for sid in student_ids:
+            absent_count = db.query(func.count(AttendanceRecord.id)).filter(
+                AttendanceRecord.student_id == sid,
+                AttendanceRecord.session_id.in_(recent_sess_ids),
+                AttendanceRecord.status == AttendanceStatus.absent,
+            ).scalar() or 0
+            if absent_count >= 3:
+                u = db.query(User).filter(User.id == sid).first()
+                if u:
+                    defaulter_list.append({
+                        "student_id": sid,
+                        "name": u.name,
+                        "roll_number": u.roll_number,
+                        "absences_last_7_days": absent_count,
+                    })
+
+    return {
+        "subject": {"id": subject.id, "name": subject.name, "code": subject.code, "semester": subject.semester},
+        "total_sessions": len(sessions),
+        "per_student": sorted(per_student, key=lambda x: x["pct"]),
+        "day_pattern": day_pattern,
+        "avg_session_duration": avg_duration,
+        "defaulter_list": sorted(defaulter_list, key=lambda x: -x["absences_last_7_days"]),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/teacher/subject/{subject_id}/suggest-followup — Smart Follow-up
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/teacher/subject/{subject_id}/suggest-followup")
+def suggest_followup(
+    subject_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """Rule-based: identify absent students and cross-reference with
+    patterns (consecutive absences, day-specific patterns, etc.)."""
+    tid = current_user["id"]
+    subject = db.query(Subject).filter(Subject.id == subject_id).first()
+    if not subject:
+        raise HTTPException(404, "Subject not found.")
+
+    seven_days_ago = date.today() - timedelta(days=7)
+    recent_sessions = (
+        db.query(AttendanceSession)
+        .filter(
+            AttendanceSession.subject_id == subject_id,
+            AttendanceSession.date >= seven_days_ago,
+            AttendanceSession.status == SessionStatus.ended,
+        )
+        .order_by(AttendanceSession.date)
+        .all()
+    )
+    if not recent_sessions:
+        return []
+
+    session_ids = [s.id for s in recent_sessions]
+    student_ids = [
+        r[0] for r in db.query(AttendanceRecord.student_id.distinct())
+        .filter(AttendanceRecord.session_id.in_(session_ids)).all()
+    ]
+
+    followup = []
+    for sid in student_ids:
+        records = (
+            db.query(AttendanceRecord, AttendanceSession.date)
+            .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+            .filter(
+                AttendanceRecord.student_id == sid,
+                AttendanceRecord.session_id.in_(session_ids),
+            )
+            .order_by(AttendanceSession.date)
+            .all()
+        )
+
+        absent_dates = [str(r[1]) for r in records if r[0].status == AttendanceStatus.absent]
+        if not absent_dates:
+            continue
+
+        u = db.query(User).filter(User.id == sid).first()
+        if not u:
+            continue
+
+        # Check if consecutive absences
+        consecutive = len(absent_dates) >= 2
+        all_absent = len(absent_dates) == len(records)
+
+        # Check if student has an approved leave covering these dates
+        has_leave = False
+        if absent_dates:
+            for ad in absent_dates:
+                leave = db.query(LeaveRequest).filter(
+                    LeaveRequest.student_id == sid,
+                    LeaveRequest.status == LeaveRequestStatus.approved,
+                    LeaveRequest.from_date <= ad,
+                    LeaveRequest.to_date >= ad,
+                ).first()
+                if leave:
+                    has_leave = True
+                    break
+
+        reason_guess = "unexplained"
+        if has_leave:
+            reason_guess = "likely_excused (approved leave)"
+        elif all_absent:
+            reason_guess = "absent_all_recent — follow up urgently"
+        elif consecutive:
+            reason_guess = "consecutive_absences — check on student"
+
+        followup.append({
+            "student_id": sid,
+            "name": u.name,
+            "roll_number": u.roll_number,
+            "absent_dates": absent_dates,
+            "absent_count": len(absent_dates),
+            "total_sessions": len(records),
+            "reason_guess": reason_guess,
+            "has_approved_leave": has_leave,
+            "priority": "high" if all_absent else ("medium" if consecutive else "low"),
+        })
+
+    return sorted(followup, key=lambda x: {"high": 0, "medium": 1, "low": 2}[x["priority"]])
 
