@@ -73,16 +73,6 @@ export default function TeachersPage() {
     }
   };
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    if (!q) return teachers;
-    return teachers.filter(t =>
-      t.name.toLowerCase().includes(q)
-      || t.email.toLowerCase().includes(q)
-      || (t.subject_names || []).some(s => s.toLowerCase().includes(q))
-    );
-  }, [teachers, search]);
-
   if (loading) {
     return (
       <div className="card p-10 text-center">
