@@ -86,6 +86,7 @@ def _build_jwt(user: User, device_id: str) -> str:
     return create_access_token({
         "sub":           user.email if user.role != UserRole.student else user.roll_number,
         "id":            user.id,
+        "name":          user.name,
         "role":          user.role.value,
         "college_id":    user.college_id,
         "department_id": user.department_id,
@@ -115,7 +116,7 @@ def _get_user_by_identifier(identifier: str, db: Session) -> User | None:
 # ═══════════════════════════════════════════════════════════════════════
 
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit("5/15minutes")
+@limiter.limit("60/minute")
 def login(
     request:     Request,
     body:        LoginRequest,

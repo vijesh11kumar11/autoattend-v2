@@ -7,7 +7,7 @@
  *   Col 3: Alerts (wards, pending leaves, anomalies, quick actions)
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -44,29 +44,30 @@ export default function TeacherHome() {
   const [starting, setStarting]         = useState(false);
   const [flash, setFlash]               = useState('');
 
-  const isMounted = useRef(true);
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   // ── Load new teacher dashboard ──
   useEffect(() => {
+    let cancelled = false;
     api.get('/teacher/dashboard')
-      .then(r => { if (isMounted.current) setDashboard(r.data); })
-      .catch(() => { if (isMounted.current) setError('Failed to load dashboard.'); })
-      .finally(() => { if (isMounted.current) setLoading(false); });
+      .then(r => { if (!cancelled) setDashboard(r.data); })
+      .catch(() => { if (!cancelled) setError('Failed to load dashboard.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   // ── Load today's schedule ──
   useEffect(() => {
+    let cancelled = false;
     api.get('/timetable/my-today')
-      .then(r => { if (isMounted.current) setTodaySchedule(r.data || []); })
+      .then(r => { if (!cancelled) setTodaySchedule(r.data || []); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // ── Poll current class every 60s ──
   const fetchCurrentClass = useCallback(() => {
     api.get('/timetable/my-current-class')
-      .then(r => { if (isMounted.current) setCurrentClass(r.data); })
-      .catch(() => { if (isMounted.current) setCurrentClass(null); });
+      .then(r => setCurrentClass(r.data))
+      .catch(() => setCurrentClass(null));
   }, []);
 
   useEffect(() => {

@@ -86,7 +86,7 @@ function StudentHome() {
     api.get('/student/portal/dashboard')
       .then(r => { if (isMounted.current) setDashboard(r.data); })
       .catch(() => { if (isMounted.current) setError('Failed to load dashboard.'); })
-      .finally(() => { if (isMounted.current) setLoading(false); });
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { loadDashboard(); }, []);

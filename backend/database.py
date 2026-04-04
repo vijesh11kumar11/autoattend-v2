@@ -287,7 +287,7 @@ class User(Base):
     section    = relationship("Section",    back_populates="students")
 
     taught_subjects    = relationship("Subject", back_populates="teacher")
-    timetable_entries  = relationship("Timetable", back_populates="teacher")
+    timetable_entries  = relationship("Timetable", back_populates="teacher", foreign_keys="[Timetable.teacher_id]")
     attendance_sessions = relationship("AttendanceSession", back_populates="teacher")
     attendance_records = relationship("AttendanceRecord",   back_populates="student")
     otp_logs           = relationship("OTPLog", back_populates="user", cascade="all, delete-orphan")
