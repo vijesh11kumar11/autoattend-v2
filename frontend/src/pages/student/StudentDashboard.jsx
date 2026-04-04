@@ -387,20 +387,260 @@ function StudentHome() {
 // ── Stubs for other student routes ────────────────────────────────────
 function ScanQRStub() {
   return (
-    <div className="card p-10 text-center text-slate-400 space-y-2">
-      <span className="text-5xl">📷</span>
-      <p className="font-medium text-slate-600">Scan QR — coming soon (mobile app)</p>
+    <div className="card p-10 text-center text-slate-400 space-y-3">
+      <span className="text-5xl block">📱</span>
+      <p className="font-semibold text-slate-600">Scan QR Code</p>
+      <p className="text-sm max-w-md mx-auto">
+        QR scanning is available on the mobile app. Open the AutoAttend app on your phone,
+        go to "Scan QR", and scan the code displayed by your teacher.
+      </p>
+      <div className="bg-blue-50 rounded-xl p-4 mt-4 text-left max-w-sm mx-auto text-sm text-slate-600 space-y-1">
+        <p className="font-semibold text-slate-700">How it works:</p>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>Teacher starts an attendance session</li>
+          <li>A rotating QR code is displayed</li>
+          <li>Scan it with the mobile app</li>
+          <li>Face verification confirms your identity</li>
+          <li>Attendance is marked automatically!</li>
+        </ol>
+      </div>
     </div>
   );
 }
-function AttendanceStub() {
-  return <div className="card p-8 text-center text-slate-400 text-sm">My Attendance — coming soon</div>;
+function AttendanceDetailPage() {
+  const { user } = useAuth();
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!user?.id) return;
+    api.get(`/attendance/student/${user.id}/summary`)
+      .then(r => setSummary(r.data))
+      .catch(() => setError('Failed to load attendance details.'))
+      .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  if (loading) {
+    return (
+      <div className="card p-10 text-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-[#1a237e] rounded-full animate-spin mx-auto" />
+        <p className="text-slate-400 text-sm mt-3">Loading attendance…</p>
+      </div>
+    );
+  }
+  if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
+  if (!summary?.subjects?.length) return <div className="card p-8 text-center text-slate-400">No attendance data yet.</div>;
+
+  const totalSessions = summary.subjects.reduce((a, s) => a + s.total_sessions, 0);
+  const totalPresent = summary.subjects.reduce((a, s) => a + s.present, 0);
+  const overallPct = totalSessions > 0 ? Math.round((totalPresent / totalSessions) * 100) : 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Overall Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-slate-800">{totalSessions}</p>
+          <p className="text-sm text-slate-500">Total Sessions</p>
+        </div>
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-emerald-600">{totalPresent}</p>
+          <p className="text-sm text-slate-500">Present</p>
+        </div>
+        <div className="card p-4 text-center">
+          <p className="text-2xl font-bold text-red-500">{totalSessions - totalPresent}</p>
+          <p className="text-sm text-slate-500">Absent</p>
+        </div>
+        <div className="card p-4 text-center">
+          <p className={`text-2xl font-bold ${overallPct >= THRESHOLD ? 'text-emerald-600' : overallPct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{overallPct}%</p>
+          <p className="text-sm text-slate-500">Overall</p>
+        </div>
+      </div>
+
+      {/* Subject Table */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">📊 Subject-wise Attendance</div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-xs text-slate-400 uppercase border-b">
+                <th className="px-5 py-2 text-left">Subject</th>
+                <th className="px-5 py-2 text-left">Code</th>
+                <th className="px-5 py-2 text-left">Sem</th>
+                <th className="px-5 py-2 text-left">Present</th>
+                <th className="px-5 py-2 text-left">Absent</th>
+                <th className="px-5 py-2 text-left">%</th>
+                <th className="px-5 py-2 text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {summary.subjects.map(s => {
+                const statusColors = {
+                  safe: 'bg-emerald-100 text-emerald-700',
+                  warning: 'bg-amber-100 text-amber-700',
+                  critical: 'bg-red-100 text-red-700',
+                  detained: 'bg-red-200 text-red-800',
+                };
+                return (
+                  <tr key={s.subject_id} className="hover:bg-slate-50">
+                    <td className="px-5 py-3 text-sm font-medium text-slate-700">{s.subject_name}</td>
+                    <td className="px-5 py-3 text-sm text-slate-500">{s.subject_code}</td>
+                    <td className="px-5 py-3 text-sm text-slate-500">{s.semester}</td>
+                    <td className="px-5 py-3 text-sm text-emerald-600 font-semibold">{s.present}</td>
+                    <td className="px-5 py-3 text-sm text-red-500 font-semibold">{s.absent}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 bg-slate-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${s.percentage >= THRESHOLD ? 'bg-emerald-500' : s.percentage >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
+                            style={{ width: `${Math.min(s.percentage, 100)}%` }}
+                          />
+                        </div>
+                        <span className={`text-sm font-bold ${s.percentage >= THRESHOLD ? 'text-emerald-600' : s.percentage >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
+                          {Math.round(s.percentage)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusColors[s.attendance_status] || 'bg-slate-100 text-slate-600'}`}>
+                        {s.attendance_status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
-function TimetableStub() {
-  return <div className="card p-8 text-center text-slate-400 text-sm">Timetable — coming soon</div>;
+
+function StudentTimetablePage() {
+  const [timetable, setTimetable] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const dayColors = {
+    Monday: 'border-l-blue-500', Tuesday: 'border-l-emerald-500', Wednesday: 'border-l-purple-500',
+    Thursday: 'border-l-amber-500', Friday: 'border-l-red-500', Saturday: 'border-l-slate-400',
+  };
+
+  useEffect(() => {
+    api.get('/students/my-timetable')
+      .then(r => setTimetable(r.data?.timetable || []))
+      .catch(() => setError('Failed to load timetable.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="card p-10 text-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-[#1a237e] rounded-full animate-spin mx-auto" />
+        <p className="text-slate-400 text-sm mt-3">Loading timetable…</p>
+      </div>
+    );
+  }
+  if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="card overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">📅 My Weekly Timetable</div>
+        {timetable.length > 0 ? (
+          <div className="divide-y">
+            {timetable.map(day => (
+              <div key={day.day} className="p-4">
+                <h3 className="font-semibold text-slate-700 mb-3">{day.day}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {day.slots.map((slot, i) => (
+                    <div key={i} className={`border-l-4 ${dayColors[day.day] || 'border-l-slate-300'} bg-slate-50 rounded-r-lg p-3`}>
+                      <p className="font-medium text-slate-700 text-sm">{slot.subject_name}</p>
+                      <p className="text-xs text-slate-400">{slot.subject_code}</p>
+                      <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
+                        <span className="font-mono">{slot.start_time} – {slot.end_time}</span>
+                        <span>🏫 {slot.room}</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">👨‍🏫 {slot.teacher_name}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-slate-400">
+            <span className="text-3xl block mb-2">📭</span>
+            <p>No timetable entries found for your course/semester.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
-function DownloadStub() {
-  return <div className="card p-8 text-center text-slate-400 text-sm">Download Report — coming soon</div>;
+
+function DownloadReportPage() {
+  const { user } = useAuth();
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    api.get(`/attendance/student/${user.id}/summary`)
+      .then(r => setSummary(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  const downloadCSV = () => {
+    if (!summary?.subjects) return;
+    const rows = [['Subject', 'Code', 'Semester', 'Total Sessions', 'Present', 'Absent', 'Percentage', 'Status']];
+    for (const s of summary.subjects) {
+      rows.push([s.subject_name, s.subject_code, s.semester, s.total_sessions, s.present, s.absent, `${Math.round(s.percentage)}%`, s.attendance_status]);
+    }
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance-report-${user.sub || user.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading) {
+    return (
+      <div className="card p-10 text-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-[#1a237e] rounded-full animate-spin mx-auto" />
+        <p className="text-slate-400 text-sm mt-3">Preparing report…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="card p-6 text-center space-y-4">
+        <span className="text-5xl block">📄</span>
+        <h2 className="text-lg font-bold text-slate-700">Download Attendance Report</h2>
+        <p className="text-sm text-slate-500 max-w-md mx-auto">
+          Export your attendance data as a CSV file. This includes all subjects, session counts,
+          present/absent records, and your attendance percentage.
+        </p>
+        <button
+          onClick={downloadCSV}
+          disabled={!summary?.subjects?.length}
+          className="px-6 py-3 bg-[#1a237e] text-white font-semibold rounded-xl hover:bg-[#283593] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          ⬇ Download CSV Report
+        </button>
+        {!summary?.subjects?.length && (
+          <p className="text-sm text-slate-400">No attendance data available to export.</p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -413,9 +653,9 @@ export default function StudentDashboard() {
       <Routes>
         <Route path="dashboard"  element={<StudentHome />} />
         <Route path="scan-qr"    element={<ScanQRStub />} />
-        <Route path="attendance" element={<AttendanceStub />} />
-        <Route path="timetable"  element={<TimetableStub />} />
-        <Route path="download"   element={<DownloadStub />} />
+        <Route path="attendance" element={<AttendanceDetailPage />} />
+        <Route path="timetable"  element={<StudentTimetablePage />} />
+        <Route path="download"   element={<DownloadReportPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

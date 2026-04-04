@@ -108,7 +108,12 @@ api.interceptors.response.use(
       // Use replace to prevent back navigation to protected page
       window.location.replace('/login');
     } else if (status === 403) {
-      window.location.replace('/unauthorized');
+      const detail = error.response?.data?.detail || '';
+      // Device mismatch or role-based access → unauthorized page
+      // But NOT for face enrollment issues — let the page handle those
+      if (detail.includes('Device mismatch') || detail.includes('Access restricted')) {
+        window.location.replace('/unauthorized');
+      }
     }
 
     return Promise.reject(error);

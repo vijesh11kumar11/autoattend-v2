@@ -2,33 +2,9 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import DashboardLayout from '../../components/DashboardLayout';
 import GenerateQRPage from './GenerateQRPage';
 import AttendancePage from './AttendancePage';
-
-function TeacherHome() {
-  return (
-    <div className="card p-8 text-center text-slate-400 space-y-2">
-      <span className="text-5xl">👩‍🏫</span>
-      <p className="font-medium text-slate-600">Teacher Dashboard — coming soon</p>
-    </div>
-  );
-}
-
-function ClassesStub() {
-  return (
-    <div className="card p-8 text-center text-slate-400 space-y-2">
-      <span className="text-5xl">📖</span>
-      <p className="font-medium text-slate-600">My Classes — coming soon</p>
-    </div>
-  );
-}
-
-function ReportsStub() {
-  return (
-    <div className="card p-8 text-center text-slate-400 space-y-2">
-      <span className="text-5xl">📊</span>
-      <p className="font-medium text-slate-600">Reports — coming soon</p>
-    </div>
-  );
-}
+import TeacherHome from './TeacherHomePage';
+import MyClassesPage from './MyClassesPage';
+import TeacherReportsPage from './TeacherReportsPage';
 
 export default function TeacherDashboard() {
   return (
@@ -36,9 +12,9 @@ export default function TeacherDashboard() {
       <Routes>
         <Route path="dashboard" element={<TeacherHome />} />
         <Route path="qr"        element={<GenerateQRPage />} />
-        <Route path="classes"   element={<ClassesStub />} />
+        <Route path="classes"   element={<MyClassesPage />} />
         <Route path="history"   element={<AttendancePage />} />
-        <Route path="reports"   element={<ReportsStub />} />
+        <Route path="reports"   element={<TeacherReportsPage />} />
         <Route path="*"         element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

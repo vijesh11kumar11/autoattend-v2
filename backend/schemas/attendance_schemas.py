@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 class StartSessionRequest(BaseModel):
     subject_id:        int
+    section_id:        Optional[int] = None
     date:              date
     teacher_latitude:  float = Field(..., ge=-90,  le=90)
     teacher_longitude: float = Field(..., ge=-180, le=180)

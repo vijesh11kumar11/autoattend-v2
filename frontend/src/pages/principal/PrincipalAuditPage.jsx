@@ -48,11 +48,14 @@ export default function PrincipalAuditPage() {
 
     api.get('/principal/audit', { params, signal: ctrl.signal })
       .then((r) => setData(r.data))
-      .catch((e) => { if (!e?.message?.includes('aborted')) setError('Failed to load audit log.'); })
+      .catch((e) => { if (e?.code !== 'ERR_CANCELED' && !e?.message?.includes('aborted') && !e?.message?.includes('canceled')) setError('Failed to load audit log.'); })
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchAudit(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchAudit();
+    return () => { if (abortRef.current) abortRef.current.abort(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const faceLog    = data?.face_change_log    || [];
   const auditLog   = data?.failed_audit_log   || [];

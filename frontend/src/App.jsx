@@ -22,6 +22,7 @@ const PrincipalDashboard = lazy(() => import('./pages/principal/PrincipalDashboa
 const HODDashboard       = lazy(() => import('./pages/hod/HODDashboard'));
 const TeacherDashboard   = lazy(() => import('./pages/teacher/TeacherDashboard'));
 const StudentDashboard   = lazy(() => import('./pages/student/StudentDashboard'));
+const FaceEnrollmentPage = lazy(() => import('./pages/student/FaceEnrollmentPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const TOTPSetupPage      = lazy(() => import('./pages/TOTPSetupPage'));
 
@@ -45,12 +46,17 @@ function PageLoading() {
  * Wraps a protected route.
  * @param {string} minRole  – minimum role required (student|teacher|hod|principal)
  */
-function PrivateRoute({ children, minRole = 'student' }) {
-  const { isAuthenticated, loading, hasRole } = useAuth();
+function PrivateRoute({ children, minRole = 'student', skipFaceCheck = false }) {
+  const { isAuthenticated, loading, hasRole, user } = useAuth();
 
   if (loading) return <PageLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (!hasRole(minRole)) return <Navigate to="/unauthorized" replace />;
+
+  // Students must complete face enrollment before accessing dashboard
+  if (!skipFaceCheck && user?.role === 'student' && !user?.face_enrolled) {
+    return <Navigate to="/student/face-enrollment" replace />;
+  }
 
   return children;
 }
@@ -61,6 +67,11 @@ function RoleRedirect() {
 
   if (loading) return <PageLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  // Students without face enrollment go to enrollment first
+  if (user?.role === 'student' && !user?.face_enrolled) {
+    return <Navigate to="/student/face-enrollment" replace />;
+  }
 
   const destinations = {
     principal: '/principal/dashboard',
@@ -115,6 +126,14 @@ function AppRoutes() {
         />
 
         {/* Student */}
+        <Route
+          path="/student/face-enrollment"
+          element={
+            <PrivateRoute minRole="student" skipFaceCheck>
+              <FaceEnrollmentPage />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="/student/*"
           element={

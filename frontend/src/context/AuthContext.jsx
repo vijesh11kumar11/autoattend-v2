@@ -56,7 +56,8 @@ export function AuthProvider({ children }) {
       } else if (!user) {
         // Reconstruct user from JWT payload if localStorage lost it
         setUser({
-          id:            payload.sub,
+          id:            payload.id,
+          sub:           payload.sub,
           name:          payload.name  || '',
           role:          payload.role  || 'student',
           college_id:    payload.college_id,
@@ -74,7 +75,8 @@ export function AuthProvider({ children }) {
     if (!payload) throw new Error('Invalid token received from server.');
 
     const userObj = {
-      id:            payload.sub,
+      id:            payload.id,
+      sub:           payload.sub,
       name:          payload.name  || '',
       role:          payload.role  || 'student',
       college_id:    payload.college_id,

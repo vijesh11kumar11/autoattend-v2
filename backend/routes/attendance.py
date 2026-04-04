@@ -29,6 +29,7 @@ from database import (
     Course,
     Department,
     MarkedBy,
+    Section,
     SessionStatus,
     Subject,
     User,
@@ -143,15 +144,17 @@ def start_session(
             )
 
     # Reject duplicate active session for the same subject today
-    existing = (
-        db.query(AttendanceSession)
-        .filter(
-            AttendanceSession.subject_id == body.subject_id,
-            AttendanceSession.date       == body.date,
-            AttendanceSession.status     == SessionStatus.active,
-        )
-        .first()
-    )
+    dup_filters = [
+        AttendanceSession.subject_id == body.subject_id,
+        AttendanceSession.date       == body.date,
+        AttendanceSession.status     == SessionStatus.active,
+    ]
+    if body.section_id is not None:
+        dup_filters.append(AttendanceSession.section_id == body.section_id)
+    else:
+        dup_filters.append(AttendanceSession.section_id.is_(None))
+
+    existing = db.query(AttendanceSession).filter(*dup_filters).first()
     if existing:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -163,9 +166,17 @@ def start_session(
     bt_token        = generate_bluetooth_token()
     now             = datetime.now(tz=timezone.utc)
 
+    logger.info("📗 SESSION START │ teacher_id=%d │ subject='%s' (id=%d) │ date=%s",
+                caller_id, subject.name, body.subject_id, body.date)
+    logger.info("📗 SESSION START │ teacher GPS lat=%.6f lon=%.6f",
+                body.teacher_latitude or 0.0, body.teacher_longitude or 0.0)
+    logger.info("📗 SESSION START │ QR secret generated (hint=%s...) │ BLE token generated (%d chars)",
+                qr_secret[:8], len(bt_token))
+
     session = AttendanceSession(
         subject_id        = body.subject_id,
         teacher_id        = caller_id,
+        section_id        = body.section_id,
         date              = body.date,
         start_time        = now.time(),
         status            = SessionStatus.active,
@@ -178,16 +189,17 @@ def start_session(
     db.flush()   # get session.id before bulk insert
 
     # Enroll every student in the subject's course+semester as absent by default
-    students = (
-        db.query(User)
-        .filter(
-            User.course_id  == subject.course_id,
-            User.semester   == subject.semester,
-            User.role       == UserRole.student,
-            User.is_active  == True,           # noqa: E712
-        )
-        .all()
-    )
+    # If section_id is provided, only enroll students from that section
+    student_filters = [
+        User.course_id  == subject.course_id,
+        User.semester   == subject.semester,
+        User.role       == UserRole.student,
+        User.is_active  == True,           # noqa: E712
+    ]
+    if body.section_id is not None:
+        student_filters.append(User.section_id == body.section_id)
+
+    students = db.query(User).filter(*student_filters).all()
 
     for student in students:
         db.add(AttendanceRecord(
@@ -202,6 +214,9 @@ def start_session(
 
     session.total_students = len(students)
     db.commit()
+
+    logger.info("📗 SESSION START │ session_id=%d │ %d students enrolled (default=absent)",
+                session.id, len(students))
 
     # ── Push notification: notify enrolled students ───────────────────
     teacher_name = db.query(User).filter(User.id == caller_id).first()
@@ -256,6 +271,11 @@ def mark_attendance(
     now        = datetime.now(tz=timezone.utc)
     ip         = _get_ip(request)
 
+    logger.info("\n" + "="*70)
+    logger.info("📝 MARK ATTENDANCE │ student_id=%d │ session_id=%d │ IP=%s",
+                student_id, body.session_id, ip)
+    logger.info("="*70)
+
     # Snapshot of check results — updated throughout
     checks = {
         "face_verified":        False,
@@ -271,10 +291,13 @@ def mark_attendance(
         db.query(AttendanceSession).filter(AttendanceSession.id == body.session_id).first()
     )
     if not session or session.status != SessionStatus.active:
+        logger.warning("❌ STEP 1a │ session_id=%d │ not found or inactive", body.session_id)
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             "Attendance session not found or is no longer active.",
         )
+    logger.info("✅ STEP 1a │ Session found │ id=%d │ status=%s │ subject_id=%d",
+                session.id, session.status.value, session.subject_id)
 
     subject: Subject = db.query(Subject).filter(Subject.id == session.subject_id).first()
 
@@ -285,10 +308,13 @@ def mark_attendance(
         or student.course_id  != subject.course_id
         or student.semester   != subject.semester
     ):
+        logger.warning("❌ STEP 1b │ student_id=%d │ not enrolled in subject_id=%d", student_id, session.subject_id)
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "You are not enrolled in this subject.",
         )
+    logger.info("✅ STEP 1b │ Student enrolled │ roll=%s │ subject='%s'",
+                student.roll_number, subject.name)
 
     # ── STEP 1c — Already present? ────────────────────────────────────
     record: Optional[AttendanceRecord] = (
@@ -301,6 +327,7 @@ def mark_attendance(
     )
     if record and record.status == AttendanceStatus.present:
         checks["already_marked"] = True
+        logger.info("ℹ️ STEP 1c │ student_id=%d │ already marked present — skipping", student_id)
         return AttendanceResultResponse(
             success      = False,
             status       = "failed",
@@ -313,9 +340,13 @@ def mark_attendance(
     # ── STEP 2 — Device check ─────────────────────────────────────────
     # get_current_user already rejects mismatched device for students.
     # The device_id in JWT == device_id in request body is an extra sanity check.
+    logger.info("📱 STEP 2 │ Device check │ JWT_device=%s │ body_device=%s",
+                current_user.get("device_id", "none"), body.device_id or "none")
     if current_user.get("device_id") and body.device_id:
         if current_user["device_id"] != body.device_id:
             checks["device_matched"] = False
+            logger.warning("❌ STEP 2 │ DEVICE MISMATCH │ student_id=%d │ expected=%s │ got=%s",
+                           student_id, current_user["device_id"], body.device_id)
             _write_audit(db, session.id, student_id, AuditResult.failed,
                          "Device ID mismatch", 0.0, None, body.device_id, ip)
             return AttendanceResultResponse(
@@ -325,12 +356,16 @@ def mark_attendance(
                 subject_name = subject.name,
                 checks       = AttendanceChecks(**checks),
             )
+    logger.info("✅ STEP 2 │ Device matched ✓")
 
     # ── STEP 3 — Face verify token ────────────────────────────────────
+    logger.info("🙍 STEP 3 │ Face token validation │ token=%s...",
+                (body.face_token or "")[:16])
     face_valid = validate_face_verify_token(
         body.face_token, student_id, body.session_id, db
     )
     if not face_valid:
+        logger.warning("❌ STEP 3 │ FACE TOKEN INVALID/EXPIRED │ student_id=%d", student_id)
         _write_audit(db, session.id, student_id, AuditResult.failed,
                      "Face token invalid/expired", 0.0, None, body.device_id, ip)
         return AttendanceResultResponse(
@@ -341,8 +376,10 @@ def mark_attendance(
             checks       = AttendanceChecks(**checks),
         )
     checks["face_verified"] = True
+    logger.info("✅ STEP 3 │ Face token valid ✓")
 
     # ── STEP 4 — QR validation ────────────────────────────────────────
+    logger.info("📷 STEP 4 │ QR validation │ qr_data=%s...", (body.qr_data or "")[:20])
     qr_result = validate_qr_token(
         body.qr_data,
         body.session_id,
@@ -351,6 +388,7 @@ def mark_attendance(
         db,
     )
     if not qr_result.get("valid"):
+        logger.warning("❌ STEP 4 │ QR INVALID │ reason=%s", qr_result.get("reason", "unknown"))
         _write_audit(db, session.id, student_id, AuditResult.failed,
                      qr_result.get("reason", "QR invalid"), 0.0, None, body.device_id, ip)
         return AttendanceResultResponse(
@@ -361,10 +399,17 @@ def mark_attendance(
             checks       = AttendanceChecks(**checks),
         )
     checks["qr_valid"] = True
+    logger.info("✅ STEP 4 │ QR token valid ✓")
 
     # ── STEP 5 — GPS check ────────────────────────────────────────────
     gps_flagged = False
     if session.teacher_latitude is not None and session.teacher_longitude is not None:
+        logger.info("📍 STEP 5 │ GPS check starting")
+        logger.info("📍 STEP 5 │ Teacher  GPS │ lat=%.6f │ lon=%.6f",
+                    session.teacher_latitude, session.teacher_longitude)
+        logger.info("📍 STEP 5 │ Student  GPS │ lat=%.6f │ lon=%.6f │ accuracy=%.1f m",
+                    body.student_latitude or 0.0, body.student_longitude or 0.0,
+                    body.student_gps_accuracy or 0.0)
         gps_result = verify_gps_proximity(
             student_lat      = body.student_latitude,
             student_lon      = body.student_longitude,
@@ -373,6 +418,8 @@ def mark_attendance(
             teacher_lon      = session.teacher_longitude,
         )
         if not gps_result.get("verified"):
+            logger.warning("❌ STEP 5 │ GPS FAILED │ distance=%s m │ reason=%s",
+                           gps_result.get("distance_meters", "N/A"), gps_result.get("reason", "unknown"))
             _write_audit(db, session.id, student_id, AuditResult.failed,
                          gps_result.get("reason", "GPS failed"),
                          0.0, gps_result.get("distance_meters"), body.device_id, ip)
@@ -386,12 +433,17 @@ def mark_attendance(
         checks["gps_verified"] = True
         gps_flagged = gps_result.get("flagged_suspicious", False)
         gps_distance = gps_result.get("distance_meters")
+        logger.info("✅ STEP 5 │ GPS VERIFIED │ distance=%.1f m │ accuracy=%.1f m │ suspicious=%s",
+                    gps_distance or 0.0, body.student_gps_accuracy or 0.0, gps_flagged)
     else:
         # Session has no GPS data (teacher didn't share location) — skip check
         checks["gps_verified"] = True
         gps_distance = None
+        logger.info("⚠️ STEP 5 │ GPS skipped — teacher did not share location")
 
     # ── STEP 6 — Bluetooth check ─────────────────────────────────────
+    logger.info("📶 STEP 6 │ Bluetooth check │ session_token=%s... │ detected_token=%s...",
+                (session.bluetooth_token or "")[:8], (body.bluetooth_token_detected or "")[:8])
     bt_result = verify_bluetooth_proximity(
         session.bluetooth_token or "",
         body.bluetooth_token_detected or "",
@@ -401,6 +453,7 @@ def mark_attendance(
 
     if not bt_verified:
         if settings.BLUETOOTH_REQUIRED:
+            logger.warning("❌ STEP 6 │ BLUETOOTH FAILED │ reason=%s", bt_result.get("reason", "unknown"))
             _write_audit(db, session.id, student_id, AuditResult.failed,
                          bt_result.get("reason", "Bluetooth failed"),
                          0.0, gps_distance, body.device_id, ip)
@@ -413,12 +466,15 @@ def mark_attendance(
             )
         else:
             logger.warning(
-                "Bluetooth required=False — allowing attendance without BLE "
+                "⚠️ STEP 6 │ Bluetooth required=False — allowing attendance without BLE "
                 "for student_id=%d session_id=%d",
                 student_id, body.session_id,
             )
+    else:
+        logger.info("✅ STEP 6 │ Bluetooth verified ✓")
 
     # ── STEP 7 — Mark attendance ──────────────────────────────────────
+    logger.info("🌟 STEP 7 │ ALL CHECKS PASSED — marking attendance as PRESENT")
     if record:
         # Update the existing absent record
         record.status              = AttendanceStatus.present
@@ -470,9 +526,14 @@ def mark_attendance(
     )
 
     logger.info(
-        "Attendance marked: student_id=%d session_id=%d gps_flagged=%s bt=%s",
-        student_id, body.session_id, gps_flagged, bt_verified,
+        "🎉 ATTENDANCE MARKED │ student_id=%d │ session_id=%d │ "
+        "face=✓ │ qr=✓ │ gps=%s (%.1f m) │ bluetooth=%s │ suspicious=%s",
+        student_id, body.session_id,
+        "✓" if checks["gps_verified"] else "✗", gps_distance or 0.0,
+        "✓" if bt_verified else "✗",
+        gps_flagged,
     )
+    logger.info("="*70 + "\n")
 
     return AttendanceResultResponse(
         success      = True,
@@ -797,9 +858,9 @@ def manual_override(
     db.commit()
 
     logger.info(
-        "Manual override: session_id=%d student_id=%d %s→%s by user_id=%d",
+        "✍️ MANUAL OVERRIDE │ session_id=%d │ student_id=%d │ %s → %s │ by user_id=%d │ reason='%s'",
         body.session_id, body.student_id,
-        old_status.value, new_status.value, current_user["id"],
+        old_status.value, new_status.value, current_user["id"], body.reason,
     )
 
     return {

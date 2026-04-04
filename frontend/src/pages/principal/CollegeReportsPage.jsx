@@ -67,12 +67,15 @@ export default function CollegeReportsPage() {
 
     api.get('/principal/reports', { params, signal: ctrl.signal })
       .then((r) => setReport(r.data))
-      .catch((e) => { if (!e?.message?.includes('aborted')) setError('Failed to load report.'); })
+      .catch((e) => { if (e?.code !== 'ERR_CANCELED' && !e?.message?.includes('aborted') && !e?.message?.includes('canceled')) setError('Failed to load report.'); })
       .finally(() => setLoading(false));
   };
 
   // Auto-fetch on mount
-  useEffect(() => { fetchReport(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchReport();
+    return () => { if (abortRef.current) abortRef.current.abort(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = report?.departments || [];
 

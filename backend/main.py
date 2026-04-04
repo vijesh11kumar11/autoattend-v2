@@ -3,6 +3,7 @@ AutoAttend AI v2.0 — FastAPI entry point
 """
 
 import logging
+import sys
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,8 +13,16 @@ from slowapi.util import get_remote_address
 
 from config import settings
 from database import Base, engine
-from routes import alerts, attendance, auth, face, faculty, qr, reports, students
+from routes import alerts, attendance, auth, face, faculty, qr, reports, sections, students
 from routes import users
+
+# ── Logging configuration ──────────────────────────────────────────────
+# NOTE: uvicorn overrides logging.basicConfig() after import, so we
+# configure a dedicated handler on the root logger in a startup event
+# to guarantee our format + levels survive uvicorn's setup.
+LOG_FORMAT = (
+    "%(asctime)s │ %(levelname)-7s │ %(name)-28s │ %(message)s"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +61,43 @@ app.include_router(faculty.router)
 app.include_router(reports.router)
 app.include_router(alerts.router)
 app.include_router(users.router)
+app.include_router(sections.router)
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": "2.0.0"}
+
+
+@app.on_event("startup")
+def _configure_logging():
+    """
+    Configure logging AFTER uvicorn has set up its own handlers.
+    This ensures our format and levels are actually applied.
+    """
+    root = logging.getLogger()
+    # Remove ALL existing handlers (including uvicorn's duplicates)
+    root.handlers.clear()
+    # Also clear uvicorn's own loggers' handlers to prevent double output
+    for uvi_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvi_logger = logging.getLogger(uvi_name)
+        uvi_logger.handlers.clear()
+        uvi_logger.propagate = True  # let them use root handler
+    # Add our single handler
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    # Silence noisy libraries
+    for noisy in ("sqlalchemy.engine", "sqlalchemy.engine.Engine",
+                  "urllib3", "httpcore", "watchfiles", "httpx"):
+        noisy_logger = logging.getLogger(noisy)
+        noisy_logger.handlers.clear()   # remove echo=True handler
+        noisy_logger.setLevel(logging.WARNING)
+        noisy_logger.propagate = True
+    # Disable SQLAlchemy echo (echo=True resets logger to INFO on every query)
+    engine.echo = False
+    logger.info("✅ AutoAttend logging configured — all route loggers active")
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -180,7 +180,12 @@ export default function LoginPage() {
         setShowTotp(true);
       } else if (data.access_token) {
         const user = login(data.access_token);
-        redirectByRole(user.role);
+        // Students must enroll face before accessing dashboard
+        if (data.face_enrollment_required && user.role === 'student') {
+          navigate('/student/face-enrollment', { replace: true });
+        } else {
+          redirectByRole(user.role);
+        }
       }
     } catch (err) {
       const detail = err.response?.data?.detail;

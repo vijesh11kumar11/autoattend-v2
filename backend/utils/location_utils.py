@@ -101,6 +101,10 @@ def verify_gps_proximity(
     if max_distance is None:
         max_distance = settings.GPS_RADIUS_METERS
 
+    logger.info("🌐 GPS VERIFY │ student=(%.6f, %.6f) accuracy=%.1f m │ teacher=(%.6f, %.6f) │ max_distance=%.0f m",
+                student_lat, student_lon, student_accuracy,
+                teacher_lat, teacher_lon, max_distance)
+
     # ── a) Accuracy gate ──────────────────────────────────────────────
     if student_accuracy > settings.GPS_ACCURACY_THRESHOLD_METERS:
         logger.info(
@@ -188,7 +192,15 @@ def verify_bluetooth_proximity(
     """
     if bluetooth_token and student_detected_token:
         if bluetooth_token == student_detected_token:
+            logger.info("📶 BLE verified — token matched ✓ (first 8 chars: %s)", bluetooth_token[:8])
             return {"verified": True}
+        else:
+            logger.warning("📶 BLE MISMATCH — session_token=%s... │ student_detected=%s...",
+                           bluetooth_token[:8], student_detected_token[:8])
+    else:
+        logger.warning("📶 BLE check failed — session_token=%s │ student_detected=%s",
+                       "present" if bluetooth_token else "EMPTY",
+                       "present" if student_detected_token else "EMPTY")
 
     return {
         "verified": False,

@@ -39,6 +39,7 @@ from database import (
     FaceChangeLog,
     SessionStatus,
     Subject,
+    Timetable,
     User,
     UserRole,
     get_db,
@@ -187,6 +188,8 @@ def get_teacher_classes(
     db:           Session = Depends(get_db),
 ):
     """Return subjects assigned to a teacher. Teachers can only view their own."""
+    logger.info("👨‍🏫 TEACHER CLASSES │ teacher_id=%d │ requested by user_id=%d (role=%s)",
+                teacher_id, current_user["id"], current_user["role"])
     if current_user["role"] == "teacher" and current_user["id"] != teacher_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only view your own classes.")
 
@@ -212,6 +215,230 @@ def get_teacher_classes(
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# GET /api/faculty/my-sessions — teacher's past attendance sessions
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/faculty/my-sessions")
+def get_my_sessions(
+    current_user: dict    = Depends(teacher_or_above),
+    db:           Session = Depends(get_db),
+):
+    """Return all attendance sessions conducted by the logged-in teacher."""
+    logger.info("👨‍🏫 TEACHER SESSIONS │ user_id=%d", current_user["id"])
+    sessions = (
+        db.query(AttendanceSession, Subject.name, Subject.code)
+        .join(Subject, AttendanceSession.subject_id == Subject.id)
+        .filter(AttendanceSession.teacher_id == current_user["id"])
+        .order_by(AttendanceSession.date.desc(), AttendanceSession.start_time.desc())
+        .all()
+    )
+    return [
+        {
+            "id":            s.id,
+            "subject_name":  sname,
+            "subject_code":  scode,
+            "date":          s.date.isoformat(),
+            "start_time":    s.start_time.isoformat() if s.start_time else None,
+            "status":        s.status.value if s.status else "ended",
+            "total_students": s.total_students or 0,
+            "present_count": s.present_count or 0,
+        }
+        for s, sname, scode in sessions
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/faculty/my-dashboard — teacher dashboard summary
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/faculty/my-dashboard")
+def get_my_dashboard(
+    current_user: dict    = Depends(teacher_or_above),
+    db:           Session = Depends(get_db),
+):
+    """Return dashboard stats for the logged-in teacher."""
+    tid = current_user["id"]
+    logger.info("👨‍🏫 TEACHER DASHBOARD │ user_id=%d", tid)
+    teacher = db.query(User).filter(User.id == tid).first()
+
+    # Subjects assigned
+    subjects = db.query(Subject).filter(Subject.teacher_id == tid).all()
+    subject_ids = [s.id for s in subjects]
+
+    # Session counts
+    total_sessions = db.query(func.count(AttendanceSession.id)).filter(
+        AttendanceSession.teacher_id == tid,
+    ).scalar() or 0
+
+    active_sessions = db.query(func.count(AttendanceSession.id)).filter(
+        AttendanceSession.teacher_id == tid,
+        AttendanceSession.status == SessionStatus.active,
+    ).scalar() or 0
+
+    # Today's sessions
+    today = date.today()
+    todays_sessions = (
+        db.query(AttendanceSession, Subject.name, Subject.code)
+        .join(Subject, AttendanceSession.subject_id == Subject.id)
+        .filter(
+            AttendanceSession.teacher_id == tid,
+            AttendanceSession.date == today,
+        )
+        .order_by(AttendanceSession.start_time)
+        .all()
+    )
+
+    # Overall avg attendance for this teacher's sessions
+    agg = db.query(
+        func.sum(AttendanceSession.total_students),
+        func.sum(AttendanceSession.present_count),
+    ).filter(
+        AttendanceSession.teacher_id == tid,
+        AttendanceSession.status == SessionStatus.ended,
+    ).one()
+    total_slots, total_present = agg
+    avg_pct = round(float(total_present) / float(total_slots) * 100, 1) if total_slots else 0.0
+
+    # Today's timetable
+    day_name = today.strftime("%A").lower()
+    timetable_today = (
+        db.query(Timetable, Subject.name, Subject.code)
+        .join(Subject, Timetable.subject_id == Subject.id)
+        .filter(Timetable.teacher_id == tid, Timetable.day_of_week == day_name)
+        .order_by(Timetable.start_time)
+        .all()
+    )
+
+    return {
+        "teacher_name":    teacher.name if teacher else "Teacher",
+        "total_subjects":  len(subjects),
+        "total_sessions":  total_sessions,
+        "active_sessions": active_sessions,
+        "avg_attendance":  avg_pct,
+        "subjects": [
+            {"id": s.id, "name": s.name, "code": s.code, "semester": s.semester}
+            for s in subjects
+        ],
+        "todays_sessions": [
+            {
+                "id":            s.id,
+                "subject_name":  sname,
+                "subject_code":  scode,
+                "date":          s.date.isoformat(),
+                "start_time":    s.start_time.isoformat() if s.start_time else None,
+                "status":        s.status.value if s.status else "ended",
+                "total_students": s.total_students or 0,
+                "present_count": s.present_count or 0,
+            }
+            for s, sname, scode in todays_sessions
+        ],
+        "timetable_today": [
+            {
+                "subject_name": sname,
+                "subject_code": scode,
+                "start_time":   t.start_time,
+                "end_time":     t.end_time,
+                "room":         t.room or "—",
+            }
+            for t, sname, scode in timetable_today
+        ],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/faculty/my-timetable — full weekly timetable
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/faculty/my-timetable")
+def get_my_timetable(
+    current_user: dict    = Depends(teacher_or_above),
+    db:           Session = Depends(get_db),
+):
+    """Return the full weekly timetable for the logged-in teacher."""
+    tid = current_user["id"]
+    entries = (
+        db.query(Timetable, Subject.name, Subject.code)
+        .join(Subject, Timetable.subject_id == Subject.id)
+        .filter(Timetable.teacher_id == tid)
+        .order_by(Timetable.start_time)
+        .all()
+    )
+
+    # Group by day
+    days_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+    by_day = {d: [] for d in days_order}
+    for t, sname, scode in entries:
+        day_key = t.day_of_week.value if hasattr(t.day_of_week, 'value') else t.day_of_week
+        if day_key in by_day:
+            by_day[day_key].append({
+                "subject_name": sname,
+                "subject_code": scode,
+                "start_time":   t.start_time,
+                "end_time":     t.end_time,
+                "room":         t.room or "—",
+            })
+
+    return {
+        "timetable": [
+            {"day": d.capitalize(), "slots": by_day[d]}
+            for d in days_order
+            if by_day[d]
+        ]
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/hod/timetable — department-wide timetable
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/hod/timetable")
+def get_hod_timetable(
+    current_user: dict    = Depends(hod_or_above),
+    db:           Session = Depends(get_db),
+):
+    """Return the full weekly timetable for all subjects in the HOD's department."""
+    dept_id = current_user.get("department_id")
+    course_ids = [r[0] for r in db.query(Course.id).filter(Course.department_id == dept_id).all()]
+    if not course_ids:
+        return {"timetable": []}
+
+    subject_ids = [r[0] for r in db.query(Subject.id).filter(Subject.course_id.in_(course_ids)).all()]
+    if not subject_ids:
+        return {"timetable": []}
+
+    entries = (
+        db.query(Timetable, Subject.name, Subject.code, User.name.label("teacher_name"))
+        .join(Subject, Timetable.subject_id == Subject.id)
+        .join(User, Timetable.teacher_id == User.id)
+        .filter(Timetable.subject_id.in_(subject_ids))
+        .order_by(Timetable.start_time)
+        .all()
+    )
+
+    days_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+    by_day = {d: [] for d in days_order}
+    for t, sname, scode, tname in entries:
+        day_key = t.day_of_week.value if hasattr(t.day_of_week, 'value') else t.day_of_week
+        if day_key in by_day:
+            by_day[day_key].append({
+                "subject_name": sname,
+                "subject_code": scode,
+                "teacher_name": tname,
+                "start_time":   t.start_time,
+                "end_time":     t.end_time,
+                "room":         t.room or "—",
+            })
+
+    return {
+        "timetable": [
+            {"day": d.capitalize(), "slots": by_day[d]}
+            for d in days_order
+            if by_day[d]
+        ]
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # GET /api/principal/stats
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -221,6 +448,7 @@ def get_principal_stats(
     db:           Session = Depends(get_db),
 ):
     college_id = current_user["college_id"]
+    logger.info("🏥 PRINCIPAL STATS │ user_id=%d │ college_id=%d", current_user["id"], college_id)
 
     dept_ids    = _dept_ids_for_college(college_id, db)
     course_ids  = _course_ids_for_depts(dept_ids, db)
@@ -706,6 +934,7 @@ def get_hod_dashboard(
     db:           Session = Depends(get_db),
 ):
     dept_id = current_user.get("department_id")
+    logger.info("🏢 HOD DASHBOARD │ user_id=%d │ dept_id=%s", current_user["id"], dept_id)
     if not dept_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
 

@@ -7,6 +7,7 @@ GET  /api/qr/countdown/{session_id} — seconds remaining in current slot
 
 import time
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from utils.auth_utils import teacher_or_above
 from utils.qr_utils import generate_qr_token, get_session_qr_secret
 
 router = APIRouter(prefix="/api/qr", tags=["QR"])
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -62,6 +64,9 @@ def get_qr_token(
 
     qr_secret = session.qr_secret
     result    = generate_qr_token(session_id, qr_secret)
+
+    logger.info("📷 QR TOKEN generated │ session_id=%d │ by user_id=%d (role=%s)",
+                session_id, current_user["id"], caller_role)
 
     # Prevent client / proxy caching — QR must always be fresh
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

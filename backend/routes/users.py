@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session
 from database import User, get_db
 from utils.auth_utils import any_authenticated
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
 

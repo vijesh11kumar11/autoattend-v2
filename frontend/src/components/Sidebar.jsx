@@ -26,6 +26,7 @@ const NAV_ITEMS = {
   hod: [
     { to: '/hod/dashboard',      icon: '🏠', label: 'Overview'         },
     { to: '/hod/students',       icon: '🎓', label: 'Students'         },
+    { to: '/hod/sections',       icon: '👥', label: 'Sections'         },
     { to: '/hod/teachers',       icon: '👩‍🏫', label: 'Teachers'        },
     { to: '/hod/reports',        icon: '📊', label: 'Reports'          },
     { to: '/hod/alerts',         icon: '🔔', label: 'Alerts'           },

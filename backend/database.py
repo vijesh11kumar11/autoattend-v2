@@ -192,6 +192,34 @@ class Course(Base):
     department = relationship("Department", back_populates="courses")
     subjects   = relationship("Subject", back_populates="course", cascade="all, delete-orphan")
     students   = relationship("User", back_populates="course")
+    sections   = relationship("Section", back_populates="course", cascade="all, delete-orphan")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE 4b — sections  (A, B, C subdivisions of course+semester)
+# ═══════════════════════════════════════════════════════════════════════
+
+class Section(Base):
+    __tablename__ = "sections"
+    __table_args__ = (
+        UniqueConstraint("course_id", "semester", "name", name="uq_section_course_semester_name"),
+        Index("ix_sections_course_id",      "course_id"),
+        Index("ix_sections_department_id",  "department_id"),
+    )
+
+    id            = Column(Integer, primary_key=True, index=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="CASCADE"), nullable=False)
+    course_id     = Column(Integer, ForeignKey("courses.id",     ondelete="CASCADE"), nullable=False)
+    semester      = Column(SmallInteger, nullable=False)
+    name          = Column(String(10), nullable=False)           # "A", "B", "C"
+    max_strength  = Column(Integer, nullable=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    department          = relationship("Department")
+    course              = relationship("Course", back_populates="sections")
+    students            = relationship("User", back_populates="section")
+    attendance_sessions = relationship("AttendanceSession", back_populates="section")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -211,6 +239,7 @@ class User(Base):
     college_id       = Column(Integer, ForeignKey("colleges.id",    ondelete="CASCADE"),   nullable=False)
     department_id    = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"),  nullable=True)
     course_id        = Column(Integer, ForeignKey("courses.id",     ondelete="SET NULL"),  nullable=True)
+    section_id       = Column(Integer, ForeignKey("sections.id",    ondelete="SET NULL"),  nullable=True)
     name             = Column(String(255), nullable=False)
     email            = Column(String(255), unique=True, nullable=False, index=True)
     phone            = Column(String(20), nullable=True)
@@ -239,6 +268,7 @@ class User(Base):
     college    = relationship("College",    back_populates="users")
     department = relationship("Department", back_populates="users")
     course     = relationship("Course",     back_populates="students")
+    section    = relationship("Section",    back_populates="students")
 
     taught_subjects    = relationship("Subject", back_populates="teacher")
     timetable_entries  = relationship("Timetable", back_populates="teacher")
@@ -376,16 +406,18 @@ class Timetable(Base):
 class AttendanceSession(Base):
     __tablename__ = "attendance_sessions"
     __table_args__ = (
-        UniqueConstraint("subject_id", "date", name="uq_attendance_session_subject_date"),
+        UniqueConstraint("subject_id", "date", "section_id", name="uq_attendance_session_subject_date_section"),
         Index("ix_attendance_sessions_subject_id", "subject_id"),
         Index("ix_attendance_sessions_teacher_id", "teacher_id"),
         Index("ix_attendance_sessions_date",       "date"),
         Index("ix_attendance_sessions_status",     "status"),
+        Index("ix_attendance_sessions_section_id", "section_id"),
     )
 
     id                = Column(Integer, primary_key=True, index=True)
-    subject_id        = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
-    teacher_id        = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
+    subject_id        = Column(Integer, ForeignKey("subjects.id",  ondelete="CASCADE"), nullable=False)
+    teacher_id        = Column(Integer, ForeignKey("users.id",     ondelete="CASCADE"), nullable=False)
+    section_id        = Column(Integer, ForeignKey("sections.id",  ondelete="SET NULL"), nullable=True)
     date              = Column(Date, nullable=False)
     start_time        = Column(Time, nullable=False)
     end_time          = Column(Time, nullable=True)
@@ -401,6 +433,7 @@ class AttendanceSession(Base):
     # Relationships
     subject = relationship("Subject", back_populates="attendance_sessions")
     teacher = relationship("User",    back_populates="attendance_sessions")
+    section = relationship("Section", back_populates="attendance_sessions")
 
     qr_tokens          = relationship("QRToken",          back_populates="session", cascade="all, delete-orphan")
     face_verify_tokens = relationship("FaceVerifyToken",  back_populates="session", cascade="all, delete-orphan")

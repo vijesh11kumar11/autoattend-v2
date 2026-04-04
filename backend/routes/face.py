@@ -38,6 +38,9 @@ from utils.face_utils import (
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/face", tags=["Face"])
 limiter = Limiter(key_func=get_remote_address)
 
@@ -68,6 +71,8 @@ def face_verify(
     """
     student_id = current_user["id"]
     now        = datetime.now(tz=timezone.utc)
+
+    logger.info("🙍 FACE VERIFY attempt │ student_id=%d │ session_id=%d", student_id, session_id)
 
     # ── 1. Load and validate the attendance session ───────────────────
     session: Optional[AttendanceSession] = (
@@ -103,6 +108,8 @@ def face_verify(
         )
         .count()
     )
+    logger.info("🙍 FACE VERIFY │ student_id=%d │ prior_failed_attempts=%d/%d",
+                student_id, prior_attempts, _MAX_VERIFY_ATTEMPTS)
     if prior_attempts >= _MAX_VERIFY_ATTEMPTS:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
@@ -124,8 +131,13 @@ def face_verify(
         )
 
     # ── 5. Azure Face verification ────────────────────────────────────
+    logger.info("🙍 FACE VERIFY │ student_id=%d │ calling Azure Face API (image=%d bytes)",
+                student_id, len(image_bytes))
     result = verify_student_face(student_id, image_bytes, db)
     confidence = result.get("confidence", 0.0)
+    logger.info("🙍 FACE VERIFY │ student_id=%d │ result: verified=%s │ confidence=%.2f%% │ reason=%s",
+                student_id, result.get("verified"), confidence * 100,
+                result.get("reason", "match"))
 
     # ── 6. Log audit record regardless of outcome ─────────────────────
     ip_address = (
@@ -147,6 +159,8 @@ def face_verify(
     # ── 7. Return result ──────────────────────────────────────────────
     if result.get("verified"):
         face_token = create_face_verify_token(student_id, session_id, db)
+        logger.info("✅ FACE VERIFY success │ student_id=%d │ session_id=%d │ confidence=%.2f%% │ token issued",
+                    student_id, session_id, confidence * 100)
         return {
             "verified":   True,
             "confidence": confidence,
@@ -178,6 +192,8 @@ def enrollment_status(
     Student can only view their own status; HOD/Principal can view any student in their college.
     azure_person_id is masked (last 4 chars only).
     """
+    logger.info("🙍 ENROLLMENT STATUS │ student_id=%d │ requested by user_id=%d",
+                student_id, current_user["id"])
     caller_id   = current_user["id"]
     caller_role = current_user["role"]
     is_hod      = caller_role in {"hod", "principal"}
@@ -231,7 +247,11 @@ def liveness_session(
     """
     result = create_liveness_challenge(current_user["id"], db)
     if "error" in result:
+        logger.warning("🧐 LIVENESS challenge failed │ student_id=%d │ error=%s",
+                       current_user["id"], result["error"])
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, result["error"])
+    logger.info("🧐 LIVENESS challenge created │ student_id=%d │ challenge=%s",
+                current_user["id"], result.get("challenge", "unknown"))
     return result
 
 
@@ -258,6 +278,9 @@ def liveness_verify(
 
     Returns: {liveness_confirmed: bool, reason: str}
     """
+    logger.info("🧐 LIVENESS verify attempt │ student_id=%d │ challenge_id=%d",
+                current_user["id"], challenge_id)
+
     # Verify the challenge belongs to this student
     challenge_record: Optional[LivenessChallenge] = (
         db.query(LivenessChallenge)
@@ -286,4 +309,6 @@ def liveness_verify(
         frames.append(frame_bytes)
 
     result = verify_liveness_frames(challenge_id, frames, db)
+    logger.info("🧐 LIVENESS verify result │ student_id=%d │ confirmed=%s │ reason=%s",
+                current_user["id"], result.get("liveness_confirmed"), result.get("reason", "N/A"))
     return result

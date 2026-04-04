@@ -70,6 +70,9 @@ from utils.otp_utils import (
     verify_dual_otp,
 )
 
+import logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 limiter = Limiter(key_func=get_remote_address)
 
@@ -122,24 +125,36 @@ def login(
     now            = datetime.now(tz=timezone.utc)
     invalid_creds  = HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
+    logger.info("🔐 LOGIN attempt │ identifier='%s' │ IP=%s │ device=%s",
+                body.identifier, request.client.host if request.client else "unknown", x_device_id or "none")
+
     # 1. Find user
     user = _get_user_by_identifier(body.identifier, db)
     if not user or not user.is_active:
+        logger.warning("🔐 LOGIN failed │ identifier='%s' │ reason=user not found or inactive", body.identifier)
         raise invalid_creds
+
+    logger.info("🔐 LOGIN │ user found │ id=%d │ role=%s │ name='%s'",
+                user.id, user.role.value, user.name)
 
     # 2. Verify Argon2 password (constant-time)
     if not verify_password(body.password, user.password_hash):
+        logger.warning("🔐 LOGIN failed │ user_id=%d │ reason=invalid password", user.id)
         raise invalid_creds
+
+    logger.info("🔐 LOGIN │ user_id=%d │ password verified ✓", user.id)
 
     # 3. Silently rehash if parameters changed (e.g. after Argon2 tuning)
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
         db.commit()
+        logger.info("🔐 LOGIN │ user_id=%d │ password rehashed (Argon2 tuning)", user.id)
 
     # 4. TOTP lock check (staff only)
     if user.role != UserRole.student and user.totp_locked_until:
         if user.totp_locked_until > now:
             remaining = int((user.totp_locked_until - now).total_seconds() / 60) + 1
+            logger.warning("🔐 LOGIN blocked │ user_id=%d │ TOTP locked for %d more min(s)", user.id, remaining)
             raise HTTPException(
                 status.HTTP_423_LOCKED,
                 f"Account locked for {remaining} more minute(s) due to too many TOTP failures",
@@ -148,9 +163,12 @@ def login(
         user.totp_fail_count  = 0
         user.totp_locked_until = None
         db.commit()
+        logger.info("🔐 LOGIN │ user_id=%d │ TOTP lock expired — counter reset", user.id)
 
     # ── STUDENT FLOW ───────────────────────────────────────────────────
     if user.role == UserRole.student:
+        logger.info("🎓 STUDENT LOGIN │ student_id=%d │ roll=%s │ face_enrolled=%s",
+                    user.id, user.roll_number, user.face_enrolled)
         existing_device: DeviceRegistry | None = (
             db.query(DeviceRegistry)
             .filter(DeviceRegistry.user_id == user.id)
@@ -167,13 +185,23 @@ def login(
                     bound_at=now,
                 ))
                 db.commit()
+                logger.info("🎓 STUDENT LOGIN │ student_id=%d │ first login — device registered: %s",
+                            user.id, x_device_id)
+            else:
+                logger.info("🎓 STUDENT LOGIN │ student_id=%d │ first login — no device_id header", user.id)
         elif existing_device.device_id != x_device_id:
+            logger.warning("🎓 STUDENT LOGIN blocked │ student_id=%d │ device mismatch │ registered=%s │ got=%s",
+                           user.id, existing_device.device_id, x_device_id)
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
                 "Device mismatch. Use the device change flow to register a new device.",
             )
+        else:
+            logger.info("🎓 STUDENT LOGIN │ student_id=%d │ device matched ✓", user.id)
 
         record_login(user.id, db)
+        logger.info("🎓 STUDENT LOGIN success │ student_id=%d │ JWT issued │ face_enrollment_required=%s",
+                    user.id, not user.face_enrolled)
         return LoginResponse(
             access_token=_build_jwt(user, x_device_id),
             role=user.role.value,
@@ -182,8 +210,11 @@ def login(
         )
 
     # ── STAFF FLOW ─────────────────────────────────────────────────────
+    logger.info("👨‍🏫 STAFF LOGIN │ user_id=%d │ role=%s │ totp_enabled=%s",
+                user.id, user.role.value, user.totp_enabled)
     if user.totp_enabled:
         # Return a short-lived TOTP challenge token — full JWT comes after TOTP
+        logger.info("👨‍🏫 STAFF LOGIN │ user_id=%d │ TOTP challenge issued — awaiting 6-digit code", user.id)
         return LoginResponse(
             requires_totp=True,
             totp_session_token=create_totp_session_token(user.id),
@@ -191,6 +222,7 @@ def login(
 
     # TOTP not yet set up → issue JWT but flag that setup is required
     record_login(user.id, db)
+    logger.info("👨‍🏫 STAFF LOGIN success │ user_id=%d │ JWT issued │ totp_setup_required=True", user.id)
     return LoginResponse(
         access_token=_build_jwt(user, x_device_id),
         role=user.role.value,
@@ -212,12 +244,15 @@ def verify_totp_endpoint(
     payload = decode_totp_session_token(body.totp_session_token)
     user_id: int = payload["user_id"]
 
+    logger.info("🔑 TOTP verify attempt │ user_id=%d", user_id)
+
     user: User | None = (
         db.query(User)
         .filter(User.id == user_id, User.is_active == True)  # noqa: E712
         .first()
     )
     if not user:
+        logger.warning("🔑 TOTP verify failed │ user_id=%d │ reason=user not found", user_id)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
 
     now = datetime.now(tz=timezone.utc)
@@ -225,6 +260,7 @@ def verify_totp_endpoint(
     # Check if already locked
     if user.totp_locked_until and user.totp_locked_until > now:
         remaining = int((user.totp_locked_until - now).total_seconds() / 60) + 1
+        logger.warning("🔑 TOTP verify blocked │ user_id=%d │ locked for %d more min(s)", user_id, remaining)
         raise HTTPException(
             status.HTTP_423_LOCKED,
             f"Account locked for {remaining} more minute(s). Try again later.",
@@ -233,9 +269,12 @@ def verify_totp_endpoint(
     # Verify the TOTP code
     if not verify_totp_code(user.totp_secret, body.totp_code):
         user.totp_fail_count = (user.totp_fail_count or 0) + 1
+        logger.warning("🔑 TOTP verify failed │ user_id=%d │ fail_count=%d/%d",
+                       user_id, user.totp_fail_count, _TOTP_MAX_FAIL)
         if user.totp_fail_count >= _TOTP_MAX_FAIL:
             user.totp_locked_until = now + timedelta(minutes=_TOTP_LOCK_MINUTES)
             db.commit()
+            logger.warning("🔑 TOTP ACCOUNT LOCKED │ user_id=%d │ locked for %d min", user_id, _TOTP_LOCK_MINUTES)
             raise HTTPException(
                 status.HTTP_423_LOCKED,
                 f"Too many incorrect attempts. Account locked for {_TOTP_LOCK_MINUTES} minutes.",
@@ -253,6 +292,7 @@ def verify_totp_endpoint(
     db.commit()
 
     record_login(user.id, db)
+    logger.info("🔑 TOTP verify success │ user_id=%d │ role=%s │ JWT issued ✓", user.id, user.role.value)
     return LoginResponse(
         access_token=_build_jwt(user, x_device_id),
         role=user.role.value,
@@ -266,6 +306,7 @@ def verify_totp_endpoint(
 
 @router.get("/totp-setup", response_model=TOTPSetupResponse)
 def totp_setup(current_user: dict = Depends(staff_only)):
+    logger.info("🔧 TOTP setup requested │ user_id=%d", current_user["id"])
     secret = generate_totp_secret()
     uri    = get_totp_uri(secret, current_user["email"])
     return TOTPSetupResponse(
@@ -289,6 +330,7 @@ def totp_confirm(
     db:           Session = Depends(get_db),
 ):
     if not verify_totp_code(body.secret, body.totp_code):
+        logger.warning("🔧 TOTP confirm failed │ user_id=%d │ invalid code", current_user["id"])
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Invalid TOTP code. Please rescan the QR code and try again.",
@@ -299,6 +341,7 @@ def totp_confirm(
         synchronize_session=False,
     )
     db.commit()
+    logger.info("🔧 TOTP enabled │ user_id=%d │ TOTP now active ✓", current_user["id"])
     return MessageResponse(
         message="TOTP enabled successfully. You will be required to enter a code on every login."
     )
@@ -364,6 +407,7 @@ def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session =
     user = _get_user_by_identifier(body.identifier, db)
 
     if user and user.is_active:
+        logger.info("🔑 FORGOT PASSWORD │ user_id=%d │ OTP sent via SMS+email", user.id)
         result = send_dual_otp(user.id, "forgot_password", db)
 
         # Backup push notification for OTP
@@ -397,9 +441,11 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     user = _get_user_by_identifier(body.identifier, db)
 
     if not user or not user.is_active:
+        logger.warning("🔑 RESET PASSWORD failed │ identifier='%s' │ user not found/inactive", body.identifier)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid OTP or identifier")
 
     if not verify_dual_otp(user.id, body.otp_sms, body.otp_email, "forgot_password", db):
+        logger.warning("🔑 RESET PASSWORD failed │ user_id=%d │ invalid/expired OTP", user.id)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired OTP")
 
     now = datetime.now(tz=timezone.utc)
@@ -411,6 +457,7 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
         synchronize_session=False,
     )
     db.commit()
+    logger.info("🔑 RESET PASSWORD success │ user_id=%d │ password changed ✓", user.id)
     return MessageResponse(message="Password reset successfully. Please login with your new password.")
 
 
@@ -484,6 +531,9 @@ def me(
     user: User | None = db.query(User).filter(User.id == current_user["id"]).first()
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    logger.info("👤 PROFILE accessed │ user_id=%d │ role=%s │ name='%s'",
+                user.id, user.role.value, user.name)
 
     course_name = None
     if user.course_id:

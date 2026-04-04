@@ -15,8 +15,11 @@ import api from '../../api/axios';
 import DashboardLayout from '../../components/DashboardLayout';
 import AlertsPage      from './AlertsPage';
 import DeptReportsPage from './DeptReportsPage';
+import SectionsPage    from './SectionsPage';
 import StudentsPage    from './StudentsPage';
+import SubjectsPage    from './SubjectsPage';
 import TeachersPage    from './TeachersPage';
+import TimetablePage   from './TimetablePage';
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -359,7 +362,10 @@ export default function HODDashboard() {
       <Routes>
         <Route path="dashboard"     element={<HODOverview />} />
         <Route path="students"      element={<StudentsPage />} />
+        <Route path="sections"      element={<SectionsPage />} />
         <Route path="teachers"      element={<TeachersPage />} />
+        <Route path="subjects"      element={<SubjectsPage />} />
+        <Route path="timetable"     element={<TimetablePage />} />
         <Route path="reports"       element={<DeptReportsPage />} />
         <Route path="alerts"        element={<AlertsPage />} />
         <Route path="face-reenroll" element={<FaceReenrollPage />} />

@@ -123,5 +123,7 @@ def generate_bluetooth_token() -> str:
 
     Returns: e.g. "a3f2b19c4d7e8f01a3f2b19c4d7e8f01"
     """
-    return secrets.token_hex(_BT_TOKEN_LENGTH)
+    token = secrets.token_hex(_BT_TOKEN_LENGTH)
+    logger.info("📶 BLE token generated │ length=%d chars │ hint=%s...", len(token), token[:8])
+    return token
 
