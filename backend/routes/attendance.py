@@ -849,6 +849,17 @@ def manual_override(
     record.marked_by  = MarkedBy.manual
     record.marked_at  = datetime.now(tz=timezone.utc)
 
+    # Recalculate denormalized present_count on the session
+    new_present = (
+        db.query(AttendanceRecord)
+        .filter(
+            AttendanceRecord.session_id == body.session_id,
+            AttendanceRecord.status == AttendanceStatus.present,
+        )
+        .count()
+    )
+    session.present_count = new_present
+
     db.add(AttendanceAudit(
         session_id     = body.session_id,
         student_id     = body.student_id,
