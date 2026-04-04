@@ -222,8 +222,9 @@ def assign_students(
                     "existing_tutor_id": existing.tutor_id,
                 })
                 continue
-            # Force reassign — deactivate old
-            existing.is_active = False
+            # Force reassign — delete old row to satisfy unique constraint
+            db.delete(existing)
+            db.flush()
 
         db.add(TutorAssignment(
             tutor_id=body.tutor_id,
@@ -347,7 +348,9 @@ def assign_by_section(
             if body.skip_existing:
                 skipped += 1
                 continue
-            existing.is_active = False
+            # Delete old to satisfy unique constraint on (student_id, academic_year)
+            db.delete(existing)
+            db.flush()
 
         db.add(TutorAssignment(
             tutor_id=body.tutor_id,
@@ -564,17 +567,29 @@ def deactivate_all(
     current_user: dict    = Depends(hod_or_above),
     db:           Session = Depends(get_db),
 ):
-    count = (
-        db.query(TutorAssignment)
+    # Scope to college: only deactivate assignments whose tutor belongs to the same college
+    college_id = current_user["college_id"]
+    matching_ids = (
+        db.query(TutorAssignment.id)
+        .join(User, TutorAssignment.tutor_id == User.id)
         .filter(
             TutorAssignment.academic_year == body.academic_year,
             TutorAssignment.is_active == True,
+            User.college_id == college_id,
         )
-        .update({"is_active": False})
+        .all()
     )
+    ids = [row[0] for row in matching_ids]
+    count = 0
+    if ids:
+        count = (
+            db.query(TutorAssignment)
+            .filter(TutorAssignment.id.in_(ids))
+            .update({"is_active": False}, synchronize_session="fetch")
+        )
     db.commit()
-    logger.info("🎓 TUTOR DEACTIVATE-ALL │ year=%s │ count=%d │ by user_id=%d",
-                body.academic_year, count, current_user["id"])
+    logger.info("🎓 TUTOR DEACTIVATE-ALL │ year=%s │ college_id=%s │ count=%d │ by user_id=%d",
+                body.academic_year, college_id, count, current_user["id"])
     return {"deactivated": count, "academic_year": body.academic_year}
 
 

@@ -220,16 +220,17 @@ function AssignTab({ year, flash }) {
   const [excelFile, setExcelFile] = useState(null);
 
   useEffect(() => {
-    // Load teacher list
+    // Load teacher list from HOD dashboard
     api.get('/hod/dashboard')
-      .then(r => {
-        setTeachers(r.data?.teachers || []);
-        setStudents(r.data?.students || []);
-      })
+      .then(r => setTeachers(r.data?.teachers || []))
+      .catch(() => {});
+    // Load students (unassigned for this year — the set you'd typically assign)
+    api.get('/tutor/unassigned-students', { params: { academic_year: year } })
+      .then(r => setStudents(r.data || []))
       .catch(() => {});
     // Load sections
     api.get('/sections').then(r => setSections(r.data || [])).catch(() => {});
-  }, []);
+  }, [year]);
 
   const toggleStudent = (id) => {
     setSelectedIds(prev => {
