@@ -1,7 +1,23 @@
-import { useEffect, useState } from 'react';
+/**
+ * AutoAttend AI v2.0 — Teacher Dashboard Home (rebuilt for Timetable + One-Tap Start)
+ *
+ * • Hero card: "Current Class" with ▶ Start Attendance (polls every 60s)
+ * • Today's Schedule — card list with status badges
+ * • Ward Students summary (if tutor)
+ * • Quick Stats
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+
+const STATUS_BG = {
+  not_started: 'bg-slate-100 text-slate-500',
+  active:      'bg-green-100 text-green-700',
+  ended:       'bg-blue-100 text-blue-700',
+  expired:     'bg-amber-100 text-amber-700',
+};
 
 const StatCard = ({ icon, label, value, color }) => (
   <div className="card p-5 flex items-center gap-4">
@@ -18,16 +34,96 @@ const StatCard = ({ icon, label, value, color }) => (
 export default function TeacherHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
+  const [data, setData]               = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+
+  // Current class (polled every 60s)
+  const [currentClass, setCurrentClass] = useState(null);
+  const [currentLoading, setCurrentLoading] = useState(true);
+
+  // Today's schedule
+  const [todaySchedule, setTodaySchedule] = useState([]);
+
+  // Ward students summary
+  const [wardCount, setWardCount]     = useState(null);
+  const [defaulterCount, setDefaulterCount] = useState(null);
+
+  // Start attendance
+  const [starting, setStarting]       = useState(false);
+  const [flash, setFlash]             = useState('');
+
+  const isMounted = useRef(true);
+  useEffect(() => () => { isMounted.current = false; }, []);
+
+  // Load main dashboard data
   useEffect(() => {
     api.get('/faculty/my-dashboard')
-      .then(r => setData(r.data))
-      .catch(() => setError('Failed to load dashboard data.'))
-      .finally(() => setLoading(false));
+      .then(r => { if (isMounted.current) setData(r.data); })
+      .catch(() => { if (isMounted.current) setError('Failed to load dashboard data.'); })
+      .finally(() => { if (isMounted.current) setLoading(false); });
   }, []);
+
+  // Load today's schedule
+  useEffect(() => {
+    api.get('/timetable/my-today')
+      .then(r => { if (isMounted.current) setTodaySchedule(r.data || []); })
+      .catch(() => {});
+  }, []);
+
+  // Load ward students count
+  useEffect(() => {
+    api.get('/tutor/my-ward-students')
+      .then(r => {
+        if (!isMounted.current) return;
+        const wards = r.data || [];
+        setWardCount(wards.length);
+        setDefaulterCount(wards.filter(w => w.needs_attention).length);
+      })
+      .catch(() => {}); // not a tutor — fine
+  }, []);
+
+  // Poll current class every 60 seconds
+  const fetchCurrentClass = useCallback(() => {
+    api.get('/timetable/my-current-class')
+      .then(r => { if (isMounted.current) setCurrentClass(r.data); })
+      .catch(() => { if (isMounted.current) setCurrentClass(null); })
+      .finally(() => { if (isMounted.current) setCurrentLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    fetchCurrentClass();
+    const interval = setInterval(fetchCurrentClass, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchCurrentClass]);
+
+  // One-tap start attendance
+  const handleStart = async (timetableId) => {
+    setStarting(true);
+    try {
+      // Get teacher's GPS
+      let lat = 0, lon = 0;
+      try {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        );
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+      } catch { /* GPS unavailable — use 0,0 */ }
+
+      const r = await api.post(`/timetable/start-from-timetable/${timetableId}`, {
+        teacher_latitude: lat,
+        teacher_longitude: lon,
+      });
+      setFlash(`Session started for ${r.data.subject_name} — ${r.data.total_students} students enrolled.`);
+      fetchCurrentClass();
+      // Refresh today's schedule
+      api.get('/timetable/my-today').then(r2 => setTodaySchedule(r2.data || [])).catch(() => {});
+    } catch (err) {
+      setFlash(err.response?.data?.detail || 'Failed to start session.');
+    } finally { setStarting(false); }
+  };
 
   if (loading) {
     return (
@@ -38,78 +134,145 @@ export default function TeacherHome() {
     );
   }
 
-  if (error) {
-    return <div className="card p-8 text-center text-red-500">{error}</div>;
-  }
+  if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
 
   return (
     <div className="space-y-6">
-      {/* Welcome */}
+      {flash && (
+        <div className="card px-5 py-3 bg-emerald-50 text-emerald-700 text-sm flex items-center justify-between">
+          <span>{flash}</span>
+          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">✕</button>
+        </div>
+      )}
+
+      {/* ── Welcome ── */}
       <div className="card bg-gradient-to-r from-[#1a237e] to-[#283593] p-6 text-white">
-        <h1 className="text-xl font-bold">Welcome back, {data.teacher_name}!</h1>
+        <h1 className="text-xl font-bold">Welcome back, {data?.teacher_name || user?.name}!</h1>
         <p className="text-blue-200 text-sm mt-1">Here's your teaching overview for today.</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon="📚" label="My Subjects" value={data.total_subjects} color="bg-blue-50" />
-        <StatCard icon="📋" label="Total Sessions" value={data.total_sessions} color="bg-green-50" />
-        <StatCard icon="🔴" label="Active Now" value={data.active_sessions} color="bg-red-50" />
-        <StatCard icon="📊" label="Avg Attendance" value={`${data.avg_attendance}%`} color="bg-amber-50" />
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button
-          onClick={() => navigate('/teacher/qr')}
-          className="card p-5 text-center hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-[#1a237e]"
-        >
-          <span className="text-3xl block mb-2">📱</span>
-          <p className="font-semibold text-slate-700">Generate QR</p>
-          <p className="text-xs text-slate-400 mt-1">Start attendance session</p>
-        </button>
-        <button
-          onClick={() => navigate('/teacher/history')}
-          className="card p-5 text-center hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-[#1a237e]"
-        >
-          <span className="text-3xl block mb-2">📜</span>
-          <p className="font-semibold text-slate-700">Attendance History</p>
-          <p className="text-xs text-slate-400 mt-1">View past sessions</p>
-        </button>
-        <button
-          onClick={() => navigate('/teacher/classes')}
-          className="card p-5 text-center hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-[#1a237e]"
-        >
-          <span className="text-3xl block mb-2">📖</span>
-          <p className="font-semibold text-slate-700">My Classes</p>
-          <p className="text-xs text-slate-400 mt-1">Timetable & subjects</p>
-        </button>
-      </div>
-
-      {/* Today's Timetable */}
-      {data.timetable_today?.length > 0 && (
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">
-            📅 Today's Timetable
-          </div>
-          <div className="divide-y">
-            {data.timetable_today.map((slot, i) => (
-              <div key={i} className="px-5 py-3 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-slate-700">{slot.subject_name} <span className="text-slate-400 text-sm">({slot.subject_code})</span></p>
-                  <p className="text-xs text-slate-400">Room: {slot.room}</p>
+      {/* ── Current Class Hero Card ── */}
+      {!currentLoading && (
+        currentClass ? (
+          <div className="card border-2 border-[#1a237e] overflow-hidden">
+            <div className="bg-[#1a237e] px-5 py-2 text-white text-sm font-semibold flex items-center gap-2">
+              <span className="animate-pulse">🔴</span> CURRENT CLASS
+            </div>
+            <div className="p-5 flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <p className="text-lg font-bold text-slate-800">{currentClass.subject_name}</p>
+                <p className="text-sm text-slate-400 font-mono">{currentClass.subject_code}</p>
+                <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
+                  <span>🕐 {currentClass.start_time} – {currentClass.end_time}</span>
+                  <span>🏫 {currentClass.room || '—'}</span>
+                  {currentClass.section_name && <span>👥 {currentClass.section_name}</span>}
                 </div>
-                <div className="text-sm font-mono text-slate-500">
-                  {slot.start_time} – {slot.end_time}
+              </div>
+              <div className="flex items-center gap-3">
+                {currentClass.can_start_attendance && (
+                  <button
+                    onClick={() => handleStart(currentClass.timetable_id)}
+                    disabled={starting}
+                    className="px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 text-lg shadow-lg hover:shadow-xl transition-all">
+                    {starting ? '⏳ Starting…' : '▶ Start Attendance'}
+                  </button>
+                )}
+                {currentClass.can_end_attendance && (
+                  <span className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-semibold">
+                    ✅ Session Active (ID: {currentClass.session_id})
+                  </span>
+                )}
+                {currentClass.session_status === 'ended' && (
+                  <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold">
+                    📋 Session Ended
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="card p-5 text-center text-slate-400 text-sm border-dashed border-2">
+            No class happening right now. Check your schedule below.
+          </div>
+        )
+      )}
+
+      {/* ── Quick Stats ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon="📚" label="My Subjects" value={data?.total_subjects ?? 0} color="bg-blue-50" />
+        <StatCard icon="📋" label="Total Sessions" value={data?.total_sessions ?? 0} color="bg-green-50" />
+        <StatCard icon="🔴" label="Active Now" value={data?.active_sessions ?? 0} color="bg-red-50" />
+        <StatCard icon="📊" label="Avg Attendance" value={`${data?.avg_attendance ?? 0}%`} color="bg-amber-50" />
+      </div>
+
+      {/* ── Ward Students Summary (if tutor) ── */}
+      {wardCount !== null && wardCount > 0 && (
+        <div className="card p-5 flex items-center justify-between cursor-pointer hover:shadow-md transition"
+             onClick={() => navigate('/teacher/ward-students')}>
+          <div className="flex items-center gap-4">
+            <span className="text-3xl">🎓</span>
+            <div>
+              <p className="font-semibold text-slate-700">My Ward Students</p>
+              <p className="text-sm text-slate-400">
+                {wardCount} ward{wardCount !== 1 ? 's' : ''}
+                {defaulterCount > 0 && (
+                  <span className="text-red-500 ml-2">· {defaulterCount} need attention</span>
+                )}
+              </p>
+            </div>
+          </div>
+          <span className="text-slate-400">→</span>
+        </div>
+      )}
+
+      {/* ── Today's Schedule ── */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">
+          📅 Today's Schedule
+        </div>
+        {todaySchedule.length > 0 ? (
+          <div className="divide-y">
+            {todaySchedule.map(slot => (
+              <div key={slot.timetable_id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50">
+                <div className="flex items-center gap-3">
+                  {slot.color_tag && (
+                    <div className="w-2 h-10 rounded-full" style={{ backgroundColor: slot.color_tag }} />
+                  )}
+                  <div>
+                    <p className="font-medium text-slate-700">
+                      {slot.subject_name} <span className="text-slate-400 text-sm">({slot.subject_code})</span>
+                    </p>
+                    <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
+                      <span className="font-mono">{slot.start_time} – {slot.end_time}</span>
+                      <span>🏫 {slot.room || '—'}</span>
+                      {slot.section_name && <span>👥 {slot.section_name}</span>}
+                      {slot.is_lab && <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded">LAB</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BG[slot.session_status] || STATUS_BG.not_started}`}>
+                    {slot.session_status === 'not_started' ? 'Not Started' : slot.session_status}
+                  </span>
+                  {slot.session_status === 'not_started' && (
+                    <button onClick={() => handleStart(slot.timetable_id)} disabled={starting}
+                            className="text-xs px-3 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                      ▶ Start
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="p-8 text-center text-slate-400 text-sm">
+            No classes scheduled for today.
+          </div>
+        )}
+      </div>
 
-      {/* Today's Sessions */}
-      {data.todays_sessions?.length > 0 ? (
+      {/* ── Today's Sessions (from old dashboard data) ── */}
+      {data?.todays_sessions?.length > 0 && (
         <div className="card overflow-hidden">
           <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">
             🎯 Today's Attendance Sessions
@@ -148,35 +311,29 @@ export default function TeacherHome() {
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="card p-6 text-center text-slate-400">
-          <span className="text-3xl block mb-2">📭</span>
-          <p>No attendance sessions today yet.</p>
-          <button
-            onClick={() => navigate('/teacher/qr')}
-            className="mt-3 px-4 py-2 bg-[#1a237e] text-white text-sm font-semibold rounded-lg hover:bg-[#283593]"
-          >
-            Start a Session
-          </button>
-        </div>
       )}
 
-      {/* Subjects List */}
-      {data.subjects?.length > 0 && (
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">
-            📚 My Subjects
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-            {data.subjects.map(s => (
-              <div key={s.id} className="border rounded-xl p-4 hover:shadow-md transition-shadow">
-                <p className="font-semibold text-slate-700">{s.name}</p>
-                <p className="text-sm text-slate-400">{s.code} · Semester {s.semester}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ── Quick Actions ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button onClick={() => navigate('/teacher/qr')}
+                className="card p-5 text-center hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-[#1a237e]">
+          <span className="text-3xl block mb-2">📱</span>
+          <p className="font-semibold text-slate-700">Generate QR</p>
+          <p className="text-xs text-slate-400 mt-1">Manual session start</p>
+        </button>
+        <button onClick={() => navigate('/teacher/history')}
+                className="card p-5 text-center hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-[#1a237e]">
+          <span className="text-3xl block mb-2">📜</span>
+          <p className="font-semibold text-slate-700">Attendance History</p>
+          <p className="text-xs text-slate-400 mt-1">View past sessions</p>
+        </button>
+        <button onClick={() => navigate('/teacher/classes')}
+                className="card p-5 text-center hover:shadow-lg transition-shadow cursor-pointer border-2 border-transparent hover:border-[#1a237e]">
+          <span className="text-3xl block mb-2">📖</span>
+          <p className="font-semibold text-slate-700">My Classes</p>
+          <p className="text-xs text-slate-400 mt-1">Timetable & subjects</p>
+        </button>
+      </div>
     </div>
   );
 }

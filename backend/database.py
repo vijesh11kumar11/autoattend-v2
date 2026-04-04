@@ -384,19 +384,25 @@ class Timetable(Base):
         Index("ix_timetable_subject_id",  "subject_id"),
         Index("ix_timetable_teacher_id",  "teacher_id"),
         Index("ix_timetable_day_of_week", "day_of_week"),
+        Index("ix_timetable_section_id",  "section_id"),
     )
 
-    id          = Column(Integer, primary_key=True, index=True)
-    subject_id  = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
-    teacher_id  = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
-    day_of_week = Column(SAEnum(DayOfWeek, name="dayofweek"), nullable=False)
-    start_time  = Column(String(10), nullable=False)   # HH:MM
-    end_time    = Column(String(10), nullable=False)   # HH:MM
-    room        = Column(String(50), nullable=True)
+    id            = Column(Integer, primary_key=True, index=True)
+    subject_id    = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    teacher_id    = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
+    day_of_week   = Column(SAEnum(DayOfWeek, name="dayofweek"), nullable=False)
+    start_time    = Column(String(10), nullable=False)   # HH:MM
+    end_time      = Column(String(10), nullable=False)   # HH:MM
+    room          = Column(String(50), nullable=True)
+    section_id    = Column(Integer, ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
+    period_number = Column(SmallInteger, nullable=True)  # 1st period, 2nd period, etc.
+    is_lab        = Column(Boolean, default=False)       # lab sessions can be 2x duration
+    color_tag     = Column(String(20), nullable=True)    # hex color for UI display
 
     # Relationships
     subject = relationship("Subject", back_populates="timetable_entries")
     teacher = relationship("User",    back_populates="timetable_entries")
+    section = relationship("Section")
 
 
 # ═══════════════════════════════════════════════════════════════════════

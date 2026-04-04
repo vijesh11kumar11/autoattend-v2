@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 from config import settings
 from database import Base, engine
 from routes import alerts, attendance, auth, face, faculty, qr, reports, sections, students
-from routes import tutor, users
+from routes import timetable, tutor, users
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
@@ -63,6 +63,7 @@ app.include_router(alerts.router)
 app.include_router(users.router)
 app.include_router(sections.router)
 app.include_router(tutor.router)
+app.include_router(timetable.router)
 
 
 @app.get("/api/health")

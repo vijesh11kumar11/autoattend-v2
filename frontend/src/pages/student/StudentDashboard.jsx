@@ -312,6 +312,7 @@ function StudentHome() {
   const [summary,   setSummary]   = useState(null);
   const [calendar,  setCalendar]  = useState(null);
   const [recent,    setRecent]    = useState(null);
+  const [todayTT,   setTodayTT]   = useState([]);
   const [error,     setError]     = useState('');
   const [loading,   setLoading]   = useState(true);
 
@@ -342,6 +343,18 @@ function StudentHome() {
       });
   }, [studentId]);
 
+  // Load today's timetable from new endpoint
+  useEffect(() => {
+    api.get('/timetable/my-section-timetable')
+      .then(r => {
+        if (!isMounted.current) return;
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+        const dayData = (r.data || []).find(d => d.day?.toLowerCase() === today);
+        setTodayTT(dayData?.entries || []);
+      })
+      .catch(() => {});
+  }, []);
+
   if (loading) return <div className="p-8 text-slate-400 text-sm animate-pulse">Loading your dashboard…</div>;
   if (error)   return <div className="p-8 text-red-500 text-sm">{error}</div>;
   if (!profile || !summary) return null;
@@ -360,6 +373,42 @@ function StudentHome() {
 
       {/* Warning banner */}
       <WarningBanner subjects={summary.subjects} />
+
+      {/* Today's Timetable */}
+      {todayTT.length > 0 && (() => {
+        const nowStr = new Date().toTimeString().slice(0, 5);
+        return (
+          <div className="card overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b font-semibold text-slate-700">📅 Today's Classes</div>
+            <div className="divide-y">
+              {todayTT.map((slot, i) => {
+                const isCurrent = slot.start_time <= nowStr && nowStr <= slot.end_time;
+                return (
+                  <div key={i} className={`px-4 py-3 flex items-center justify-between ${isCurrent ? 'bg-blue-50 border-l-4 border-[#1a237e]' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      {slot.color_tag && <div className="w-2 h-8 rounded-full" style={{ backgroundColor: slot.color_tag }} />}
+                      <div>
+                        <p className="font-medium text-slate-700 text-sm">
+                          {slot.subject_name} <span className="text-slate-400 text-xs">({slot.subject_code})</span>
+                        </p>
+                        <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
+                          <span>👨‍🏫 {slot.teacher_name}</span>
+                          <span>🏫 {slot.room || '—'}</span>
+                          {slot.is_lab && <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded">LAB</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-slate-400">{slot.start_time} – {slot.end_time}</span>
+                      {isCurrent && <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full font-semibold">NOW</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Subject cards */}
       {summary.subjects.length > 0 ? (
@@ -524,13 +573,14 @@ function StudentTimetablePage() {
   const [error, setError] = useState('');
 
   const dayColors = {
-    Monday: 'border-l-blue-500', Tuesday: 'border-l-emerald-500', Wednesday: 'border-l-purple-500',
-    Thursday: 'border-l-amber-500', Friday: 'border-l-red-500', Saturday: 'border-l-slate-400',
+    monday: 'border-l-blue-500', tuesday: 'border-l-emerald-500', wednesday: 'border-l-purple-500',
+    thursday: 'border-l-amber-500', friday: 'border-l-red-500', saturday: 'border-l-slate-400',
   };
+  const dayLabel = d => d.charAt(0).toUpperCase() + d.slice(1);
 
   useEffect(() => {
-    api.get('/students/my-timetable')
-      .then(r => setTimetable(r.data?.timetable || []))
+    api.get('/timetable/my-section-timetable')
+      .then(r => setTimetable(r.data || []))
       .catch(() => setError('Failed to load timetable.'))
       .finally(() => setLoading(false));
   }, []);
@@ -545,25 +595,38 @@ function StudentTimetablePage() {
   }
   if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
 
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+
   return (
     <div className="space-y-6">
       <div className="card overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">📅 My Weekly Timetable</div>
         {timetable.length > 0 ? (
           <div className="divide-y">
-            {timetable.map(day => (
-              <div key={day.day} className="p-4">
-                <h3 className="font-semibold text-slate-700 mb-3">{day.day}</h3>
+            {timetable.map(dayGroup => (
+              <div key={dayGroup.day} className={`p-4 ${dayGroup.day === todayName ? 'bg-blue-50/30' : ''}`}>
+                <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                  {dayLabel(dayGroup.day)}
+                  {dayGroup.day === todayName && <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full">TODAY</span>}
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {day.slots.map((slot, i) => (
-                    <div key={i} className={`border-l-4 ${dayColors[day.day] || 'border-l-slate-300'} bg-slate-50 rounded-r-lg p-3`}>
-                      <p className="font-medium text-slate-700 text-sm">{slot.subject_name}</p>
-                      <p className="text-xs text-slate-400">{slot.subject_code}</p>
+                  {(dayGroup.entries || []).map((slot, i) => (
+                    <div key={i} className={`border-l-4 ${dayColors[dayGroup.day] || 'border-l-slate-300'} bg-slate-50 rounded-r-lg p-3`}>
+                      <div className="flex items-center gap-2">
+                        {slot.color_tag && <div className="w-2 h-6 rounded-full" style={{ backgroundColor: slot.color_tag }} />}
+                        <div>
+                          <p className="font-medium text-slate-700 text-sm">{slot.subject_name}</p>
+                          <p className="text-xs text-slate-400">{slot.subject_code}</p>
+                        </div>
+                      </div>
                       <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
                         <span className="font-mono">{slot.start_time} – {slot.end_time}</span>
-                        <span>🏫 {slot.room}</span>
+                        <span>🏫 {slot.room || '—'}</span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-1">👨‍🏫 {slot.teacher_name}</p>
+                      <div className="flex items-center justify-between mt-1 text-xs text-slate-400">
+                        <span>👨‍🏫 {slot.teacher_name}</span>
+                        {slot.is_lab && <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded">LAB</span>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -573,7 +636,7 @@ function StudentTimetablePage() {
         ) : (
           <div className="p-8 text-center text-slate-400">
             <span className="text-3xl block mb-2">📭</span>
-            <p>No timetable entries found for your course/semester.</p>
+            <p>No timetable entries found for your section.</p>
           </div>
         )}
       </div>

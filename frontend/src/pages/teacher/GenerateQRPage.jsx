@@ -179,6 +179,11 @@ export default function GenerateQRPage() {
   const [startLoading,    setStartLoading]    = useState(false);
   const [startError,      setStartError]      = useState('');
 
+  // ── Timetable class selector ──────────────────────────────────────
+  const [todayClasses, setTodayClasses]       = useState([]);
+  const [selectedTTId, setSelectedTTId]       = useState(null);  // timetable_id for start-from-timetable
+  const [setupMode, setSetupMode]             = useState('timetable'); // 'timetable' | 'adhoc'
+
   // ── Active session ────────────────────────────────────────────────
   const [session,        setSession]        = useState(null);  // StartSessionResponse
   const [qrData,         setQrData]         = useState('');
@@ -214,6 +219,16 @@ export default function GenerateQRPage() {
       .catch(() => setSubjectsError(true))
       .finally(() => setSubjectsLoading(false));
   }, [user.id]);
+
+  // ── Load today's timetable classes ─────────────────────────────────
+  useEffect(() => {
+    api.get('/timetable/my-today')
+      .then(({ data }) => {
+        setTodayClasses(data || []);
+        if (!data || data.length === 0) setSetupMode('adhoc');
+      })
+      .catch(() => setSetupMode('adhoc'));
+  }, []);
 
   // ── Client-side QR countdown (0.5 s resolution) ───────────────────
   useEffect(() => {
@@ -308,6 +323,32 @@ export default function GenerateQRPage() {
   // ── Start session ─────────────────────────────────────────────────
   async function handleStart() {
     setStartError('');
+
+    // Timetable-based start
+    if (setupMode === 'timetable' && selectedTTId) {
+      setStartLoading(true);
+      const coords = await getGPSCoords();
+      if (!coords) {
+        setStartError('GPS location is required. Please allow location access and try again.');
+        setStartLoading(false);
+        return;
+      }
+      try {
+        const { data } = await api.post(`/timetable/start-from-timetable/${selectedTTId}`, {
+          teacher_latitude:  coords.latitude,
+          teacher_longitude: coords.longitude,
+        });
+        setSession(data);
+        setPhase('active');
+      } catch (err) {
+        setStartError(err.response?.data?.detail || 'Failed to start session. Please try again.');
+      } finally {
+        setStartLoading(false);
+      }
+      return;
+    }
+
+    // Ad-hoc start
     if (!selectedSubId) { setStartError('Please select a subject.'); return; }
 
     setStartLoading(true);
@@ -482,39 +523,110 @@ export default function GenerateQRPage() {
                 </div>
               )}
 
-              {/* Subject dropdown */}
-              <div>
-                <label className="label">Subject</label>
-                {subjectsLoading ? (
-                  <div className="input-field text-slate-400 flex items-center gap-2">
-                    <div style={{ width: 16, height: 16, borderRadius: '50%',
-                                  border: '2px solid #e2e8f0', borderTopColor: '#64748b',
-                                  animation: 'spin 0.7s linear infinite' }} />
-                    Loading your subjects…
-                  </div>
-                ) : subjectsError || subjects.length === 0 ? (
-                  <div className="input-field text-slate-400 flex gap-2">
-                    <span>⚠️</span>
-                    {subjectsError
-                      ? 'Failed to load subjects. Contact administrator.'
-                      : 'No subjects assigned to you yet.'}
-                  </div>
-                ) : (
-                  <select
-                    value={selectedSubId}
-                    onChange={(e) => setSelectedSubId(e.target.value)}
-                    className="input-field"
-                    disabled={startLoading}
-                  >
-                    <option value="">— Select a subject —</option>
-                    {subjects.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.code} — {s.name} (Sem {s.semester})
-                      </option>
-                    ))}
-                  </select>
-                )}
+              {/* Mode toggle: timetable vs ad-hoc */}
+              <div className="flex rounded-lg bg-slate-100 p-1">
+                <button
+                  onClick={() => { setSetupMode('timetable'); setSelectedTTId(null); }}
+                  className={`flex-1 text-sm font-medium py-2 rounded-md transition ${
+                    setupMode === 'timetable' ? 'bg-white text-[#1a237e] shadow-sm' : 'text-slate-500'
+                  }`}
+                >
+                  📅 Today's Classes
+                </button>
+                <button
+                  onClick={() => { setSetupMode('adhoc'); setSelectedSubId(''); }}
+                  className={`flex-1 text-sm font-medium py-2 rounded-md transition ${
+                    setupMode === 'adhoc' ? 'bg-white text-[#1a237e] shadow-sm' : 'text-slate-500'
+                  }`}
+                >
+                  ✏️ Ad-hoc Session
+                </button>
               </div>
+
+              {/* TIMETABLE CLASS SELECTOR */}
+              {setupMode === 'timetable' && (
+                <div>
+                  <label className="label">Select today's class</label>
+                  {todayClasses.length > 0 ? (
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {todayClasses.map(slot => (
+                        <button
+                          key={slot.timetable_id}
+                          onClick={() => { setSelectedTTId(slot.timetable_id); setRoom(slot.room || ''); }}
+                          disabled={slot.session_status === 'active' || slot.session_status === 'ended'}
+                          className={`w-full text-left px-4 py-3 rounded-lg border transition ${
+                            selectedTTId === slot.timetable_id
+                              ? 'border-[#1a237e] bg-blue-50 ring-1 ring-[#1a237e]'
+                              : slot.session_status === 'active'
+                              ? 'border-green-200 bg-green-50 opacity-60 cursor-not-allowed'
+                              : slot.session_status === 'ended'
+                              ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+                              : 'border-slate-200 hover:border-[#1a237e] hover:bg-blue-50/50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-slate-700 text-sm">
+                                {slot.subject_name}
+                                <span className="text-slate-400 text-xs ml-1">({slot.subject_code})</span>
+                              </p>
+                              <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
+                                <span className="font-mono">{slot.start_time} – {slot.end_time}</span>
+                                {slot.room && <span>🏫 {slot.room}</span>}
+                                {slot.section_name && <span>👥 {slot.section_name}</span>}
+                              </div>
+                            </div>
+                            {slot.session_status === 'active' && (
+                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Active</span>
+                            )}
+                            {slot.session_status === 'ended' && (
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Done</span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400 py-2">No classes scheduled today. Use ad-hoc mode.</p>
+                  )}
+                </div>
+              )}
+
+              {/* AD-HOC SUBJECT SELECTOR */}
+              {setupMode === 'adhoc' && (
+                <div>
+                  <label className="label">Subject</label>
+                  {subjectsLoading ? (
+                    <div className="input-field text-slate-400 flex items-center gap-2">
+                      <div style={{ width: 16, height: 16, borderRadius: '50%',
+                                    border: '2px solid #e2e8f0', borderTopColor: '#64748b',
+                                    animation: 'spin 0.7s linear infinite' }} />
+                      Loading your subjects…
+                    </div>
+                  ) : subjectsError || subjects.length === 0 ? (
+                    <div className="input-field text-slate-400 flex gap-2">
+                      <span>⚠️</span>
+                      {subjectsError
+                        ? 'Failed to load subjects. Contact administrator.'
+                        : 'No subjects assigned to you yet.'}
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedSubId}
+                      onChange={(e) => setSelectedSubId(e.target.value)}
+                      className="input-field"
+                      disabled={startLoading}
+                    >
+                      <option value="">— Select a subject —</option>
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.code} — {s.name} (Sem {s.semester})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               {/* Date (read-only) */}
               <div>
@@ -584,7 +696,7 @@ export default function GenerateQRPage() {
                 className="btn-primary w-full py-3 text-base"
                 style={{ background: '#1a237e' }}
                 onClick={handleStart}
-                disabled={startLoading || subjectsLoading || subjects.length === 0}
+                disabled={startLoading || (setupMode === 'adhoc' && (subjectsLoading || subjects.length === 0 || !selectedSubId)) || (setupMode === 'timetable' && !selectedTTId)}
               >
                 {startLoading
                   ? <><div className="spinner" />Starting session…</>
