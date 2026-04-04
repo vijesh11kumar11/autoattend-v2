@@ -6,7 +6,7 @@
  * Approve/Reject with note, shows attendance impact preview
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 const TABS = [
@@ -174,18 +174,15 @@ export default function LeaveRequestsPage() {
   const [flash, setFlash] = useState('');
   const [summary, setSummary] = useState(null);
 
-  const isMounted = useRef(true);
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   // Load requests based on tab
   const loadRequests = useCallback(() => {
     setLoading(true);
     const endpoint = tab === 'pending' ? '/leave/pending' : '/leave/history';
     const params = tab !== 'pending' && tab !== 'all' ? { status: tab } : {};
     api.get(endpoint, { params })
-      .then(r => { if (isMounted.current) setRequests(r.data || []); })
+      .then(r => setRequests(r.data || []))
       .catch(() => {})
-      .finally(() => { if (isMounted.current) setLoading(false); });
+      .finally(() => setLoading(false));
   }, [tab]);
 
   useEffect(() => { loadRequests(); }, [loadRequests]);
@@ -193,7 +190,7 @@ export default function LeaveRequestsPage() {
   // Load summary on mount
   useEffect(() => {
     api.get('/leave/summary')
-      .then(r => { if (isMounted.current) setSummary(r.data); })
+      .then(r => setSummary(r.data))
       .catch(() => {});
   }, []);
 
@@ -209,7 +206,7 @@ export default function LeaveRequestsPage() {
       }
       loadRequests();
       // Refresh summary
-      api.get('/leave/summary').then(r => { if (isMounted.current) setSummary(r.data); }).catch(() => {});
+      api.get('/leave/summary').then(r => setSummary(r.data)).catch(() => {});
     } catch (err) {
       setFlash(err.response?.data?.detail || `Failed to ${action}.`);
     }

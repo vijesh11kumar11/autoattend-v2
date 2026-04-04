@@ -93,22 +93,20 @@ export default function TOTPSetupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error,     setError]       = useState('');
   const [done,      setDone]        = useState(false);
-  const isMounted = useRef(true);
-
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   // Load QR + secret on mount
   useEffect(() => {
+    let cancelled = false;
     api.get('/auth/totp-setup')
       .then(({ data }) => {
-        if (isMounted.current) { setSetupData(data); setLoading(false); }
+        if (!cancelled) { setSetupData(data); setLoading(false); }
       })
       .catch(err => {
-        if (isMounted.current) {
+        if (!cancelled) {
           setError(err.response?.data?.detail || 'Could not load TOTP setup. Please re-login.');
           setLoading(false);
         }
       });
+    return () => { cancelled = true; };
   }, []);
 
   // After success, redirect to dashboard
@@ -130,14 +128,12 @@ export default function TOTPSetupPage() {
         secret:    setupData.secret,
         totp_code: code.replace(/\D/g, ''),
       });
-      if (isMounted.current) setDone(true);
+      setDone(true);
     } catch (err) {
-      if (isMounted.current) {
-        setError(err.response?.data?.detail || 'Invalid code. Check the time on your device and try again.');
-        setCode('');
-      }
+      setError(err.response?.data?.detail || 'Invalid code. Check the time on your device and try again.');
+      setCode('');
     } finally {
-      if (isMounted.current) setSubmitting(false);
+      setSubmitting(false);
     }
   }
 

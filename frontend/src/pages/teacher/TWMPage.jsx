@@ -7,7 +7,7 @@
  *   History  — Past TWM sessions
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 const STATUS_COLORS = {
@@ -138,22 +138,18 @@ export default function TWMPage() {
   const [expandedSession, setExpandedSession] = useState(null);
   const [sessionReport, setSessionReport] = useState(null);
 
-  const isMounted = useRef(true);
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   // ── Load dashboard ──
   const loadDashboard = useCallback(() => {
     const params = academicYear ? { academic_year: academicYear } : {};
     api.get('/twm/dashboard', { params })
       .then(r => {
-        if (!isMounted.current) return;
         setDashboard(r.data);
         if (r.data.academic_year && !academicYear) {
           setAcademicYear(r.data.academic_year);
         }
       })
       .catch(() => {})
-      .finally(() => { if (isMounted.current) setDashLoading(false); });
+      .finally(() => setDashLoading(false));
   }, [academicYear]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
@@ -237,9 +233,9 @@ export default function TWMPage() {
     if (tab !== 'report' || !academicYear) return;
     setWardLoading(true);
     api.get('/twm/ward-combined-report', { params: { academic_year: academicYear } })
-      .then(r => { if (isMounted.current) setWardReport(r.data || []); })
+      .then(r => setWardReport(r.data || []))
       .catch(() => {})
-      .finally(() => { if (isMounted.current) setWardLoading(false); });
+      .finally(() => setWardLoading(false));
   }, [tab, academicYear]);
 
   // ── Send report to selected students ──
@@ -284,9 +280,9 @@ export default function TWMPage() {
     if (tab !== 'history') return;
     setHistoryLoading(true);
     api.get('/twm/history')
-      .then(r => { if (isMounted.current) setHistory(r.data || []); })
+      .then(r => setHistory(r.data || []))
       .catch(() => {})
-      .finally(() => { if (isMounted.current) setHistoryLoading(false); });
+      .finally(() => setHistoryLoading(false));
   }, [tab]);
 
   // ── View session detail ──

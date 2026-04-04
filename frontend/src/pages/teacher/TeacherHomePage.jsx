@@ -79,15 +79,17 @@ export default function TeacherHome() {
   // ── Fetch health scores for each subject ──
   useEffect(() => {
     if (!dashboard?.my_subjects?.length) return;
+    let cancelled = false;
     dashboard.my_subjects.forEach(s => {
       api.get(`/analytics/subject-health/${s.subject_id}`)
         .then(r => {
-          if (isMounted.current) {
+          if (!cancelled) {
             setHealthScores(prev => ({ ...prev, [s.subject_id]: r.data.health_score }));
           }
         })
         .catch(() => {});
     });
+    return () => { cancelled = true; };
   }, [dashboard]);
 
   // ── One-tap start attendance ──

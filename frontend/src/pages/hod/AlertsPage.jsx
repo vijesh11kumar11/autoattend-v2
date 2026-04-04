@@ -13,7 +13,7 @@
  *   GET  /api/alerts/hod/history
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 // ── Status badge ──────────────────────────────────────────────────────
@@ -278,9 +278,6 @@ function AlertHistorySection() {
   const [statFilt,  setStatFilt]  = useState('');
   const [dateFrom,  setDateFrom]  = useState('');
   const [dateTo,    setDateTo]    = useState('');
-  const isMounted = useRef(true);
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   const load = useCallback(() => {
     setLoading(true);
     const params = { limit: 200 };
@@ -289,9 +286,9 @@ function AlertHistorySection() {
     if (dateFrom) params.date_from  = dateFrom;
     if (dateTo)   params.date_to    = dateTo;
     api.get('/alerts/hod/history', { params })
-      .then(r => { if (isMounted.current) setRows(r.data); })
-      .catch(() => { if (isMounted.current) setError('Failed to load alert history.'); })
-      .finally(() => { if (isMounted.current) setLoading(false); });
+      .then(r => setRows(r.data))
+      .catch(() => setError('Failed to load alert history.'))
+      .finally(() => setLoading(false));
   }, [typeFilt, statFilt, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);

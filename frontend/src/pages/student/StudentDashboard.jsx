@@ -11,7 +11,7 @@
  *   download   → DownloadReportPage
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
@@ -78,14 +78,11 @@ function StudentHome() {
   const [disputeNote, setDisputeNote]     = useState('');
   const [submitting, setSubmitting]       = useState(false);
 
-  const isMounted = useRef(true);
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   const loadDashboard = () => {
     setLoading(true);
     api.get('/student/portal/dashboard')
-      .then(r => { if (isMounted.current) setDashboard(r.data); })
-      .catch(() => { if (isMounted.current) setError('Failed to load dashboard.'); })
+      .then(r => setDashboard(r.data))
+      .catch(() => setError('Failed to load dashboard.'))
       .finally(() => setLoading(false));
   };
 

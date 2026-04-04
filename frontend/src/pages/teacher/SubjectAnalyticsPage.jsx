@@ -47,10 +47,8 @@ export default function SubjectAnalyticsPage() {
   const [error, setError]         = useState('');
   const [tab, setTab]             = useState('students');
 
-  const isMounted = useRef(true);
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     Promise.all([
       api.get(`/teacher/subject/${subjectId}/analytics`),
@@ -59,14 +57,15 @@ export default function SubjectAnalyticsPage() {
       api.get(`/analytics/subject-health/${subjectId}`),
     ])
       .then(([anRes, anomRes, fuRes, hRes]) => {
-        if (!isMounted.current) return;
+        if (cancelled) return;
         setAnalytics(anRes.data);
         setAnomalies(anomRes.data);
         setFollowup(Array.isArray(fuRes.data) ? fuRes.data : []);
         setHealth(hRes.data);
       })
-      .catch(() => { if (isMounted.current) setError('Failed to load analytics.'); })
-      .finally(() => { if (isMounted.current) setLoading(false); });
+      .catch(() => { if (!cancelled) setError('Failed to load analytics.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [subjectId]);
 
   if (loading) {

@@ -12,7 +12,7 @@
  *   Colour-coded % column
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 // ── helpers ───────────────────────────────────────────────────────────
@@ -330,18 +330,15 @@ function DefaultersTable({ subjects }) {
   const [subjectId,  setSubjectId] = useState('');
   const [threshold,  setThreshold] = useState(THRESHOLD_DEFAULT);
   const [statusFilt, setStatusFilt]= useState('');
-  const isMounted = useRef(true);
-  useEffect(() => () => { isMounted.current = false; }, []);
-
   const load = useCallback(() => {
     setLoading(true);
     const params = { threshold };
     if (subjectId)  params.subject_id = subjectId;
     if (statusFilt) params.status     = statusFilt;
     api.get('/reports/hod/defaulters', { params })
-      .then(r => { if (isMounted.current) setRows(r.data); })
-      .catch(() => { if (isMounted.current) setError('Failed to load defaulters.'); })
-      .finally(() => { if (isMounted.current) setLoading(false); });
+      .then(r => setRows(r.data))
+      .catch(() => setError('Failed to load defaulters.'))
+      .finally(() => setLoading(false));
   }, [subjectId, threshold, statusFilt]);
 
   useEffect(() => { load(); }, [load]);
