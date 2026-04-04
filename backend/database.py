@@ -630,6 +630,34 @@ class LivenessChallenge(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# TABLE 17 — tutor_assignments
+# ═══════════════════════════════════════════════════════════════════════
+
+class TutorAssignment(Base):
+    __tablename__ = "tutor_assignments"
+    __table_args__ = (
+        UniqueConstraint("student_id", "academic_year", name="uq_student_tutor_year"),
+        Index("ix_tutor_assignments_tutor_id",      "tutor_id"),
+        Index("ix_tutor_assignments_student_id",    "student_id"),
+        Index("ix_tutor_assignments_academic_year", "academic_year"),
+    )
+
+    id            = Column(Integer, primary_key=True, index=True)
+    tutor_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),  nullable=False)
+    student_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),  nullable=False)
+    academic_year = Column(String(20), nullable=False)          # "2024-25"
+    assigned_by   = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    is_active     = Column(Boolean, default=True, nullable=False)
+    note          = Column(String(255), nullable=True)
+    assigned_at   = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    tutor      = relationship("User", foreign_keys=[tutor_id],   backref="tutored_students")
+    student    = relationship("User", foreign_keys=[student_id], backref="tutor_assignment")
+    assigner   = relationship("User", foreign_keys=[assigned_by])
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Utilities
 # ═══════════════════════════════════════════════════════════════════════
 

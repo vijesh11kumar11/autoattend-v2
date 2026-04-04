@@ -30,6 +30,7 @@ const NAV_ITEMS = {
     { to: '/hod/teachers',       icon: '👩‍🏫', label: 'Teachers'        },
     { to: '/hod/reports',        icon: '📊', label: 'Reports'          },
     { to: '/hod/alerts',         icon: '🔔', label: 'Alerts'           },
+    { to: '/hod/tutors',         icon: '📝', label: 'Tutors'           },
     { to: '/hod/face-reenroll',  icon: '🤳', label: 'Face Re-enroll'  },
   ],
   teacher: [
@@ -37,7 +38,8 @@ const NAV_ITEMS = {
     { to: '/teacher/qr',        icon: '📱', label: 'Generate QR'        },
     { to: '/teacher/classes',   icon: '📖', label: 'My Classes'         },
     { to: '/teacher/history',   icon: '📋', label: 'Attendance History' },
-    { to: '/teacher/reports',   icon: '📊', label: 'Reports'            },
+    { to: '/teacher/reports',        icon: '📊', label: 'Reports'            },
+    { to: '/teacher/ward-students', icon: '📝', label: 'My Ward Students'  },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },

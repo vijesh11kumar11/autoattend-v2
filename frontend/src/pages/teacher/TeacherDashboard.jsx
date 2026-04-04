@@ -5,6 +5,7 @@ import AttendancePage from './AttendancePage';
 import TeacherHome from './TeacherHomePage';
 import MyClassesPage from './MyClassesPage';
 import TeacherReportsPage from './TeacherReportsPage';
+import TutorDashboardPage from './TutorDashboardPage';
 
 export default function TeacherDashboard() {
   return (
@@ -14,8 +15,9 @@ export default function TeacherDashboard() {
         <Route path="qr"        element={<GenerateQRPage />} />
         <Route path="classes"   element={<MyClassesPage />} />
         <Route path="history"   element={<AttendancePage />} />
-        <Route path="reports"   element={<TeacherReportsPage />} />
-        <Route path="*"         element={<Navigate to="dashboard" replace />} />
+        <Route path="reports"        element={<TeacherReportsPage />} />
+        <Route path="ward-students" element={<TutorDashboardPage />} />
+        <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>
   );
