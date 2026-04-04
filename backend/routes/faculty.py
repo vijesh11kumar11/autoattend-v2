@@ -1589,6 +1589,21 @@ def hod_escalate_dispute(
             record.status = AttendanceStatus.present
             record.marked_by = MarkedBy.manual
 
+        # Recalculate session present_count
+        sess = db.query(AttendanceSession).filter(
+            AttendanceSession.id == dispute.session_id
+        ).first()
+        if sess:
+            new_present = (
+                db.query(AttendanceRecord)
+                .filter(
+                    AttendanceRecord.session_id == dispute.session_id,
+                    AttendanceRecord.status == AttendanceStatus.present,
+                )
+                .count()
+            )
+            sess.present_count = new_present
+
     db.commit()
 
     # Notify student

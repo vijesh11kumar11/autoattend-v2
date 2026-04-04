@@ -589,6 +589,17 @@ def resolve_dispute(
             record.marked_by = MarkedBy.manual
             record.marked_at = datetime.now(tz=timezone.utc)
 
+        # Recalculate session present_count
+        new_present = (
+            db.query(AttendanceRecord)
+            .filter(
+                AttendanceRecord.session_id == dispute.session_id,
+                AttendanceRecord.status == AttendanceStatus.present,
+            )
+            .count()
+        )
+        session.present_count = new_present
+
         dispute.status = DisputeStatus.resolved
         dispute.resolution_note = body.note or "Approved by teacher."
     else:

@@ -44,3 +44,4 @@ coverage/
 
 # Alembic
 alembic/versions/__pycache__/
+backend/nul
