@@ -44,7 +44,7 @@ function ActivityRing({ pct, size = 80, strokeWidth = 7, label, sublabel }) {
   const ringColor = pct >= 75 ? '#22c55e' : pct >= 65 ? '#f59e0b' : '#ef4444';
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="relative flex flex-col items-center">
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={radius} fill="none"
           stroke="#e2e8f0" strokeWidth={strokeWidth} />

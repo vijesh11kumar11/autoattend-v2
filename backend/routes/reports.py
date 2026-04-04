@@ -134,7 +134,8 @@ def list_hod_subjects(
     course_ids = _course_ids_for_dept(dept_id, db)
 
     q = (
-        db.query(Subject.id, Subject.name, Subject.code, Subject.semester, Course.name.label("course_name"))
+        db.query(Subject.id, Subject.name, Subject.code, Subject.semester,
+                 Subject.total_lectures, Course.name.label("course_name"))
         .join(Course, Subject.course_id == Course.id)
         .filter(Subject.course_id.in_(course_ids))
     )
@@ -144,7 +145,8 @@ def list_hod_subjects(
     rows = q.order_by(Subject.name).all()
     return [
         {"id": r.id, "name": r.name, "code": r.code,
-         "semester": r.semester, "course_name": r.course_name}
+         "semester": r.semester, "total_lectures": r.total_lectures,
+         "course_name": r.course_name}
         for r in rows
     ]
 

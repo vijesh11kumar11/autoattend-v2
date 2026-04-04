@@ -38,7 +38,7 @@ from database import (
 from utils.auth_utils import any_authenticated, student_only, teacher_or_above
 from utils.notification_utils import send_push_to_many
 
-router = APIRouter(prefix="/leave", tags=["leave"])
+router = APIRouter(prefix="/api/leave", tags=["leave"])
 
 
 # ── Pydantic schemas ────────────────────────────────────────────────

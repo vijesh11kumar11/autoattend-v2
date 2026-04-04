@@ -1216,6 +1216,30 @@ def _current_academic_year_hod() -> str:
     return f"{y - 1}-{str(y)[-2:]}" if now.month < 6 else f"{y}-{str(y + 1)[-2:]}"
 
 
+# ── PATCH /api/hod/subjects/{subject_id}/total-lectures ────────────────
+
+@router.patch("/hod/subjects/{subject_id}/total-lectures")
+def update_subject_total_lectures(
+    subject_id:   int,
+    total_lectures: int      = Query(..., ge=0),
+    current_user: dict       = Depends(hod_or_above),
+    db:           Session    = Depends(get_db),
+):
+    """HOD sets total planned lectures for a subject in their department."""
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    course_ids = [c.id for c in db.query(Course.id).filter(Course.department_id == dept_id).all()]
+    subj = db.query(Subject).filter(Subject.id == subject_id, Subject.course_id.in_(course_ids)).first()
+    if not subj:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subject not found in your department.")
+
+    subj.total_lectures = total_lectures
+    db.commit()
+    return {"ok": True, "subject_id": subject_id, "total_lectures": total_lectures}
+
+
 # ── GET /api/hod/section-analytics ─────────────────────────────────────
 
 @router.get("/hod/section-analytics")

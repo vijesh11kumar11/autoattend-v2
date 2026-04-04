@@ -37,7 +37,7 @@ from database import (
 from utils.auth_utils import teacher_or_above
 from utils.notification_utils import send_push_to_many
 
-router = APIRouter(prefix="/twm", tags=["twm"])
+router = APIRouter(prefix="/api/twm", tags=["twm"])
 
 THRESHOLD = 75  # attendance warning threshold
 

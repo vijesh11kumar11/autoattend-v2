@@ -6,6 +6,9 @@ export default function SubjectsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [semFilter, setSemFilter] = useState('all');
+  const [editing, setEditing] = useState(null);   // subject id being edited
+  const [editVal, setEditVal] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.get('/reports/hod/subjects')
@@ -13,6 +16,18 @@ export default function SubjectsPage() {
       .catch(() => setError('Failed to load subjects.'))
       .finally(() => setLoading(false));
   }, []);
+
+  const saveTotalLectures = async (id) => {
+    const val = parseInt(editVal, 10);
+    if (isNaN(val) || val < 0) return;
+    setSaving(true);
+    try {
+      await api.patch(`/hod/subjects/${id}/total-lectures?total_lectures=${val}`);
+      setSubjects(prev => prev.map(s => s.id === id ? { ...s, total_lectures: val } : s));
+      setEditing(null);
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
 
   if (loading) {
     return (
@@ -51,6 +66,7 @@ export default function SubjectsPage() {
                   <th className="px-5 py-2 text-left">Code</th>
                   <th className="px-5 py-2 text-left">Semester</th>
                   <th className="px-5 py-2 text-left">Course</th>
+                  <th className="px-5 py-2 text-left">Total Lectures</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -64,6 +80,24 @@ export default function SubjectsPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-sm text-slate-500">{s.course_name}</td>
+                    <td className="px-5 py-3">
+                      {editing === s.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <input type="number" min="0" className="w-20 border rounded px-2 py-1 text-sm"
+                            value={editVal} onChange={e => setEditVal(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && saveTotalLectures(s.id)} autoFocus />
+                          <button onClick={() => saveTotalLectures(s.id)} disabled={saving}
+                            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">✓</button>
+                          <button onClick={() => setEditing(null)}
+                            className="text-xs px-2 py-1 bg-slate-200 text-slate-600 rounded hover:bg-slate-300">✕</button>
+                        </span>
+                      ) : (
+                        <button onClick={() => { setEditing(s.id); setEditVal(String(s.total_lectures || 0)); }}
+                          className="text-sm text-indigo-600 hover:underline">
+                          {s.total_lectures || <span className="text-slate-400 italic">set</span>}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
