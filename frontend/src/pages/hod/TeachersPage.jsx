@@ -24,7 +24,7 @@ export default function TeachersPage() {
 
   // Add teacher modal
   const [showAdd, setShowAdd]         = useState(false);
-  const [addForm, setAddForm]         = useState({ name: '', email: '', phone: '', password: '' });
+  const [addForm, setAddForm]         = useState({ name: '', email: '', phone: '' });
   const [addLoading, setAddLoading]   = useState(false);
   const [addError, setAddError]       = useState('');
 
@@ -49,8 +49,8 @@ export default function TeachersPage() {
   }, [teachers, search]);
 
   const submitAddTeacher = async () => {
-    if (!addForm.name.trim() || !addForm.email.trim() || !addForm.password.trim()) {
-      setAddError('Name, email, and password are required.');
+    if (!addForm.name.trim() || !addForm.email.trim()) {
+      setAddError('Name and email are required.');
       return;
     }
     setAddLoading(true);
@@ -60,11 +60,10 @@ export default function TeachersPage() {
         name: addForm.name.trim(),
         email: addForm.email.trim(),
         phone: addForm.phone.trim() || null,
-        password: addForm.password,
       });
       setFlash(r.data.message || 'Teacher added successfully.');
       setShowAdd(false);
-      setAddForm({ name: '', email: '', phone: '', password: '' });
+      setAddForm({ name: '', email: '', phone: '' });
       loadTeachers();
     } catch (err) {
       setAddError(err.response?.data?.detail || 'Failed to add teacher.');
@@ -180,11 +179,8 @@ export default function TeachersPage() {
                 <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="+91XXXXXXXXXX"
                        value={addForm.phone} onChange={e => setAddForm(p => ({ ...p, phone: e.target.value }))} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">Password *</label>
-                <input className="w-full border rounded-lg px-3 py-2 text-sm" type="password"
-                       placeholder="Min 6 characters"
-                       value={addForm.password} onChange={e => setAddForm(p => ({ ...p, password: e.target.value }))} />
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                Default password: <b>password123</b> — teacher should change it on first login.
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button onClick={() => { setShowAdd(false); setAddError(''); }}

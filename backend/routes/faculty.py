@@ -2022,7 +2022,6 @@ class AddTeacherRequest(BaseModel):
     name:     str = Field(..., min_length=2, max_length=255)
     email:    EmailStr
     phone:    Optional[str] = None
-    password: str = Field(..., min_length=6, max_length=128)
 
 
 @router.post("/hod/add-teacher", status_code=201)
@@ -2037,12 +2036,13 @@ def add_teacher(
         raise HTTPException(status.HTTP_409_CONFLICT,
                             f"A user with email {body.email} already exists.")
 
+    default_password = "password123"
     teacher = User(
         name=body.name,
         email=body.email,
         phone=body.phone.strip() if body.phone else None,
         role=UserRole.teacher,
-        password_hash=hash_password(body.password),
+        password_hash=hash_password(default_password),
         college_id=current_user["college_id"],
         department_id=current_user.get("department_id"),
         is_active=True,
