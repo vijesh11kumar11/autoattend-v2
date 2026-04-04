@@ -3,6 +3,7 @@
  *
  * Displays all teachers in the HOD's department using /api/hod/dashboard data.
  * Shows teacher name, email, assigned subjects, and today's live session status.
+ * Supports adding new teachers via a modal form.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -19,13 +20,58 @@ export default function TeachersPage() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [search, setSearch]     = useState('');
+  const [flash, setFlash]       = useState('');
 
-  useEffect(() => {
+  // Add teacher modal
+  const [showAdd, setShowAdd]         = useState(false);
+  const [addForm, setAddForm]         = useState({ name: '', email: '', phone: '', password: '' });
+  const [addLoading, setAddLoading]   = useState(false);
+  const [addError, setAddError]       = useState('');
+
+  const loadTeachers = () => {
+    setLoading(true);
     api.get('/hod/dashboard')
       .then(r => setTeachers(r.data?.teachers ?? []))
       .catch(() => setError('Failed to load teacher list.'))
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadTeachers(); }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return teachers;
+    return teachers.filter(t =>
+      t.name.toLowerCase().includes(q)
+      || t.email.toLowerCase().includes(q)
+      || (t.subject_names || []).some(s => s.toLowerCase().includes(q))
+    );
+  }, [teachers, search]);
+
+  const submitAddTeacher = async () => {
+    if (!addForm.name.trim() || !addForm.email.trim() || !addForm.password.trim()) {
+      setAddError('Name, email, and password are required.');
+      return;
+    }
+    setAddLoading(true);
+    setAddError('');
+    try {
+      const r = await api.post('/hod/add-teacher', {
+        name: addForm.name.trim(),
+        email: addForm.email.trim(),
+        phone: addForm.phone.trim() || null,
+        password: addForm.password,
+      });
+      setFlash(r.data.message || 'Teacher added successfully.');
+      setShowAdd(false);
+      setAddForm({ name: '', email: '', phone: '', password: '' });
+      loadTeachers();
+    } catch (err) {
+      setAddError(err.response?.data?.detail || 'Failed to add teacher.');
+    } finally {
+      setAddLoading(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -49,16 +95,29 @@ export default function TeachersPage() {
 
   return (
     <div className="space-y-5">
+      {flash && (
+        <div className="card px-5 py-3 bg-emerald-50 text-emerald-700 text-sm flex items-center justify-between">
+          <span>{flash}</span>
+          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">✕</button>
+        </div>
+      )}
+
       {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-slate-700">👩‍🏫 Teachers ({teachers.length})</h2>
-        <input
-          type="text"
-          placeholder="Search name, email, subject…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="input w-72"
-        />
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search name, email, subject…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="input w-72"
+          />
+          <button onClick={() => setShowAdd(true)}
+                  className="px-4 py-2 bg-[#1a237e] text-white text-sm rounded-lg hover:bg-[#283593] whitespace-nowrap">
+            ➕ Add Teacher
+          </button>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -99,6 +158,54 @@ export default function TeachersPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Add Teacher Modal ──────────────────────────────────── */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="px-5 py-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold text-slate-700">➕ Add New Teacher</h3>
+              <button onClick={() => { setShowAdd(false); setAddError(''); }}
+                      className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              {addError && (
+                <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{addError}</div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Full Name *</label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Dr. Rajesh Kumar"
+                       value={addForm.name} onChange={e => setAddForm(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Email *</label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" type="email"
+                       placeholder="e.g. rajesh.teacher@svec.edu.in"
+                       value={addForm.email} onChange={e => setAddForm(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Phone (optional)</label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="+91XXXXXXXXXX"
+                       value={addForm.phone} onChange={e => setAddForm(p => ({ ...p, phone: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-600 mb-1">Password *</label>
+                <input className="w-full border rounded-lg px-3 py-2 text-sm" type="password"
+                       placeholder="Min 6 characters"
+                       value={addForm.password} onChange={e => setAddForm(p => ({ ...p, password: e.target.value }))} />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => { setShowAdd(false); setAddError(''); }}
+                        className="px-4 py-2 text-sm text-slate-500">Cancel</button>
+                <button onClick={submitAddTeacher} disabled={addLoading}
+                        className="px-4 py-2 text-sm bg-[#1a237e] text-white rounded-lg hover:bg-[#283593] disabled:opacity-50">
+                  {addLoading ? 'Adding…' : 'Add Teacher'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

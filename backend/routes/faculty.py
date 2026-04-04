@@ -10,6 +10,7 @@ POST /api/principal/send-alert                   principal_only
 GET  /api/principal/audit                        principal_only
 GET  /api/hod/dashboard                          hod_or_above
 GET  /api/hod/pending-approvals                  hod_or_above
+POST /api/hod/add-teacher                        hod_or_above
 POST /api/hod/approve-request/{device_id}        hod_or_above
 POST /api/hod/reject-request/{device_id}         hod_or_above
 """
@@ -19,6 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
@@ -52,7 +54,7 @@ from database import (
     UserRole,
     get_db,
 )
-from utils.auth_utils import hod_or_above, principal_only, teacher_or_above
+from utils.auth_utils import hash_password, hod_or_above, principal_only, teacher_or_above
 from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
@@ -2010,4 +2012,53 @@ def suggest_followup(
         })
 
     return sorted(followup, key=lambda x: {"high": 0, "medium": 1, "low": 2}[x["priority"]])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# POST /api/hod/add-teacher
+# ═══════════════════════════════════════════════════════════════════════
+
+class AddTeacherRequest(BaseModel):
+    name:     str = Field(..., min_length=2, max_length=255)
+    email:    EmailStr
+    phone:    Optional[str] = None
+    password: str = Field(..., min_length=6, max_length=128)
+
+
+@router.post("/hod/add-teacher", status_code=201)
+def add_teacher(
+    body:         AddTeacherRequest,
+    current_user: dict    = Depends(hod_or_above),
+    db:           Session = Depends(get_db),
+):
+    # Check email uniqueness
+    existing = db.query(User).filter(User.email == body.email).first()
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"A user with email {body.email} already exists.")
+
+    teacher = User(
+        name=body.name,
+        email=body.email,
+        phone=body.phone.strip() if body.phone else None,
+        role=UserRole.teacher,
+        password_hash=hash_password(body.password),
+        college_id=current_user["college_id"],
+        department_id=current_user.get("department_id"),
+        is_active=True,
+    )
+    db.add(teacher)
+    db.commit()
+    db.refresh(teacher)
+
+    logger.info("🎓 HOD ADD TEACHER │ id=%d │ name=%s │ email=%s │ by user_id=%d",
+                teacher.id, teacher.name, teacher.email, current_user["id"])
+
+    return {
+        "id": teacher.id,
+        "name": teacher.name,
+        "email": teacher.email,
+        "phone": teacher.phone or "",
+        "message": f"Teacher '{teacher.name}' added successfully.",
+    }
 
