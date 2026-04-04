@@ -349,7 +349,7 @@ function StudentHome() {
       .then(r => {
         if (!isMounted.current) return;
         const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-        const dayData = (r.data || []).find(d => d.day?.toLowerCase() === today);
+        const dayData = (r.data?.timetable || []).find(d => d.day?.toLowerCase() === today);
         setTodayTT(dayData?.entries || []);
       })
       .catch(() => {});
@@ -580,7 +580,7 @@ function StudentTimetablePage() {
 
   useEffect(() => {
     api.get('/timetable/my-section-timetable')
-      .then(r => setTimetable(r.data || []))
+      .then(r => setTimetable(r.data?.timetable || []))
       .catch(() => setError('Failed to load timetable.'))
       .finally(() => setLoading(false));
   }, []);

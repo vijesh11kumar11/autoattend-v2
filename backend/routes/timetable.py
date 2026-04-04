@@ -180,7 +180,7 @@ def _session_status_for_entry(entry: Timetable, db: Session) -> dict:
 
 
 def _serialize_entry(entry: Timetable, db: Session, include_session: bool = False) -> dict:
-    subj = db.query(Subject).filter(Subject.id == entry.subject_id).first()
+    subj = db.query(Subject).filter(Subject.id == entry.subject_id).first() if entry.subject_id else None
     teacher = db.query(User).filter(User.id == entry.teacher_id).first()
     sec_name = ""
     if entry.section_id:
@@ -190,8 +190,8 @@ def _serialize_entry(entry: Timetable, db: Session, include_session: bool = Fals
     result = {
         "timetable_id":  entry.id,
         "subject_id":    entry.subject_id,
-        "subject_name":  subj.name if subj else "",
-        "subject_code":  subj.code if subj else "",
+        "subject_name":  subj.name if subj else ("TWM" if entry.is_twm else ""),
+        "subject_code":  subj.code if subj else ("TWM" if entry.is_twm else ""),
         "teacher_id":    entry.teacher_id,
         "teacher_name":  teacher.name if teacher else "",
         "day_of_week":   entry.day_of_week.value,
@@ -202,6 +202,7 @@ def _serialize_entry(entry: Timetable, db: Session, include_session: bool = Fals
         "section_name":  sec_name,
         "period_number": entry.period_number,
         "is_lab":        entry.is_lab,
+        "is_twm":        entry.is_twm or False,
         "color_tag":     entry.color_tag,
     }
     if include_session:

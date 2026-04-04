@@ -388,7 +388,7 @@ class Timetable(Base):
     )
 
     id            = Column(Integer, primary_key=True, index=True)
-    subject_id    = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    subject_id    = Column(Integer, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)  # NULL for TWM entries
     teacher_id    = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
     day_of_week   = Column(SAEnum(DayOfWeek, name="dayofweek"), nullable=False)
     start_time    = Column(String(10), nullable=False)   # HH:MM
@@ -398,11 +398,14 @@ class Timetable(Base):
     period_number = Column(SmallInteger, nullable=True)  # 1st period, 2nd period, etc.
     is_lab        = Column(Boolean, default=False)       # lab sessions can be 2x duration
     color_tag     = Column(String(20), nullable=True)    # hex color for UI display
+    is_twm        = Column(Boolean, default=False)       # True → TWM period (not a subject period)
+    tutor_id      = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
     subject = relationship("Subject", back_populates="timetable_entries")
-    teacher = relationship("User",    back_populates="timetable_entries")
+    teacher = relationship("User",    back_populates="timetable_entries", foreign_keys=[teacher_id])
     section = relationship("Section")
+    tutor   = relationship("User",    foreign_keys=[tutor_id])
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -661,6 +664,57 @@ class TutorAssignment(Base):
     tutor      = relationship("User", foreign_keys=[tutor_id],   backref="tutored_students")
     student    = relationship("User", foreign_keys=[student_id], backref="tutor_assignment")
     assigner   = relationship("User", foreign_keys=[assigned_by])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE 18 — twm_sessions
+# ═══════════════════════════════════════════════════════════════════════
+
+class TWMSession(Base):
+    __tablename__ = "twm_sessions"
+    __table_args__ = (
+        Index("ix_twm_sessions_tutor_id", "tutor_id"),
+        Index("ix_twm_sessions_date",     "date"),
+    )
+
+    id               = Column(Integer, primary_key=True, index=True)
+    tutor_id         = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    academic_year    = Column(String(20), nullable=False)
+    date             = Column(Date, nullable=False)
+    start_time       = Column(Time, nullable=False)
+    end_time         = Column(Time, nullable=True)
+    notes            = Column(Text, nullable=True)
+    status           = Column(SAEnum(SessionStatus, name="sessionstatus", create_type=False), default=SessionStatus.active)
+    auto_report_sent = Column(Boolean, default=False)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    tutor      = relationship("User", foreign_keys=[tutor_id])
+    attendance = relationship("TWMAttendance", back_populates="session", cascade="all, delete-orphan")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE 19 — twm_attendance
+# ═══════════════════════════════════════════════════════════════════════
+
+class TWMAttendance(Base):
+    __tablename__ = "twm_attendance"
+    __table_args__ = (
+        UniqueConstraint("session_id", "student_id", name="uq_twm_attendance_session_student"),
+        Index("ix_twm_attendance_session_id", "session_id"),
+        Index("ix_twm_attendance_student_id", "student_id"),
+    )
+
+    id         = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("twm_sessions.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id",        ondelete="CASCADE"), nullable=False)
+    status     = Column(SAEnum(AttendanceStatus, name="attendancestatus", create_type=False), default=AttendanceStatus.absent)
+    marked_at  = Column(DateTime(timezone=True), server_default=func.now())
+    note       = Column(String(255), nullable=True)
+
+    # Relationships
+    session = relationship("TWMSession", back_populates="attendance")
+    student = relationship("User", foreign_keys=[student_id])
 
 
 # ═══════════════════════════════════════════════════════════════════════

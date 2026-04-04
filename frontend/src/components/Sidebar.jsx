@@ -40,6 +40,7 @@ const NAV_ITEMS = {
     { to: '/teacher/history',   icon: '📋', label: 'Attendance History' },
     { to: '/teacher/reports',        icon: '📊', label: 'Reports'            },
     { to: '/teacher/ward-students', icon: '📝', label: 'My Ward Students'  },
+    { to: '/teacher/twm',           icon: '🤝', label: 'TWM Meetings'       },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
