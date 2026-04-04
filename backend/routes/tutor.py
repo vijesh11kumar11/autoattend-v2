@@ -49,6 +49,7 @@ from database import (
 )
 from utils.auth_utils import hod_or_above, teacher_or_above
 from utils.notification_utils import send_push_notification
+from utils.sms import send_sms
 from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
@@ -1023,9 +1024,44 @@ def notify_ward(
                         failed_count += 1
                 continue  # already logged per-phone above
 
-            # sms — not implemented yet, log as failed
             elif channel == "sms":
-                ok = False
+                # Send SMS via MSG91 to BOTH student phone and parent phone
+                phones = set()
+                if student.phone:
+                    phones.add(student.phone.strip())
+                if student.parent_phone:
+                    phones.add(student.parent_phone.strip())
+
+                if body.use_template:
+                    att_data = att if body.use_template else None
+                    if not att_data:
+                        att_data = _student_attendance_summary(sid, db)
+                    low_subjs = [s["subject_name"] for s in att_data["per_subject"] if s["pct"] < _THRESHOLD]
+                    sms_vars = {
+                        "student_name": student.name,
+                        "roll_no": student.roll_number or "",
+                        "attendance_pct": str(att_data["overall_pct"]),
+                        "low_subjects": ", ".join(low_subjs) if low_subjs else "None",
+                        "tutor_name": current_user["name"],
+                    }
+                else:
+                    sms_vars = {"message": msg}
+
+                for phone in phones:
+                    sms_result = send_sms(phone, sms_vars)
+                    sms_ok = sms_result.get("ok", False)
+                    db.add(AlertsLog(
+                        student_id=sid,
+                        alert_type="tutor_notification",
+                        message=msg[:500],
+                        status=AlertStatus.sent if sms_ok else AlertStatus.failed,
+                        channel=AlertChannel.sms,
+                    ))
+                    if sms_ok:
+                        sent_count += 1
+                    else:
+                        failed_count += 1
+                continue  # already logged per-phone above
 
             alert_channel = {
                 "push": AlertChannel.email,   # no push enum, use email as proxy

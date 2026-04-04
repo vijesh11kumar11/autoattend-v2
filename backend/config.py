@@ -26,10 +26,11 @@ class Settings(BaseSettings):
     AZURE_FACE_KEY: str
     AZURE_PERSON_GROUP_ID: str = "autoattend_college"
 
-    # ── MSG91 (ONLY for password change OTP) ──────────────────────────
+    # ── MSG91 (OTP + SMS notifications) ────────────────────────────────
     MSG91_AUTH_KEY: str
     MSG91_SENDER_ID: str = "ATTEND"
     MSG91_OTP_TEMPLATE_ID: str
+    MSG91_SMS_FLOW_ID: str = "will_add_later"  # Flow for attendance notifications
     MSG91_EMAIL_TEMPLATE_ID: str = "autoattend_email_otp"
     MSG91_EMAIL_FROM: str
     MSG91_EMAIL_DOMAIN: str = ""
