@@ -1025,30 +1025,15 @@ def notify_ward(
                 continue  # already logged per-phone above
 
             elif channel == "sms":
-                # Send SMS via MSG91 to BOTH student phone and parent phone
+                # Send SMS via Fast2SMS to BOTH student phone and parent phone
                 phones = set()
                 if student.phone:
                     phones.add(student.phone.strip())
                 if student.parent_phone:
                     phones.add(student.parent_phone.strip())
 
-                if body.use_template:
-                    att_data = att if body.use_template else None
-                    if not att_data:
-                        att_data = _student_attendance_summary(sid, db)
-                    low_subjs = [s["subject_name"] for s in att_data["per_subject"] if s["pct"] < _THRESHOLD]
-                    sms_vars = {
-                        "student_name": student.name,
-                        "roll_no": student.roll_number or "",
-                        "attendance_pct": str(att_data["overall_pct"]),
-                        "low_subjects": ", ".join(low_subjs) if low_subjs else "None",
-                        "tutor_name": current_user["name"],
-                    }
-                else:
-                    sms_vars = {"message": msg}
-
                 for phone in phones:
-                    sms_result = send_sms(phone, sms_vars)
+                    sms_result = send_sms(phone, msg)
                     sms_ok = sms_result.get("ok", False)
                     db.add(AlertsLog(
                         student_id=sid,

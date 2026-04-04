@@ -1,8 +1,8 @@
 """
-AutoAttend AI v2.0 — SMS Utility (MSG91 Flow API)
+AutoAttend AI v2.0 — SMS Utility (Fast2SMS Quick Route)
 
-Sends transactional SMS via MSG91 Flow API.
-Requires a pre-approved DLT template registered as a Flow on MSG91.
+Sends transactional SMS via Fast2SMS Quick SMS API.
+No DLT registration needed for quick route.
 """
 
 import logging
@@ -14,57 +14,47 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
-def send_sms(phone: str, variables: dict, flow_id: str | None = None) -> dict:
+def send_sms(phone: str, message: str) -> dict:
     """
-    Send an SMS via MSG91 Flow API.
+    Send an SMS via Fast2SMS Quick Route.
 
     Args:
-        phone:     Recipient phone (E.164 or 10-digit Indian).
-        variables: Dict of template variables e.g. {"student_name": "Vijesh", "attendance_pct": "50"}.
-        flow_id:   Optional override for MSG91 flow ID.
+        phone:   Recipient phone (E.164, +91XXXXXXXXXX, or 10-digit).
+        message: Plain text message body.
 
     Returns:
         {"ok": True}  on success
         {"ok": False, "error": "<reason>"}  on failure
     """
-    fid = flow_id or settings.MSG91_SMS_FLOW_ID
-    if not fid or fid == "will_add_later":
-        return {"ok": False, "error": "MSG91_SMS_FLOW_ID not configured"}
+    api_key = settings.FAST2SMS_API_KEY
+    if not api_key or api_key == "will_add_later":
+        return {"ok": False, "error": "FAST2SMS_API_KEY not configured"}
 
-    # Normalize phone to MSG91 format: 91XXXXXXXXXX
+    # Normalize to 10-digit Indian number
     cleaned = phone.strip().replace(" ", "").replace("-", "").lstrip("+")
-    if len(cleaned) == 10:
-        cleaned = "91" + cleaned
-    elif cleaned.startswith("91") and len(cleaned) == 12:
-        pass  # already correct
-    elif cleaned.startswith("+91"):
-        cleaned = cleaned[1:]
-
-    recipient = {"mobiles": cleaned}
-    recipient.update(variables)
-
-    payload = {
-        "flow_id": fid,
-        "recipients": [recipient],
-    }
+    if cleaned.startswith("91") and len(cleaned) == 12:
+        cleaned = cleaned[2:]
+    if len(cleaned) != 10:
+        return {"ok": False, "error": f"Invalid phone: {phone}"}
 
     try:
         resp = http_requests.post(
-            "https://control.msg91.com/api/v5/flow/",
-            json=payload,
-            headers={
-                "authkey": settings.MSG91_AUTH_KEY,
-                "Content-Type": "application/json",
+            "https://www.fast2sms.com/dev/bulkV2",
+            headers={"authorization": api_key},
+            data={
+                "route": "q",
+                "message": message,
+                "numbers": cleaned,
+                "flash": "0",
             },
             timeout=10,
         )
 
-        if resp.status_code in (200, 201):
-            data = resp.json()
-            if data.get("type") == "success":
-                return {"ok": True}
-            return {"ok": False, "error": data.get("message", "Unknown MSG91 error")}
-        return {"ok": False, "error": resp.text[:200]}
+        data = resp.json()
+        if data.get("return") is True:
+            logger.info("SMS sent to %s***", cleaned[:4])
+            return {"ok": True}
+        return {"ok": False, "error": data.get("message", "Fast2SMS error")}
     except Exception as exc:
-        logger.error("MSG91 SMS send failed: %s", exc)
+        logger.error("Fast2SMS send failed: %s", exc)
         return {"ok": False, "error": str(exc)}

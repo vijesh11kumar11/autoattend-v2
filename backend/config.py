@@ -26,14 +26,16 @@ class Settings(BaseSettings):
     AZURE_FACE_KEY: str
     AZURE_PERSON_GROUP_ID: str = "autoattend_college"
 
-    # ── MSG91 (OTP + SMS notifications) ────────────────────────────────
+    # ── MSG91 (OTP + email only) ────────────────────────────────────
     MSG91_AUTH_KEY: str
     MSG91_SENDER_ID: str = "ATTEND"
     MSG91_OTP_TEMPLATE_ID: str
-    MSG91_SMS_FLOW_ID: str = "will_add_later"  # Flow for attendance notifications
     MSG91_EMAIL_TEMPLATE_ID: str = "autoattend_email_otp"
     MSG91_EMAIL_FROM: str
     MSG91_EMAIL_DOMAIN: str = ""
+
+    # ── Fast2SMS (Quick route SMS for notifications) ─────────────
+    FAST2SMS_API_KEY: str = "will_add_later"
 
     # ── Twilio WhatsApp (for parent alerts) ───────────────────────────
     TWILIO_ACCOUNT_SID: str
