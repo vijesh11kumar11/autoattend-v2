@@ -1,9 +1,10 @@
 """
-AutoAttend AI v2.0 — Analytics Routes (PROMPT 6)
+AutoAttend AI v2.0 — Analytics Routes (PROMPTs 6 + 8)
 
-GET  /api/analytics/anomalies?subject_id=     teacher+  anomaly flags
-GET  /api/analytics/subject-health/{id}       teacher+  0-100 health score
-GET  /api/analytics/forecast/{student_id}     teacher+  attendance forecast
+GET  /api/analytics/anomalies?subject_id=               teacher+  anomaly flags
+GET  /api/analytics/subject-health/{id}                  teacher+  0-100 health score
+GET  /api/analytics/forecast/{student_id}                teacher+  attendance forecast
+GET  /api/analytics/semester-progress?department_id=     hod+      semester progress tracker
 """
 
 import logging
@@ -19,13 +20,16 @@ from database import (
     AttendanceRecord,
     AttendanceSession,
     AttendanceStatus,
+    Course,
+    Section,
     SessionStatus,
     Subject,
+    Timetable,
     User,
     UserRole,
     get_db,
 )
-from utils.auth_utils import teacher_or_above
+from utils.auth_utils import hod_or_above, teacher_or_above
 
 logger = logging.getLogger(__name__)
 
@@ -379,3 +383,78 @@ def attendance_forecast(
         "roll_number": student.roll_number,
         "forecasts": sorted(forecasts, key=lambda f: f["current_pct"]),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/analytics/semester-progress — Semester Progress Tracker (PROMPT 8)
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/semester-progress")
+def semester_progress(
+    department_id: int = Query(...),
+    current_user:  dict    = Depends(hod_or_above),
+    db:            Session = Depends(get_db),
+):
+    """
+    For each subject in the department, calculate:
+    - planned_sessions: weekly timetable slots × weeks elapsed
+    - conducted_sessions: actual ended sessions
+    - completion_pct
+    - behind_schedule: if conducted < expected by now
+    """
+    # Verify HOD owns this department
+    if current_user.get("department_id") != department_id and current_user["role"] != "principal":
+        raise HTTPException(403, "Not your department.")
+
+    course_ids = [
+        r[0] for r in db.query(Course.id).filter(Course.department_id == department_id).all()
+    ]
+    if not course_ids:
+        return []
+
+    subjects = db.query(Subject).filter(Subject.course_id.in_(course_ids)).all()
+
+    # Assume semester started ~15 weeks before end, or use a simple heuristic:
+    # count weeks from the earliest session date for each subject.
+    today = date.today()
+    # Approximate semester start as 1st of the month 4 months ago (a heuristic)
+    semester_start = today.replace(month=max(1, today.month - 4), day=1)
+
+    # Weeks elapsed since semester start
+    weeks_elapsed = max(1, (today - semester_start).days // 7)
+
+    rows = []
+    for subj in subjects:
+        # Planned: how many timetable slots per week × weeks elapsed
+        weekly_slots = db.query(func.count(Timetable.id)).filter(
+            Timetable.subject_id == subj.id,
+        ).scalar() or 0
+
+        planned = weekly_slots * weeks_elapsed
+
+        # Conducted: actual ended sessions
+        conducted = db.query(func.count(AttendanceSession.id)).filter(
+            AttendanceSession.subject_id == subj.id,
+            AttendanceSession.status == SessionStatus.ended,
+        ).scalar() or 0
+
+        completion_pct = round(conducted / planned * 100, 1) if planned > 0 else 0.0
+        behind = conducted < planned
+
+        teacher = db.query(User).filter(User.id == subj.teacher_id).first() if subj.teacher_id else None
+
+        rows.append({
+            "subject_id": subj.id,
+            "subject_name": subj.name,
+            "subject_code": subj.code,
+            "semester": subj.semester,
+            "teacher_name": teacher.name if teacher else "Unassigned",
+            "teacher_id": subj.teacher_id,
+            "weekly_slots": weekly_slots,
+            "planned_sessions": planned,
+            "conducted_sessions": conducted,
+            "completion_pct": completion_pct,
+            "behind_schedule": behind,
+        })
+
+    return sorted(rows, key=lambda r: r["completion_pct"])

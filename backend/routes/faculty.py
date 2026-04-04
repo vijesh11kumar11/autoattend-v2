@@ -28,6 +28,7 @@ from database import (
     AlertStatus,
     AlertsLog,
     AttendanceAudit,
+    AttendanceDispute,
     AttendanceRecord,
     AttendanceSession,
     AttendanceStatus,
@@ -36,12 +37,15 @@ from database import (
     Course,
     Department,
     DeviceRegistry,
+    DisputeStatus,
     FaceChangeLog,
     LeaveRequest,
     LeaveRequestStatus,
+    MarkedBy,
     Section,
     SessionStatus,
     Subject,
+    TWMSession,
     Timetable,
     TutorAssignment,
     User,
@@ -1028,6 +1032,50 @@ def get_hod_dashboard(
             "avg_pct":       pct,
         })
 
+    # ── Section overview (PROMPT 8) ──────────────────────────────────
+    sections = db.query(Section).filter(Section.department_id == dept_id).all()
+    section_overview = []
+    for sec in sections:
+        s_agg = db.query(
+            func.sum(AttendanceSession.total_students),
+            func.sum(AttendanceSession.present_count),
+        ).filter(
+            AttendanceSession.section_id == sec.id,
+            AttendanceSession.status == SessionStatus.ended,
+        ).one()
+        s_total, s_present = s_agg
+        s_pct = round(float(s_present) / float(s_total) * 100, 1) if s_total else 0.0
+        s_cnt = db.query(func.count(User.id)).filter(
+            User.section_id == sec.id, User.role == UserRole.student, User.is_active.is_(True),
+        ).scalar() or 0
+        section_overview.append({
+            "section_id": sec.id, "section_name": sec.name,
+            "semester": sec.semester, "student_count": s_cnt, "avg_pct": s_pct,
+        })
+
+    # ── Tutor stats (PROMPT 8) ───────────────────────────────────────
+    year_hod = _current_academic_year_hod()
+    tutor_count = db.query(func.count(TutorAssignment.tutor_id.distinct())).join(
+        User, TutorAssignment.tutor_id == User.id,
+    ).filter(
+        User.department_id == dept_id,
+        TutorAssignment.academic_year == year_hod,
+        TutorAssignment.is_active.is_(True),
+    ).scalar() or 0
+    assigned_student_ids = {
+        r[0] for r in db.query(TutorAssignment.student_id).filter(
+            TutorAssignment.academic_year == year_hod,
+            TutorAssignment.is_active.is_(True),
+        ).all()
+    }
+    unassigned_students = len([sid for sid in student_ids if sid not in assigned_student_ids])
+
+    # ── Pending disputes (PROMPT 8) ──────────────────────────────────
+    pending_disputes_count = db.query(func.count(AttendanceDispute.id)).filter(
+        AttendanceDispute.student_id.in_(student_ids),
+        AttendanceDispute.status == DisputeStatus.pending,
+    ).scalar() or 0 if student_ids else 0
+
     return {
         "department_name":     dept.name,
         "department_code":     dept.code,
@@ -1038,6 +1086,12 @@ def get_hod_dashboard(
         "pending_approvals":   pending_count,
         "teachers":            teacher_rows,
         "subjects":            subject_rows,
+        "section_overview":    section_overview,
+        "tutor_stats": {
+            "tutor_count":        tutor_count,
+            "unassigned_students": unassigned_students,
+        },
+        "pending_disputes_count": pending_disputes_count,
     }
 
 
@@ -1149,6 +1203,381 @@ def reject_device_request(
     )
 
     return {"success": True, "message": "Device deactivated."}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# HOD Section Analytics, Teacher Performance, Tutor Overview,
+# Disputes, Semester Progress  (PROMPT 8)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _current_academic_year_hod() -> str:
+    now = datetime.now(tz=timezone.utc)
+    y = now.year
+    return f"{y - 1}-{str(y)[-2:]}" if now.month < 6 else f"{y}-{str(y + 1)[-2:]}"
+
+
+# ── GET /api/hod/section-analytics ─────────────────────────────────────
+
+@router.get("/hod/section-analytics")
+def hod_section_analytics(
+    current_user: dict    = Depends(hod_or_above),
+    db:           Session = Depends(get_db),
+):
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    sections = db.query(Section).filter(Section.department_id == dept_id).all()
+    rows = []
+    for sec in sections:
+        student_ids = [
+            r[0] for r in db.query(User.id).filter(
+                User.section_id == sec.id,
+                User.role == UserRole.student,
+                User.is_active.is_(True),
+            ).all()
+        ]
+        student_count = len(student_ids)
+        if not student_ids:
+            rows.append({
+                "section_id": sec.id, "section_name": sec.name,
+                "semester": sec.semester, "year": sec.semester,
+                "student_count": 0, "avg_pct": 0, "defaulter_count": 0,
+                "worst_subject": None,
+            })
+            continue
+
+        # Per-student attendance pct
+        defaulter_count = 0
+        for sid in student_ids:
+            agg = db.query(
+                func.count(AttendanceRecord.id),
+                func.sum(case(
+                    (AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]), 1),
+                    else_=0,
+                )),
+            ).filter(AttendanceRecord.student_id == sid).one()
+            total_r, present_r = agg
+            if total_r and total_r > 0:
+                pct = float(present_r or 0) / float(total_r) * 100
+                if pct < settings.ATTENDANCE_THRESHOLD:
+                    defaulter_count += 1
+
+        # Section avg attendance from sessions
+        sess_agg = db.query(
+            func.sum(AttendanceSession.total_students),
+            func.sum(AttendanceSession.present_count),
+        ).filter(
+            AttendanceSession.section_id == sec.id,
+            AttendanceSession.status == SessionStatus.ended,
+        ).one()
+        total_s, total_p = sess_agg
+        avg_pct = round(float(total_p) / float(total_s) * 100, 1) if total_s else 0.0
+
+        # Worst subject in section
+        subj_ids = [
+            r[0] for r in db.query(AttendanceSession.subject_id.distinct()).filter(
+                AttendanceSession.section_id == sec.id,
+                AttendanceSession.status == SessionStatus.ended,
+            ).all()
+        ]
+        worst_subj = None
+        worst_pct = 999
+        for subj_id in subj_ids:
+            s_agg = db.query(
+                func.sum(AttendanceSession.total_students),
+                func.sum(AttendanceSession.present_count),
+            ).filter(
+                AttendanceSession.section_id == sec.id,
+                AttendanceSession.subject_id == subj_id,
+                AttendanceSession.status == SessionStatus.ended,
+            ).one()
+            ts, tp = s_agg
+            if ts and ts > 0:
+                p = float(tp) / float(ts) * 100
+                if p < worst_pct:
+                    worst_pct = p
+                    subj_obj = db.query(Subject).filter(Subject.id == subj_id).first()
+                    worst_subj = {
+                        "subject_id": subj_id,
+                        "subject_name": subj_obj.name if subj_obj else "Unknown",
+                        "avg_pct": round(p, 1),
+                    }
+
+        rows.append({
+            "section_id": sec.id,
+            "section_name": sec.name,
+            "semester": sec.semester,
+            "year": sec.semester,
+            "student_count": student_count,
+            "avg_pct": avg_pct,
+            "defaulter_count": defaulter_count,
+            "worst_subject": worst_subj,
+        })
+
+    return sorted(rows, key=lambda r: r["avg_pct"])
+
+
+# ── GET /api/hod/teacher-performance ───────────────────────────────────
+
+@router.get("/hod/teacher-performance")
+def hod_teacher_performance(
+    current_user: dict    = Depends(hod_or_above),
+    db:           Session = Depends(get_db),
+):
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    teachers = db.query(User).filter(
+        User.department_id == dept_id,
+        User.role == UserRole.teacher,
+        User.is_active.is_(True),
+    ).all()
+
+    month_start = date.today().replace(day=1)
+    rows = []
+    for t in teachers:
+        subj_count = db.query(func.count(Subject.id)).filter(
+            Subject.teacher_id == t.id,
+        ).scalar() or 0
+
+        # Sessions this month
+        sessions_month = db.query(func.count(AttendanceSession.id)).filter(
+            AttendanceSession.teacher_id == t.id,
+            AttendanceSession.status == SessionStatus.ended,
+            AttendanceSession.date >= month_start,
+        ).scalar() or 0
+
+        # Avg attendance %
+        agg = db.query(
+            func.sum(AttendanceSession.total_students),
+            func.sum(AttendanceSession.present_count),
+        ).filter(
+            AttendanceSession.teacher_id == t.id,
+            AttendanceSession.status == SessionStatus.ended,
+        ).one()
+        total_s, present_s = agg
+        avg_pct = round(float(present_s) / float(total_s) * 100, 1) if total_s else 0.0
+
+        # Pending disputes for teacher's sessions
+        teacher_session_ids = [
+            r[0] for r in db.query(AttendanceSession.id).filter(
+                AttendanceSession.teacher_id == t.id,
+            ).all()
+        ]
+        pending_disputes = 0
+        if teacher_session_ids:
+            pending_disputes = db.query(func.count(AttendanceDispute.id)).filter(
+                AttendanceDispute.session_id.in_(teacher_session_ids),
+                AttendanceDispute.status == DisputeStatus.pending,
+            ).scalar() or 0
+
+        rows.append({
+            "teacher_id": t.id,
+            "name": t.name,
+            "email": t.email,
+            "subjects_count": subj_count,
+            "sessions_conducted_this_month": sessions_month,
+            "avg_attendance_pct": avg_pct,
+            "pending_disputes": pending_disputes,
+        })
+
+    return sorted(rows, key=lambda r: -r["avg_attendance_pct"])
+
+
+# ── GET /api/hod/tutor-overview ────────────────────────────────────────
+
+@router.get("/hod/tutor-overview")
+def hod_tutor_overview(
+    current_user: dict    = Depends(hod_or_above),
+    db:           Session = Depends(get_db),
+):
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    year = _current_academic_year_hod()
+    month_start = date.today().replace(day=1)
+
+    # Get all tutors who are teachers in this department with active assignments
+    tutor_ids = [
+        r[0] for r in db.query(TutorAssignment.tutor_id.distinct()).join(
+            User, TutorAssignment.tutor_id == User.id,
+        ).filter(
+            User.department_id == dept_id,
+            User.is_active.is_(True),
+            TutorAssignment.academic_year == year,
+            TutorAssignment.is_active.is_(True),
+        ).all()
+    ]
+
+    rows = []
+    for tid in tutor_ids:
+        tutor = db.query(User).filter(User.id == tid).first()
+        if not tutor:
+            continue
+
+        ward_count = db.query(func.count(TutorAssignment.id)).filter(
+            TutorAssignment.tutor_id == tid,
+            TutorAssignment.academic_year == year,
+            TutorAssignment.is_active.is_(True),
+        ).scalar() or 0
+
+        ward_ids = [
+            r[0] for r in db.query(TutorAssignment.student_id).filter(
+                TutorAssignment.tutor_id == tid,
+                TutorAssignment.academic_year == year,
+                TutorAssignment.is_active.is_(True),
+            ).all()
+        ]
+
+        # Count defaulters among wards
+        defaulter_count = 0
+        for sid in ward_ids:
+            agg = db.query(
+                func.count(AttendanceRecord.id),
+                func.sum(case(
+                    (AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]), 1),
+                    else_=0,
+                )),
+            ).filter(AttendanceRecord.student_id == sid).one()
+            total_r, present_r = agg
+            if total_r and total_r > 0:
+                pct = float(present_r or 0) / float(total_r) * 100
+                if pct < settings.ATTENDANCE_THRESHOLD:
+                    defaulter_count += 1
+
+        # Pending leave requests for this tutor
+        pending_leaves = db.query(func.count(LeaveRequest.id)).filter(
+            LeaveRequest.tutor_id == tid,
+            LeaveRequest.status == LeaveRequestStatus.pending,
+        ).scalar() or 0
+
+        # TWM sessions this month
+        twm_month = db.query(func.count(TWMSession.id)).filter(
+            TWMSession.tutor_id == tid,
+            TWMSession.date >= month_start,
+        ).scalar() or 0
+
+        rows.append({
+            "tutor_id": tid,
+            "tutor_name": tutor.name,
+            "email": tutor.email,
+            "ward_count": ward_count,
+            "defaulter_count": defaulter_count,
+            "pending_leaves": pending_leaves,
+            "twm_sessions_this_month": twm_month,
+        })
+
+    return sorted(rows, key=lambda r: -r["defaulter_count"])
+
+
+# ── GET /api/hod/disputes/pending ──────────────────────────────────────
+
+@router.get("/hod/disputes/pending")
+def hod_pending_disputes(
+    current_user: dict    = Depends(hod_or_above),
+    db:           Session = Depends(get_db),
+):
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    course_ids  = _course_ids_for_depts([dept_id], db)
+    student_ids = _student_ids_for_courses(course_ids, db)
+    if not student_ids:
+        return []
+
+    disputes = (
+        db.query(AttendanceDispute)
+        .filter(AttendanceDispute.student_id.in_(student_ids))
+        .order_by(AttendanceDispute.created_at.desc())
+        .all()
+    )
+
+    rows = []
+    for d in disputes:
+        student = db.query(User).filter(User.id == d.student_id).first()
+        session = db.query(AttendanceSession).filter(AttendanceSession.id == d.session_id).first()
+        subject = db.query(Subject).filter(Subject.id == session.subject_id).first() if session else None
+        teacher = db.query(User).filter(User.id == session.teacher_id).first() if session else None
+        resolver = db.query(User).filter(User.id == d.resolved_by).first() if d.resolved_by else None
+
+        rows.append({
+            "id": d.id,
+            "student_name": student.name if student else "Unknown",
+            "roll_number": student.roll_number if student else None,
+            "subject_name": subject.name if subject else "Unknown",
+            "teacher_name": teacher.name if teacher else "Unknown",
+            "session_date": str(session.date) if session else None,
+            "reason": d.reason,
+            "proof_note": d.proof_note,
+            "status": d.status.value,
+            "resolved_by": resolver.name if resolver else None,
+            "resolution_note": d.resolution_note,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        })
+
+    return rows
+
+
+# ── POST /api/hod/disputes/{dispute_id}/escalate ──────────────────────
+
+@router.post("/hod/disputes/{dispute_id}/escalate")
+def hod_escalate_dispute(
+    dispute_id:   int,
+    action:       str  = Query(..., regex="^(approve|reject)$"),
+    resolution_note: Optional[str] = Query(None),
+    current_user: dict    = Depends(hod_or_above),
+    db:           Session = Depends(get_db),
+):
+    """HOD can resolve a dispute that the teacher hasn't acted on."""
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    dispute = db.query(AttendanceDispute).filter(AttendanceDispute.id == dispute_id).first()
+    if not dispute:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dispute not found.")
+
+    # Verify student is in HOD's department
+    course_ids  = _course_ids_for_depts([dept_id], db)
+    student_ids = set(_student_ids_for_courses(course_ids, db))
+    if dispute.student_id not in student_ids:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Student not in your department.")
+
+    if dispute.status != DisputeStatus.pending:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Dispute already resolved.")
+
+    dispute.status = DisputeStatus.resolved if action == "approve" else DisputeStatus.rejected
+    dispute.resolved_by = current_user["id"]
+    dispute.resolved_at = datetime.now(tz=timezone.utc)
+    dispute.resolution_note = resolution_note or f"Resolved by HOD ({action})"
+
+    # If approved, mark attendance as present
+    if action == "approve":
+        record = db.query(AttendanceRecord).filter(
+            AttendanceRecord.session_id == dispute.session_id,
+            AttendanceRecord.student_id == dispute.student_id,
+        ).first()
+        if record:
+            record.status = AttendanceStatus.present
+            record.marked_by = MarkedBy.manual
+
+    db.commit()
+
+    # Notify student
+    from utils.notification_utils import send_push_notification
+    title = "✅ Dispute Approved by HOD" if action == "approve" else "❌ Dispute Rejected by HOD"
+    body = f"Your attendance dispute has been {action}d by the HOD."
+    send_push_notification(
+        user_id=dispute.student_id,
+        title=title, body=body, db=db,
+        data={"type": "dispute_resolved"},
+    )
+
+    return {"success": True, "message": f"Dispute {action}d by HOD."}
 
 
 # ═══════════════════════════════════════════════════════════════════════

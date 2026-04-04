@@ -22,6 +22,11 @@ import TeachersPage    from './TeachersPage';
 import TimetablePage          from './TimetablePage';
 import TutorManagementPage    from './TutorManagementPage';
 import LeaveRequestsPage      from '../teacher/LeaveRequestsPage';
+import SectionAnalyticsPage   from './SectionAnalyticsPage';
+import TeacherPerformancePage from './TeacherPerformancePage';
+import TutorOverviewPage      from './TutorOverviewPage';
+import HODDisputesPage        from './HODDisputesPage';
+import SemesterProgressPage   from './SemesterProgressPage';
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -130,15 +135,70 @@ function HODOverview() {
                   danger={data.pending_approvals > 0} />
       </div>
 
+      {/* ── P8 Summary Row — Sections / Tutors / Disputes / Progress ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Section Overview */}
+        <a href="/hod/section-analytics" className="card p-4 hover:shadow-md transition cursor-pointer">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">📊</span>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Sections</p>
+          </div>
+          {data.section_overview?.length > 0 ? (
+            <div className="space-y-1">
+              {data.section_overview.slice(0, 3).map(s => (
+                <div key={s.section_id} className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">Sec {s.section_name}</span>
+                  <span className={`font-bold ${s.avg_pct >= 75 ? 'text-emerald-600' : s.avg_pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{s.avg_pct}%</span>
+                </div>
+              ))}
+              {data.section_overview.length > 3 && <p className="text-[10px] text-slate-400">+{data.section_overview.length - 3} more…</p>}
+            </div>
+          ) : <p className="text-xs text-slate-400">No sections</p>}
+        </a>
+
+        {/* Tutor Stats */}
+        <a href="/hod/tutor-overview" className="card p-4 hover:shadow-md transition cursor-pointer">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">📝</span>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Tutors</p>
+          </div>
+          <p className="text-xl font-bold text-slate-800">{data.tutor_stats?.tutor_count ?? 0}</p>
+          <p className="text-xs text-slate-400">Active tutors</p>
+          {data.tutor_stats?.unassigned_students > 0 && (
+            <p className="text-xs text-amber-600 mt-1 font-medium">⚠️ {data.tutor_stats.unassigned_students} unassigned</p>
+          )}
+        </a>
+
+        {/* Disputes */}
+        <a href="/hod/disputes" className={`card p-4 hover:shadow-md transition cursor-pointer ${data.pending_disputes_count > 0 ? 'border-amber-200 bg-amber-50/30' : ''}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">⚖️</span>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Disputes</p>
+          </div>
+          <p className={`text-xl font-bold ${data.pending_disputes_count > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{data.pending_disputes_count}</p>
+          <p className="text-xs text-slate-400">Pending disputes</p>
+        </a>
+
+        {/* Semester Progress */}
+        <a href="/hod/semester-progress" className="card p-4 hover:shadow-md transition cursor-pointer">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">📈</span>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Progress</p>
+          </div>
+          <p className="text-sm font-semibold text-slate-700">Semester Tracker</p>
+          <p className="text-xs text-slate-400">Planned vs conducted</p>
+        </a>
+      </div>
+
       {/* ── Quick Actions ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'Add Teacher',       icon: '➕', href: '/hod/teachers'      },
-          { label: 'Add Student',       icon: '🎓', href: '/hod/students'      },
-          { label: 'View Defaulters',   icon: '⚠️', href: '/hod/reports'       },
-          { label: 'Download Report',   icon: '⬇️', href: '/hod/reports'       },
-          { label: 'Approve Requests',  icon: '✅', href: '#pending-approvals' },
-          { label: 'Face Re-enroll',    icon: '🤳', href: '/hod/face-reenroll' },
+          { label: 'Add Teacher',         icon: '➕', href: '/hod/teachers'          },
+          { label: 'Teacher Performance', icon: '👩‍🏫', href: '/hod/teacher-perf'     },
+          { label: 'View Defaulters',     icon: '⚠️', href: '/hod/reports'           },
+          { label: 'Download Report',     icon: '⬇️', href: '/hod/reports'           },
+          { label: 'Approve Requests',    icon: '✅', href: '#pending-approvals'     },
+          { label: 'Face Re-enroll',      icon: '🤳', href: '/hod/face-reenroll'     },
         ].map((action) => (
           <a
             key={action.label}
@@ -371,9 +431,14 @@ export default function HODDashboard() {
         <Route path="reports"       element={<DeptReportsPage />} />
         <Route path="alerts"        element={<AlertsPage />} />
         <Route path="face-reenroll" element={<FaceReenrollPage />} />
-        <Route path="tutors"        element={<TutorManagementPage />} />
-        <Route path="leave-requests" element={<LeaveRequestsPage />} />
-        <Route path="*"             element={<Navigate to="dashboard" replace />} />
+        <Route path="tutors"            element={<TutorManagementPage />} />
+        <Route path="leave-requests"    element={<LeaveRequestsPage />} />
+        <Route path="section-analytics" element={<SectionAnalyticsPage />} />
+        <Route path="teacher-perf"      element={<TeacherPerformancePage />} />
+        <Route path="tutor-overview"    element={<TutorOverviewPage />} />
+        <Route path="disputes"          element={<HODDisputesPage />} />
+        <Route path="semester-progress" element={<SemesterProgressPage />} />
+        <Route path="*"                 element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>
   );
