@@ -32,6 +32,7 @@ const NAV_ITEMS = {
     { to: '/hod/alerts',         icon: '🔔', label: 'Alerts'           },
     { to: '/hod/tutors',         icon: '📝', label: 'Tutors'           },
     { to: '/hod/face-reenroll',  icon: '🤳', label: 'Face Re-enroll'  },
+    { to: '/hod/leave-requests', icon: '✋', label: 'Leave Approvals'  },
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },
@@ -41,12 +42,14 @@ const NAV_ITEMS = {
     { to: '/teacher/reports',        icon: '📊', label: 'Reports'            },
     { to: '/teacher/ward-students', icon: '📝', label: 'My Ward Students'  },
     { to: '/teacher/twm',           icon: '🤝', label: 'TWM Meetings'       },
+    { to: '/teacher/leave-requests', icon: '✋', label: 'Leave Requests'     },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
     { to: '/student/scan-qr',    icon: '📷', label: 'Scan QR'           },
     { to: '/student/attendance', icon: '✅', label: 'My Attendance'     },
     { to: '/student/timetable',  icon: '🗓️', label: 'Timetable'        },
+    { to: '/student/leaves',     icon: '📋', label: 'Leave Requests'   },
     { to: '/student/download',   icon: '⬇️', label: 'Download Report'   },
   ],
 };

@@ -644,6 +644,239 @@ function StudentTimetablePage() {
   );
 }
 
+// ── Leave Requests Page ───────────────────────────────────────────────
+const LEAVE_TYPES = [
+  { value: 'medical',   label: 'Medical',   icon: '🏥' },
+  { value: 'duty',      label: 'Duty',      icon: '📋' },
+  { value: 'personal',  label: 'Personal',  icon: '👤' },
+  { value: 'emergency', label: 'Emergency', icon: '🚨' },
+  { value: 'sports',    label: 'Sports',    icon: '🏅' },
+  { value: 'other',     label: 'Other',     icon: '📝' },
+];
+
+const LEAVE_STATUS_STYLE = {
+  pending:   'bg-amber-100 text-amber-700',
+  approved:  'bg-emerald-100 text-emerald-700',
+  rejected:  'bg-red-100 text-red-700',
+  cancelled: 'bg-slate-100 text-slate-500',
+};
+
+function StudentLeavePage() {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [flash, setFlash] = useState('');
+  const [form, setForm] = useState({
+    leave_type: 'medical', from_date: '', to_date: '', reason: '', document_url: '',
+  });
+
+  const loadRequests = () => {
+    setLoading(true);
+    api.get('/leave/my-requests')
+      .then(r => setRequests(r.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => { loadRequests(); }, []);
+
+  const handleApply = async () => {
+    if (!form.from_date || !form.to_date || !form.reason.trim()) {
+      setFlash('Please fill in all required fields.'); return;
+    }
+    setSubmitting(true);
+    try {
+      await api.post('/leave/apply', {
+        leave_type: form.leave_type,
+        from_date: form.from_date,
+        to_date: form.to_date,
+        reason: form.reason,
+        document_url: form.document_url || null,
+      });
+      setFlash('Leave request submitted successfully!');
+      setShowModal(false);
+      setForm({ leave_type: 'medical', from_date: '', to_date: '', reason: '', document_url: '' });
+      loadRequests();
+    } catch (err) {
+      setFlash(err.response?.data?.detail || 'Failed to submit leave request.');
+    } finally { setSubmitting(false); }
+  };
+
+  const handleCancel = async (id) => {
+    try {
+      await api.delete(`/leave/${id}/cancel`);
+      setFlash('Leave request cancelled.');
+      loadRequests();
+    } catch (err) {
+      setFlash(err.response?.data?.detail || 'Failed to cancel.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="card p-10 text-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-[#1a237e] rounded-full animate-spin mx-auto" />
+        <p className="text-slate-400 text-sm mt-3">Loading leave requests…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {flash && (
+        <div className="card px-5 py-3 bg-emerald-50 text-emerald-700 text-sm flex items-center justify-between">
+          <span>{flash}</span>
+          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">✕</button>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="card p-5 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">My Leave Requests</h2>
+          <p className="text-sm text-slate-400 mt-0.5">{requests.length} request(s)</p>
+        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="px-5 py-2.5 bg-[#1a237e] text-white font-semibold rounded-xl hover:bg-[#283593] text-sm"
+        >
+          + Apply for Leave
+        </button>
+      </div>
+
+      {/* Requests table */}
+      {requests.length > 0 ? (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  {['Type', 'Dates', 'Days', 'Reason', 'Status', 'Reviewer Note', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {requests.map(lr => (
+                  <tr key={lr.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <span className="capitalize font-medium text-slate-700">{lr.leave_type}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{lr.from_date} → {lr.to_date}</td>
+                    <td className="px-4 py-3 text-center font-semibold">{lr.days}</td>
+                    <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{lr.reason}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${LEAVE_STATUS_STYLE[lr.status] || ''}`}>
+                        {lr.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-400 italic max-w-[200px] truncate">
+                      {lr.tutor_note || '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {lr.status === 'pending' && (
+                        <button
+                          onClick={() => handleCancel(lr.id)}
+                          className="text-xs px-3 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="card p-8 text-center text-slate-400">
+          <span className="text-3xl block mb-2">📭</span>
+          <p>No leave requests yet.</p>
+        </div>
+      )}
+
+      {/* Apply Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="card w-full max-w-lg p-6 space-y-4 m-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800">Apply for Leave</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+            </div>
+
+            {/* Leave Type */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Leave Type</label>
+              <div className="grid grid-cols-3 gap-2">
+                {LEAVE_TYPES.map(t => (
+                  <button
+                    key={t.value}
+                    onClick={() => setForm(prev => ({ ...prev, leave_type: t.value }))}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
+                      form.leave_type === t.value
+                        ? 'border-[#1a237e] bg-blue-50 text-[#1a237e]'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    {t.icon} {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">From Date</label>
+                <input type="date" value={form.from_date}
+                  onChange={e => setForm(prev => ({ ...prev, from_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">To Date</label>
+                <input type="date" value={form.to_date}
+                  onChange={e => setForm(prev => ({ ...prev, to_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+              </div>
+            </div>
+
+            {/* Reason */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Reason</label>
+              <textarea value={form.reason}
+                onChange={e => setForm(prev => ({ ...prev, reason: e.target.value }))}
+                placeholder="Describe your reason for leave…"
+                rows={3}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e] resize-none"
+                maxLength={2000} />
+            </div>
+
+            {/* Document URL */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                Document URL <span className="text-slate-400 normal-case">(optional — required for medical/sports)</span>
+              </label>
+              <input type="url" value={form.document_url}
+                onChange={e => setForm(prev => ({ ...prev, document_url: e.target.value }))}
+                placeholder="https://drive.google.com/..."
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+            </div>
+
+            <button
+              onClick={handleApply}
+              disabled={submitting}
+              className="w-full py-3 bg-[#1a237e] text-white font-bold rounded-xl hover:bg-[#283593] disabled:opacity-50"
+            >
+              {submitting ? '⏳ Submitting…' : '📋 Submit Leave Request'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DownloadReportPage() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
@@ -718,6 +951,7 @@ export default function StudentDashboard() {
         <Route path="scan-qr"    element={<ScanQRStub />} />
         <Route path="attendance" element={<AttendanceDetailPage />} />
         <Route path="timetable"  element={<StudentTimetablePage />} />
+        <Route path="leaves"     element={<StudentLeavePage />} />
         <Route path="download"   element={<DownloadReportPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>

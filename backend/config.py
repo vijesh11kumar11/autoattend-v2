@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # ── Bluetooth ─────────────────────────────────────────────────────
     BLUETOOTH_REQUIRED: bool = False
 
+    # ── Leave policy ──────────────────────────────────────────────────
+    LEAVE_MAX_DAYS_PER_REQUEST: int = 14
+    LEAVE_ALLOW_PAST_DATE_DAYS: int = 2
+    LEAVE_DOCUMENT_REQUIRED_TYPES: str = "medical,sports"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

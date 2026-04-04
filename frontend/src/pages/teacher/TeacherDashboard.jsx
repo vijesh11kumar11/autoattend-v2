@@ -7,6 +7,7 @@ import MyClassesPage from './MyClassesPage';
 import TeacherReportsPage from './TeacherReportsPage';
 import TutorDashboardPage from './TutorDashboardPage';
 import TWMPage from './TWMPage';
+import LeaveRequestsPage from './LeaveRequestsPage';
 
 export default function TeacherDashboard() {
   return (
@@ -19,6 +20,7 @@ export default function TeacherDashboard() {
         <Route path="reports"        element={<TeacherReportsPage />} />
         <Route path="ward-students" element={<TutorDashboardPage />} />
         <Route path="twm"            element={<TWMPage />} />
+        <Route path="leave-requests" element={<LeaveRequestsPage />} />
         <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

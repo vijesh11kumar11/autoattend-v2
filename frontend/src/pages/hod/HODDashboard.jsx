@@ -21,6 +21,7 @@ import SubjectsPage    from './SubjectsPage';
 import TeachersPage    from './TeachersPage';
 import TimetablePage          from './TimetablePage';
 import TutorManagementPage    from './TutorManagementPage';
+import LeaveRequestsPage      from '../teacher/LeaveRequestsPage';
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -371,6 +372,7 @@ export default function HODDashboard() {
         <Route path="alerts"        element={<AlertsPage />} />
         <Route path="face-reenroll" element={<FaceReenrollPage />} />
         <Route path="tutors"        element={<TutorManagementPage />} />
+        <Route path="leave-requests" element={<LeaveRequestsPage />} />
         <Route path="*"             element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

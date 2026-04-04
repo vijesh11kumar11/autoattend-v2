@@ -100,6 +100,22 @@ class AlertChannel(str, enum.Enum):
     email    = "email"
 
 
+class LeaveType(str, enum.Enum):
+    medical   = "medical"
+    duty      = "duty"
+    personal  = "personal"
+    emergency = "emergency"
+    sports    = "sports"
+    other     = "other"
+
+
+class LeaveRequestStatus(str, enum.Enum):
+    pending   = "pending"
+    approved  = "approved"
+    rejected  = "rejected"
+    cancelled = "cancelled"
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # SQLAlchemy Base
 # ═══════════════════════════════════════════════════════════════════════
@@ -715,6 +731,39 @@ class TWMAttendance(Base):
     # Relationships
     session = relationship("TWMSession", back_populates="attendance")
     student = relationship("User", foreign_keys=[student_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE 20 — leave_requests
+# ═══════════════════════════════════════════════════════════════════════
+
+class LeaveRequest(Base):
+    __tablename__ = "leave_requests"
+    __table_args__ = (
+        Index("ix_leave_requests_student_id", "student_id"),
+        Index("ix_leave_requests_tutor_id",   "tutor_id"),
+        Index("ix_leave_requests_status",     "status"),
+    )
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    student_id          = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    tutor_id            = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    leave_type          = Column(SAEnum(LeaveType, name="leavetype"), nullable=False)
+    from_date           = Column(Date, nullable=False)
+    to_date             = Column(Date, nullable=False)
+    reason              = Column(Text, nullable=False)
+    document_url        = Column(String(500), nullable=True)
+    status              = Column(SAEnum(LeaveRequestStatus, name="leaverequeststatus"), default=LeaveRequestStatus.pending)
+    tutor_note          = Column(Text, nullable=True)
+    reviewed_at         = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by         = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    attendance_updated  = Column(Boolean, default=False)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    student  = relationship("User", foreign_keys=[student_id])
+    tutor    = relationship("User", foreign_keys=[tutor_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
 
 
 # ═══════════════════════════════════════════════════════════════════════
