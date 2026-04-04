@@ -5,6 +5,8 @@
  * • Searchable student table with color-coded attendance badges
  * • "View Full Report" slide-over panel per student
  * • "Notify Selected" and "Notify All Defaulters" buttons
+ * • Inline phone editing for ward students
+ * • Templated attendance report notifications (student + parent phone)
  */
 
 import { useEffect, useState } from 'react';
@@ -40,8 +42,14 @@ export default function TutorDashboardPage() {
   const [showNotify, setShowNotify]   = useState(false);
   const [notifyMsg, setNotifyMsg]     = useState('');
   const [channels, setChannels]       = useState(['push']);
+  const [useTemplate, setUseTemplate] = useState(false);
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [flash, setFlash]             = useState('');
+
+  // phone editing
+  const [editingPhone, setEditingPhone]       = useState(null); // {studentId, field}
+  const [phoneValue, setPhoneValue]           = useState('');
+  const [phoneSaving, setPhoneSaving]         = useState(false);
 
   // load
   const loadWards = () => {
@@ -98,17 +106,19 @@ export default function TutorDashboardPage() {
   };
 
   const submitNotify = async () => {
-    if (!notifyMsg.trim()) return;
+    if (!useTemplate && !notifyMsg.trim()) return;
     setNotifyLoading(true);
     try {
       const r = await api.post('/tutor/notify-ward', {
         student_ids: [...selectedIds],
-        message: notifyMsg,
+        message: useTemplate ? '' : notifyMsg,
         channels,
+        use_template: useTemplate,
       });
       setFlash(`Sent: ${r.data.sent}, Failed: ${r.data.failed}`);
       setShowNotify(false);
       setNotifyMsg('');
+      setUseTemplate(false);
       setSelectedIds(new Set());
     } catch (err) { setFlash(err.response?.data?.detail || 'Notification failed.'); }
     finally { setNotifyLoading(false); }
@@ -117,6 +127,33 @@ export default function TutorDashboardPage() {
   const toggleChannel = (ch) => setChannels(prev =>
     prev.includes(ch) ? prev.filter(c => c !== ch) : [...prev, ch]
   );
+
+  // phone editing
+  const startEditPhone = (studentId, field, currentValue) => {
+    setEditingPhone({ studentId, field });
+    setPhoneValue(currentValue || '');
+  };
+
+  const savePhone = async () => {
+    if (!editingPhone) return;
+    setPhoneSaving(true);
+    try {
+      const payload = { [editingPhone.field]: phoneValue.trim() || null };
+      await api.patch(`/tutor/ward/${editingPhone.studentId}/contacts`, payload);
+      setWards(prev => prev.map(w =>
+        w.student_id === editingPhone.studentId
+          ? { ...w, [editingPhone.field]: phoneValue.trim() }
+          : w
+      ));
+      setFlash('Phone updated.');
+    } catch (err) {
+      setFlash(err.response?.data?.detail || 'Failed to update phone.');
+    } finally {
+      setPhoneSaving(false);
+      setEditingPhone(null);
+      setPhoneValue('');
+    }
+  };
 
   // render
   if (loading) return (
@@ -193,7 +230,8 @@ export default function TutorDashboardPage() {
                 </th>
                 <th className="px-4 py-2 text-left">Name</th>
                 <th className="px-4 py-2 text-left">Roll</th>
-                <th className="px-4 py-2 text-left">Section</th>
+                <th className="px-4 py-2 text-left">Phone</th>
+                <th className="px-4 py-2 text-left">Parent Phone</th>
                 <th className="px-4 py-2 text-center">Attendance</th>
                 <th className="px-4 py-2 text-center">Status</th>
                 <th className="px-4 py-2 text-right">Action</th>
@@ -208,7 +246,47 @@ export default function TutorDashboardPage() {
                   </td>
                   <td className="px-4 py-2 text-sm font-medium text-slate-700">{w.name}</td>
                   <td className="px-4 py-2 text-sm font-mono text-slate-500">{w.roll_number || '—'}</td>
-                  <td className="px-4 py-2 text-sm text-slate-500">{w.section_name || '—'}</td>
+
+                  {/* Phone — editable */}
+                  <td className="px-4 py-2 text-sm text-slate-500">
+                    {editingPhone?.studentId === w.student_id && editingPhone?.field === 'phone' ? (
+                      <span className="flex items-center gap-1">
+                        <input className="border rounded px-1.5 py-0.5 text-xs w-32" value={phoneValue}
+                               onChange={e => setPhoneValue(e.target.value)} autoFocus
+                               onKeyDown={e => e.key === 'Enter' && savePhone()} />
+                        <button onClick={savePhone} disabled={phoneSaving}
+                                className="text-emerald-600 text-xs font-medium">✓</button>
+                        <button onClick={() => setEditingPhone(null)} className="text-slate-400 text-xs">✕</button>
+                      </span>
+                    ) : (
+                      <span className="cursor-pointer hover:text-blue-600 group"
+                            onClick={() => startEditPhone(w.student_id, 'phone', w.phone)}>
+                        {w.phone || <span className="text-slate-300 italic">+ add</span>}
+                        <span className="ml-1 opacity-0 group-hover:opacity-100 text-xs">✏️</span>
+                      </span>
+                    )}
+                  </td>
+
+                  {/* Parent Phone — editable */}
+                  <td className="px-4 py-2 text-sm text-slate-500">
+                    {editingPhone?.studentId === w.student_id && editingPhone?.field === 'parent_phone' ? (
+                      <span className="flex items-center gap-1">
+                        <input className="border rounded px-1.5 py-0.5 text-xs w-32" value={phoneValue}
+                               onChange={e => setPhoneValue(e.target.value)} autoFocus
+                               onKeyDown={e => e.key === 'Enter' && savePhone()} />
+                        <button onClick={savePhone} disabled={phoneSaving}
+                                className="text-emerald-600 text-xs font-medium">✓</button>
+                        <button onClick={() => setEditingPhone(null)} className="text-slate-400 text-xs">✕</button>
+                      </span>
+                    ) : (
+                      <span className="cursor-pointer hover:text-blue-600 group"
+                            onClick={() => startEditPhone(w.student_id, 'parent_phone', w.parent_phone)}>
+                        {w.parent_phone || <span className="text-slate-300 italic">+ add</span>}
+                        <span className="ml-1 opacity-0 group-hover:opacity-100 text-xs">✏️</span>
+                      </span>
+                    )}
+                  </td>
+
                   <td className="px-4 py-2 text-center">
                     <span className={`font-bold text-sm ${w.overall_attendance_pct >= 75 ? 'text-emerald-600' : w.overall_attendance_pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
                       {w.overall_attendance_pct}%
@@ -330,12 +408,33 @@ export default function TutorDashboardPage() {
               <button onClick={() => setShowNotify(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-1">Message</label>
-                <textarea className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none"
-                          placeholder="Type your message…"
-                          value={notifyMsg} onChange={e => setNotifyMsg(e.target.value)} />
-              </div>
+              {/* Template toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={useTemplate}
+                       onChange={e => setUseTemplate(e.target.checked)} className="rounded" />
+                <span className="text-sm font-medium text-slate-600">
+                  📊 Use attendance report template
+                </span>
+              </label>
+              {useTemplate && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-xs text-slate-500 space-y-1">
+                  <p className="font-medium text-slate-600">Template will auto-generate per student:</p>
+                  <p>• Student name, roll number</p>
+                  <p>• Per-subject attendance breakdown with %</p>
+                  <p>• Overall attendance % with threshold warning</p>
+                  <p>• Sent to <b>both</b> student phone & parent phone</p>
+                </div>
+              )}
+
+              {!useTemplate && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-1">Message</label>
+                  <textarea className="w-full border rounded-lg px-3 py-2 text-sm h-24 resize-none"
+                            placeholder="Type your message…"
+                            value={notifyMsg} onChange={e => setNotifyMsg(e.target.value)} />
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-slate-600 mb-2">Channels</label>
                 <div className="flex gap-3">
@@ -351,9 +450,9 @@ export default function TutorDashboardPage() {
               <div className="flex justify-end gap-3">
                 <button onClick={() => setShowNotify(false)}
                         className="px-4 py-2 text-sm text-slate-500">Cancel</button>
-                <button onClick={submitNotify} disabled={notifyLoading || !notifyMsg.trim()}
+                <button onClick={submitNotify} disabled={notifyLoading || (!useTemplate && !notifyMsg.trim())}
                         className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                  {notifyLoading ? 'Sending…' : 'Send'}
+                  {notifyLoading ? 'Sending…' : useTemplate ? 'Send Report' : 'Send'}
                 </button>
               </div>
             </div>

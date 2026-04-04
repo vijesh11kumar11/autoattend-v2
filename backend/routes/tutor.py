@@ -16,6 +16,7 @@ Teacher Tutor Dashboard:
   GET    /api/tutor/my-ward-students           — teacher's ward students + attendance
   GET    /api/tutor/ward-student/{student_id}/full-report
   GET    /api/tutor/my-defaulters              — ward students below threshold
+  PATCH  /api/tutor/ward/{student_id}/contacts — edit ward student phone numbers
   POST   /api/tutor/notify-ward               — send notification to ward students
 """
 
@@ -102,9 +103,15 @@ class DeactivateAllRequest(BaseModel):
 
 
 class NotifyWardRequest(BaseModel):
-    student_ids: List[int]
-    message:     str = Field(..., min_length=1, max_length=1600)
-    channels:    List[str] = ["push"]  # push, whatsapp, sms
+    student_ids:  List[int]
+    message:      str = Field("", max_length=1600)
+    channels:     List[str] = ["push"]  # push, whatsapp, sms
+    use_template: bool = False  # auto-generate per-student attendance report
+
+
+class UpdateContactRequest(BaseModel):
+    phone:        Optional[str] = None
+    parent_phone: Optional[str] = None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -738,6 +745,8 @@ def my_ward_students(
             "name": student.name,
             "roll_number": student.roll_number,
             "email": student.email,
+            "phone": student.phone or "",
+            "parent_phone": student.parent_phone or "",
             "section_name": sec_name,
             "semester": student.semester,
             "academic_year": year,
@@ -854,8 +863,84 @@ def my_defaulters(
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# PATCH /api/tutor/ward/{student_id}/contacts — edit ward student phones
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.patch("/ward/{student_id}/contacts")
+def update_ward_contacts(
+    student_id:   int,
+    body:         UpdateContactRequest,
+    current_user: dict    = Depends(teacher_or_above),
+    db:           Session = Depends(get_db),
+):
+    year = _current_academic_year()
+
+    # Verify tutor assignment
+    assignment = (
+        db.query(TutorAssignment)
+        .filter(
+            TutorAssignment.tutor_id == current_user["id"],
+            TutorAssignment.student_id == student_id,
+            TutorAssignment.academic_year == year,
+            TutorAssignment.is_active == True,
+        )
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "You are not assigned as tutor to this student.")
+
+    student = db.query(User).filter(User.id == student_id).first()
+    if not student:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found.")
+
+    if body.phone is not None:
+        student.phone = body.phone.strip() if body.phone else None
+    if body.parent_phone is not None:
+        student.parent_phone = body.parent_phone.strip() if body.parent_phone else None
+
+    db.commit()
+    db.refresh(student)
+
+    logger.info("🎓 TUTOR CONTACTS │ tutor_id=%d │ student_id=%d │ phone=%s │ parent_phone=%s",
+                current_user["id"], student_id, student.phone, student.parent_phone)
+
+    return {
+        "student_id": student.id,
+        "phone": student.phone or "",
+        "parent_phone": student.parent_phone or "",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # POST /api/tutor/notify-ward — send notifications
 # ═══════════════════════════════════════════════════════════════════════
+
+def _build_attendance_template(student: User, att: dict, tutor_name: str) -> str:
+    """Build a templated attendance report message for a student."""
+    lines = [
+        f"Dear Parent/Guardian,",
+        f"",
+        f"Attendance report for your ward:",
+        f"Name: {student.name}",
+        f"Roll No: {student.roll_number or '—'}",
+        f"",
+        f"📊 Per-Subject Breakdown:",
+    ]
+    for s in att["per_subject"]:
+        lines.append(f"  • {s['subject_name']} ({s['subject_code']}): {s['present']}/{s['total']} — {s['pct']}%")
+
+    lines.append(f"")
+    lines.append(f"Overall: {att['present_sessions']}/{att['total_sessions']} sessions — {att['overall_pct']}%")
+
+    if att["overall_pct"] < _THRESHOLD:
+        lines.append(f"")
+        lines.append(f"⚠️ Attendance is below the required {_THRESHOLD}% threshold. Immediate attention is needed.")
+
+    lines.append(f"")
+    lines.append(f"— {tutor_name}, Tutor")
+    return "\n".join(lines)
+
 
 @router.post("/notify-ward")
 def notify_ward(
@@ -882,6 +967,10 @@ def notify_ward(
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             f"Students {invalid} are not your wards.")
 
+    if not body.use_template and not body.message.strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Message is required when not using template.")
+
     sent_count = 0
     failed_count = 0
 
@@ -889,6 +978,13 @@ def notify_ward(
         student = db.query(User).filter(User.id == sid).first()
         if not student:
             continue
+
+        # Build message: template or custom
+        if body.use_template:
+            att = _student_attendance_summary(sid, db)
+            msg = _build_attendance_template(student, att, current_user["name"])
+        else:
+            msg = body.message
 
         for channel in body.channels:
             ok = False
@@ -898,15 +994,35 @@ def notify_ward(
                 ok = send_push_notification(
                     user_id=sid,
                     title="Message from your Tutor",
-                    body=body.message,
+                    body=msg,
                     db=db,
                 )
+
             elif channel == "whatsapp":
-                phone = student.parent_phone or student.phone
-                if phone:
-                    wa = send_whatsapp_message(phone, body.message)
-                    ok = wa.get("ok", False)
-                    external_id = wa.get("sid")
+                # Send to BOTH student phone and parent phone
+                phones = set()
+                if student.phone:
+                    phones.add(student.phone.strip())
+                if student.parent_phone:
+                    phones.add(student.parent_phone.strip())
+
+                for phone in phones:
+                    wa = send_whatsapp_message(phone, msg)
+                    wa_ok = wa.get("ok", False)
+                    db.add(AlertsLog(
+                        student_id=sid,
+                        alert_type="tutor_notification",
+                        message=msg,
+                        status=AlertStatus.sent if wa_ok else AlertStatus.failed,
+                        channel=AlertChannel.whatsapp,
+                        external_id=wa.get("sid"),
+                    ))
+                    if wa_ok:
+                        sent_count += 1
+                    else:
+                        failed_count += 1
+                continue  # already logged per-phone above
+
             # sms — not implemented yet, log as failed
             elif channel == "sms":
                 ok = False
@@ -920,7 +1036,7 @@ def notify_ward(
             db.add(AlertsLog(
                 student_id=sid,
                 alert_type="tutor_notification",
-                message=body.message,
+                message=msg,
                 status=AlertStatus.sent if ok else AlertStatus.failed,
                 channel=alert_channel,
                 external_id=external_id,
