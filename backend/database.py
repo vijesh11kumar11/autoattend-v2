@@ -767,6 +767,36 @@ class LeaveRequest(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# TABLE — attendance_disputes  (PROMPT 7)
+# ═══════════════════════════════════════════════════════════════════════
+
+class DisputeStatus(str, enum.Enum):
+    pending  = "pending"
+    resolved = "resolved"
+    rejected = "rejected"
+
+
+class AttendanceDispute(Base):
+    __tablename__ = "attendance_disputes"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    student_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    session_id      = Column(Integer, ForeignKey("attendance_sessions.id", ondelete="CASCADE"), nullable=False)
+    reason          = Column(Text, nullable=False)
+    proof_note      = Column(String(500), nullable=True)
+    status          = Column(SAEnum(DisputeStatus, name="disputestatus"), default=DisputeStatus.pending, nullable=False)
+    resolved_by     = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_at     = Column(DateTime(timezone=True), nullable=True)
+    resolution_note = Column(Text, nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    student  = relationship("User", foreign_keys=[student_id])
+    session  = relationship("AttendanceSession")
+    resolver = relationship("User", foreign_keys=[resolved_by])
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Utilities
 # ═══════════════════════════════════════════════════════════════════════
 

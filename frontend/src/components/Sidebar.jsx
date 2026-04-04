@@ -43,6 +43,7 @@ const NAV_ITEMS = {
     { to: '/teacher/ward-students', icon: '🎓', label: 'Ward Students'     },
     { to: '/teacher/leave-requests', icon: '✋', label: 'Leave Requests'     },
     { to: '/teacher/twm',           icon: '🤝', label: 'TWM Meetings'       },
+    { to: '/teacher/disputes',       icon: '⚖️', label: 'Disputes'            },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
@@ -50,6 +51,7 @@ const NAV_ITEMS = {
     { to: '/student/attendance', icon: '✅', label: 'My Attendance'     },
     { to: '/student/timetable',  icon: '🗓️', label: 'Timetable'        },
     { to: '/student/leaves',     icon: '📋', label: 'Leave Requests'   },
+    { to: '/student/disputes',   icon: '⚖️', label: 'Disputes'          },
     { to: '/student/download',   icon: '⬇️', label: 'Download Report'   },
   ],
 };

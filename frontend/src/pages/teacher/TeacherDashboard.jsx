@@ -9,6 +9,7 @@ import TutorDashboardPage from './TutorDashboardPage';
 import TWMPage from './TWMPage';
 import LeaveRequestsPage from './LeaveRequestsPage';
 import SubjectAnalyticsPage from './SubjectAnalyticsPage';
+import TeacherDisputesPage from './TeacherDisputesPage';
 
 export default function TeacherDashboard() {
   return (
@@ -22,6 +23,7 @@ export default function TeacherDashboard() {
         <Route path="ward-students" element={<TutorDashboardPage />} />
         <Route path="twm"            element={<TWMPage />} />
         <Route path="leave-requests" element={<LeaveRequestsPage />} />
+        <Route path="disputes"        element={<TeacherDisputesPage />} />
         <Route path="analytics/:subjectId" element={<SubjectAnalyticsPage />} />
         <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>

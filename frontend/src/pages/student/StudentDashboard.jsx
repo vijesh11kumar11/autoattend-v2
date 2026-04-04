@@ -1,18 +1,14 @@
 /**
- * AutoAttend AI v2.0 — Student Dashboard
+ * AutoAttend AI v2.0 — Student Dashboard (PROMPT 7 Rebuild)
  *
  * Routes served (within /student/*):
- *   dashboard  → StudentHome (this file)
+ *   dashboard  → StudentHome (rebuilt with activity rings, forecast, disputes)
  *   scan-qr    → stub
- *   attendance → stub
- *   timetable  → stub
- *   download   → stub
- *
- * APIs used:
- *   GET /api/auth/me                               → profile
- *   GET /api/attendance/student/{id}/summary       → subject cards
- *   GET /api/attendance/student/{id}/calendar      → 30-day calendar
- *   GET /api/attendance/student/{id}/recent        → last 10 records
+ *   attendance → AttendanceDetailPage
+ *   timetable  → StudentTimetablePage
+ *   leaves     → StudentLeavePage
+ *   disputes   → DisputesPage (NEW)
+ *   download   → DownloadReportPage
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -34,401 +30,388 @@ function statusMeta(status) {
   }
 }
 
-function classesNeeded(present, total) {
-  // classes needed to reach THRESHOLD when adding more classes
-  // if present/total < THRESHOLD/100, need x more so (present+x)/(total+x) >= THRESHOLD/100
-  if (total === 0) return 0;
-  const pct = present / total;
-  if (pct * 100 >= THRESHOLD) return 0;
-  // (present + x) / (total + x) >= THRESHOLD/100
-  // => present + x >= THRESHOLD/100 * (total + x)
-  // => present + x - THRESHOLD/100 * total - THRESHOLD/100 * x >= 0
-  // => x * (1 - THRESHOLD/100) >= THRESHOLD/100 * total - present
-  // => x >= (THRESHOLD/100 * total - present) / (1 - THRESHOLD/100)
-  const t = THRESHOLD / 100;
-  return Math.ceil((t * total - present) / (1 - t));
-}
-
 function pctBarColor(pct) {
   if (pct >= THRESHOLD)    return 'bg-emerald-500';
   if (pct >= THRESHOLD - 10) return 'bg-amber-400';
   return 'bg-red-500';
 }
 
-// ── Avatar component ──────────────────────────────────────────────────
-function Avatar({ name, size = 'lg' }) {
-  const initials = (name || 'S')
-    .split(' ').filter(Boolean).slice(0, 2)
-    .map(w => w[0].toUpperCase()).join('');
-  const sz = size === 'lg' ? 'w-16 h-16 text-xl' : 'w-10 h-10 text-sm';
-  return (
-    <div className={`${sz} rounded-full bg-gradient-to-br from-blue-500 to-indigo-600
-                     flex items-center justify-center font-bold text-white flex-shrink-0`}>
-      {initials}
-    </div>
-  );
-}
-
-// ── Header Card ───────────────────────────────────────────────────────
-function HeaderCard({ profile, overallPct }) {
-  const navigate = useNavigate();
-  const pctColor = overallPct >= THRESHOLD ? 'text-emerald-600'
-                 : overallPct >= THRESHOLD - 10 ? 'text-amber-500'
-                 : 'text-red-500';
+// ── Activity Ring (SVG circular progress) ─────────────────────────────
+function ActivityRing({ pct, size = 80, strokeWidth = 7, label, sublabel }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.min(pct, 100) / 100) * circumference;
+  const ringColor = pct >= 75 ? '#22c55e' : pct >= 65 ? '#f59e0b' : '#ef4444';
 
   return (
-    <div className="card p-5 flex items-start gap-4 flex-wrap">
-      <Avatar name={profile.name} size="lg" />
-
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <h2 className="text-lg font-bold text-slate-800 truncate">{profile.name}</h2>
-        <p className="text-sm text-slate-500 font-mono">{profile.roll_number}</p>
-        {profile.course_name && (
-          <p className="text-sm text-slate-500">{profile.course_name}
-            {profile.semester ? <span className="ml-2 text-slate-400">· Sem {profile.semester}</span> : null}
-          </p>
-        )}
+    <div className="flex flex-col items-center">
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke="#e2e8f0" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke={ringColor} strokeWidth={strokeWidth}
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          strokeLinecap="round" className="transition-all duration-700" />
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center" style={{ width: size, height: size }}>
+        <span className="text-sm font-black" style={{ color: ringColor }}>{pct}%</span>
       </div>
-
-      <div className="flex items-center gap-5">
-        <div className="text-center">
-          <p className={`text-3xl font-extrabold ${pctColor}`}>{overallPct ?? '—'}%</p>
-          <p className="text-xs text-slate-400 mt-0.5">Overall</p>
-        </div>
-        <button
-          className="btn-primary text-sm flex items-center gap-2"
-          onClick={() => navigate('/student/scan-qr')}
-        >
-          <span>📷</span> Scan QR
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Warning Banner ────────────────────────────────────────────────────
-function WarningBanner({ subjects }) {
-  const atRisk = subjects.filter(s => s.percentage < THRESHOLD);
-  if (!atRisk.length) return null;
-
-  return (
-    <div className="card p-4 border-red-200 bg-red-50 space-y-1">
-      {atRisk.map(s => {
-        const needed = classesNeeded(s.present, s.total_sessions);
-        return (
-          <p key={s.subject_id} className="text-sm text-red-700 font-medium">
-            ⚠️ <span className="font-bold">{s.subject_name}</span> — {s.percentage}% attendance.
-            {needed > 0
-              ? ` Attend ${needed} more class${needed > 1 ? 'es' : ''} to reach ${THRESHOLD}%. Contact your HOD.`
-              : ` Attendance is critically low. Contact your HOD immediately.`}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Subject Card ──────────────────────────────────────────────────────
-function SubjectCard({ subj }) {
-  const meta = statusMeta(subj.attendance_status);
-  const needed = classesNeeded(subj.present, subj.total_sessions);
-
-  return (
-    <div className={`card p-4 border ${meta.bg} space-y-2`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-semibold text-slate-800 truncate">{subj.subject_name}</p>
-          <p className="text-xs text-slate-400 font-mono">{subj.subject_code}</p>
-        </div>
-        <span className={`text-sm font-bold ${meta.color} flex-shrink-0`}>
-          {subj.percentage}%
-        </span>
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${pctBarColor(subj.percentage)}`}
-          style={{ width: `${Math.min(subj.percentage, 100)}%` }}
-        />
-      </div>
-
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>{subj.present}/{subj.total_sessions} classes attended</span>
-        <span className={`font-semibold ${meta.color}`}>
-          {meta.icon} {meta.label}
-        </span>
-      </div>
-
-      {subj.attendance_status === 'warning' && needed > 0 && (
-        <p className="text-xs text-amber-600 font-medium">
-          Need {needed} more class{needed > 1 ? 'es' : ''} to reach {THRESHOLD}%
-        </p>
-      )}
-      {subj.attendance_status === 'critical' && (
-        <p className="text-xs text-red-500 font-medium">Attendance low — contact HOD</p>
-      )}
-      {subj.attendance_status === 'detained' && (
-        <p className="text-xs text-red-700 font-bold">Cannot sit for exams!</p>
-      )}
-    </div>
-  );
-}
-
-// ── Attendance Calendar ───────────────────────────────────────────────
-const DAY_META = {
-  P: { bg: 'bg-emerald-500', text: 'text-white',        tip: 'Present'       },
-  A: { bg: 'bg-red-400',     text: 'text-white',        tip: 'Absent'        },
-  L: { bg: 'bg-amber-400',   text: 'text-white',        tip: 'Late'          },
-  M: { bg: 'bg-blue-400',    text: 'text-white',        tip: 'Medical Leave' },
-  D: { bg: 'bg-purple-400',  text: 'text-white',        tip: 'Duty Leave'    },
-  '':{ bg: 'bg-slate-100',   text: 'text-slate-300',    tip: 'No class'      },
-};
-
-function AttendanceCalendar({ days }) {
-  const [selected, setSelected] = useState(null);
-
-  if (!days || !days.length) return null;
-
-  return (
-    <div className="card p-4 space-y-3">
-      <h3 className="text-sm font-semibold text-slate-700">Attendance Calendar (Last 30 Days)</h3>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-xs">
-        {Object.entries(DAY_META).filter(([k]) => k !== '').map(([code, m]) => (
-          <span key={code} className="flex items-center gap-1">
-            <span className={`w-5 h-5 rounded ${m.bg} inline-block`} />
-            <span className="text-slate-500">{m.tip}</span>
-          </span>
-        ))}
-        <span className="flex items-center gap-1">
-          <span className="w-5 h-5 rounded bg-slate-100 inline-block" />
-          <span className="text-slate-500">No class</span>
-        </span>
-      </div>
-
-      {/* Grid */}
-      <div className="flex flex-wrap gap-1.5">
-        {days.map(day => {
-          const m = DAY_META[day.day_code] || DAY_META[''];
-          const isSelected = selected === day.date;
-          return (
-            <button
-              key={day.date}
-              onClick={() => setSelected(isSelected ? null : day.date)}
-              title={`${day.date}: ${m.tip}`}
-              className={`w-7 h-7 rounded text-xs font-bold ${m.bg} ${m.text}
-                          transition-all hover:scale-110 focus:outline-none
-                          ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-110' : ''}`}
-            >
-              {day.day_code || new Date(day.date).getDate()}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Detail popup */}
-      {selected && (() => {
-        const day = days.find(d => d.date === selected);
-        if (!day || !day.subjects.length) return (
-          <p className="text-xs text-slate-400 mt-1">No classes on {selected}</p>
-        );
-        return (
-          <div className="mt-2 text-xs space-y-1 border-t border-slate-100 pt-2">
-            <p className="font-semibold text-slate-600">{selected}</p>
-            {day.subjects.map((s, i) => {
-              const sm = statusMeta(s.status);
-              return (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="text-slate-700">{s.subject_name}</span>
-                  <span className={`font-semibold ${sm.color}`}>{sm.icon} {s.status}</span>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })()}
-    </div>
-  );
-}
-
-// ── Recent Activity ───────────────────────────────────────────────────
-function RecentActivity({ records }) {
-  if (!records || !records.length) return null;
-
-  const statusColor = (s) => {
-    if (s === 'present') return 'badge-success';
-    if (s === 'absent')  return 'badge-danger';
-    if (s === 'late')    return 'badge-warning';
-    return 'badge-secondary';
-  };
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-200">
-        <h3 className="text-sm font-semibold text-slate-700">Recent Activity</h3>
-      </div>
-      <table className="w-full text-sm text-left">
-        <thead className="bg-slate-50 border-b border-slate-100">
-          <tr>
-            {['Date', 'Subject', 'Status', 'Marked Via'].map(h => (
-              <th key={h} className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-50">
-          {records.map((r, i) => (
-            <tr key={i} className="hover:bg-slate-50">
-              <td className="px-4 py-2.5 text-slate-500 text-xs">{r.date}</td>
-              <td className="px-4 py-2.5">
-                <p className="font-medium text-slate-800">{r.subject_name}</p>
-                <p className="text-xs text-slate-400 font-mono">{r.subject_code}</p>
-              </td>
-              <td className="px-4 py-2.5">
-                <span className={`badge ${statusColor(r.status)} capitalize`}>{r.status.replace('_', ' ')}</span>
-              </td>
-              <td className="px-4 py-2.5 text-slate-500 text-xs capitalize">
-                {r.face_verified ? '🔒 ' : ''}{r.marked_via.replace('_', ' ')}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {label && <p className="text-xs font-semibold text-slate-700 mt-1 text-center truncate max-w-[90px]">{label}</p>}
+      {sublabel && <p className="text-[10px] text-slate-400 text-center">{sublabel}</p>}
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// StudentHome — main dashboard content
+// StudentHome — rebuilt dashboard (PROMPT 7)
 // ═══════════════════════════════════════════════════════════════════════
 function StudentHome() {
   const { user } = useAuth();
-  const studentId = user?.id;
+  const navigate = useNavigate();
 
-  const [profile,   setProfile]   = useState(null);
-  const [summary,   setSummary]   = useState(null);
-  const [calendar,  setCalendar]  = useState(null);
-  const [recent,    setRecent]    = useState(null);
-  const [todayTT,   setTodayTT]   = useState([]);
-  const [error,     setError]     = useState('');
-  const [loading,   setLoading]   = useState(true);
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState('');
+  const [flash, setFlash]         = useState('');
+  const [disputeModal, setDisputeModal] = useState(null); // session_id to dispute
+  const [disputeReason, setDisputeReason] = useState('');
+  const [disputeNote, setDisputeNote]     = useState('');
+  const [submitting, setSubmitting]       = useState(false);
 
   const isMounted = useRef(true);
   useEffect(() => () => { isMounted.current = false; }, []);
 
-  useEffect(() => {
-    if (!studentId) return;
+  const loadDashboard = () => {
+    setLoading(true);
+    api.get('/student/portal/dashboard')
+      .then(r => { if (isMounted.current) setDashboard(r.data); })
+      .catch(() => { if (isMounted.current) setError('Failed to load dashboard.'); })
+      .finally(() => { if (isMounted.current) setLoading(false); });
+  };
 
-    Promise.all([
-      api.get('/auth/me'),
-      api.get(`/attendance/student/${studentId}/summary`),
-      api.get(`/attendance/student/${studentId}/calendar`, { params: { days: 30 } }),
-      api.get(`/attendance/student/${studentId}/recent`,   { params: { limit: 10 } }),
-    ])
-      .then(([p, s, c, r]) => {
-        if (!isMounted.current) return;
-        setProfile(p.data);
-        setSummary(s.data);
-        setCalendar(c.data);
-        setRecent(r.data);
-      })
-      .catch(() => {
-        if (isMounted.current) setError('Failed to load dashboard. Please refresh.');
-      })
-      .finally(() => {
-        if (isMounted.current) setLoading(false);
+  useEffect(() => { loadDashboard(); }, []);
+
+  const handleDispute = async () => {
+    if (!disputeReason.trim() || disputeReason.length < 5) {
+      setFlash('Reason must be at least 5 characters.'); return;
+    }
+    setSubmitting(true);
+    try {
+      await api.post('/student/portal/dispute-attendance', {
+        session_id: disputeModal,
+        reason: disputeReason,
+        proof_note: disputeNote || null,
       });
-  }, [studentId]);
+      setFlash('Dispute submitted! Your teacher will be notified.');
+      setDisputeModal(null);
+      setDisputeReason('');
+      setDisputeNote('');
+      loadDashboard();
+    } catch (err) {
+      setFlash(err.response?.data?.detail || 'Failed to submit dispute.');
+    } finally { setSubmitting(false); }
+  };
 
-  // Load today's timetable from new endpoint
-  useEffect(() => {
-    api.get('/timetable/my-section-timetable')
-      .then(r => {
-        if (!isMounted.current) return;
-        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-        const dayData = (r.data?.timetable || []).find(d => d.day?.toLowerCase() === today);
-        setTodayTT(dayData?.entries || []);
-      })
-      .catch(() => {});
-  }, []);
+  if (loading) {
+    return (
+      <div className="card p-10 text-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-[#1a237e] rounded-full animate-spin mx-auto" />
+        <p className="text-slate-400 text-sm mt-3">Loading dashboard…</p>
+      </div>
+    );
+  }
+  if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
+  if (!dashboard) return null;
 
-  if (loading) return <div className="p-8 text-slate-400 text-sm animate-pulse">Loading your dashboard…</div>;
-  if (error)   return <div className="p-8 text-red-500 text-sm">{error}</div>;
-  if (!profile || !summary) return null;
+  const d = dashboard;
+  const subjects = d.attendance_summary || [];
+  const lowSubjects = d.low_attendance_subjects || [];
+  const todayTT = d.today_timetable || [];
+  const recentRecords = d.recent_records || [];
+  const upcoming = d.upcoming_sessions || [];
 
-  // Overall attendance %: weighted by total_sessions
-  const totalSlots   = summary.subjects.reduce((a, s) => a + s.total_sessions, 0);
-  const totalPresent = summary.subjects.reduce((a, s) => a + s.present,        0);
-  const overallPct   = totalSlots
-    ? Math.round((totalPresent / totalSlots) * 1000) / 10
-    : null;
+  // Overall %
+  const totalSlots = subjects.reduce((a, s) => a + s.total_sessions, 0);
+  const totalPresent = subjects.reduce((a, s) => a + s.present, 0);
+  const overallPct = totalSlots ? Math.round((totalPresent / totalSlots) * 1000) / 10 : 0;
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <HeaderCard profile={profile} overallPct={overallPct} />
+    <div className="space-y-6">
+      {flash && (
+        <div className="card px-5 py-3 bg-emerald-50 text-emerald-700 text-sm flex items-center justify-between">
+          <span>{flash}</span>
+          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">✕</button>
+        </div>
+      )}
 
-      {/* Warning banner */}
-      <WarningBanner subjects={summary.subjects} />
+      {/* ── Welcome Header ── */}
+      <div className="card bg-gradient-to-r from-[#1a237e] to-[#283593] p-6 text-white flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-bold">Hello, {d.student_name}!</h1>
+          <p className="text-blue-200 text-sm mt-1">
+            {d.roll_number} · Semester {d.semester}
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <p className="text-3xl font-extrabold">{overallPct}%</p>
+            <p className="text-xs text-blue-200">Overall</p>
+          </div>
+          <button onClick={() => navigate('/student/scan-qr')}
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-semibold transition">
+            📷 Scan QR
+          </button>
+        </div>
+      </div>
 
-      {/* Today's Timetable */}
-      {todayTT.length > 0 && (() => {
-        const nowStr = new Date().toTimeString().slice(0, 5);
-        return (
+      {/* ── Low Attendance Warning ── */}
+      {lowSubjects.length > 0 && (
+        <div className="card p-4 border-red-200 bg-red-50 space-y-1">
+          {lowSubjects.map(s => (
+            <p key={s.subject_id} className="text-sm text-red-700 font-medium">
+              ⚠️ <span className="font-bold">{s.subject_name}</span> — {s.percentage}%.
+              {s.sessions_needed > 0
+                ? ` Attend ${s.sessions_needed} more class${s.sessions_needed > 1 ? 'es' : ''} to be safe.`
+                : ' Critically low — contact your HOD.'}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* ── Activity Rings — Subject Attendance ── */}
+      {subjects.length > 0 && (
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">📊 Subject Attendance</h3>
+          <div className="flex flex-wrap gap-6 justify-center">
+            {subjects.map(s => (
+              <div key={s.subject_id} className="relative">
+                <ActivityRing
+                  pct={s.percentage}
+                  label={s.subject_name}
+                  sublabel={`${s.present}/${s.total_sessions}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 2-COLUMN GRID ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* ── COL 1: Forecast + Timetable ── */}
+        <div className="space-y-4">
+          {/* Attendance Forecast */}
           <div className="card overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50 border-b font-semibold text-slate-700">📅 Today's Classes</div>
+            <div className="px-4 py-2.5 bg-slate-50 border-b font-semibold text-slate-700 text-sm">
+              🔮 Attendance Forecast
+            </div>
             <div className="divide-y">
-              {todayTT.map((slot, i) => {
-                const isCurrent = slot.start_time <= nowStr && nowStr <= slot.end_time;
+              {subjects.map(s => {
+                const atRisk = s.sessions_needed > 0 && s.percentage < THRESHOLD;
                 return (
-                  <div key={i} className={`px-4 py-3 flex items-center justify-between ${isCurrent ? 'bg-blue-50 border-l-4 border-[#1a237e]' : ''}`}>
-                    <div className="flex items-center gap-3">
-                      {slot.color_tag && <div className="w-2 h-8 rounded-full" style={{ backgroundColor: slot.color_tag }} />}
+                  <div key={s.subject_id} className={`px-4 py-3 ${atRisk ? 'bg-red-50/50' : ''}`}>
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-medium text-slate-700 text-sm">
-                          {slot.subject_name} <span className="text-slate-400 text-xs">({slot.subject_code})</span>
-                        </p>
-                        <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
-                          <span>👨‍🏫 {slot.teacher_name}</span>
-                          <span>🏫 {slot.room || '—'}</span>
-                          {slot.is_lab && <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded">LAB</span>}
-                        </div>
+                        <p className="text-sm font-medium text-slate-700">{s.subject_name}</p>
+                        <p className="text-xs text-slate-400 font-mono">{s.subject_code}</p>
                       </div>
+                      <span className={`text-sm font-bold ${s.percentage >= THRESHOLD ? 'text-green-600' : 'text-red-600'}`}>
+                        {s.percentage}%
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-slate-400">{slot.start_time} – {slot.end_time}</span>
-                      {isCurrent && <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full font-semibold">NOW</span>}
+                    <div className="mt-1.5">
+                      {s.percentage >= THRESHOLD ? (
+                        <p className="text-xs text-green-600">
+                          ✅ You can miss {s.can_afford_to_miss} more class{s.can_afford_to_miss !== 1 ? 'es' : ''}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-red-600 font-medium">
+                          ⚠️ Need to attend {s.sessions_needed} more class{s.sessions_needed !== 1 ? 'es' : ''} to reach {THRESHOLD}%
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
               })}
+              {subjects.length === 0 && (
+                <div className="p-6 text-center text-slate-400 text-sm">No data yet.</div>
+              )}
             </div>
           </div>
-        );
-      })()}
 
-      {/* Subject cards */}
-      {summary.subjects.length > 0 ? (
-        <div>
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Subject Attendance</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {summary.subjects.map(s => <SubjectCard key={s.subject_id} subj={s} />)}
+          {/* Today's Timetable */}
+          <div className="card overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b font-semibold text-slate-700 text-sm">
+              📅 Today's Schedule
+            </div>
+            {todayTT.length > 0 ? (
+              <div className="divide-y">
+                {todayTT.map((slot, i) => {
+                  const nowStr = new Date().toTimeString().slice(0, 5);
+                  const isCurrent = slot.start_time <= nowStr && nowStr <= slot.end_time;
+                  return (
+                    <div key={i} className={`px-4 py-2.5 flex items-center justify-between ${isCurrent ? 'bg-blue-50 border-l-4 border-[#1a237e]' : ''}`}>
+                      <div className="flex items-center gap-2">
+                        {slot.color_tag && <div className="w-1.5 h-8 rounded-full" style={{ backgroundColor: slot.color_tag }} />}
+                        <div>
+                          <p className="font-medium text-slate-700 text-sm">
+                            {slot.subject_name}
+                            {slot.is_twm && <span className="ml-1 text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded">TWM</span>}
+                          </p>
+                          <p className="text-xs text-slate-400 font-mono">{slot.start_time} – {slot.end_time} · {slot.room || '—'}</p>
+                        </div>
+                      </div>
+                      {isCurrent && <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full font-semibold">NOW</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-slate-400 text-sm">No classes today.</div>
+            )}
           </div>
         </div>
-      ) : (
-        <div className="card p-8 text-center text-slate-400 text-sm">
-          No subjects / sessions recorded yet.
+
+        {/* ── COL 2: Recent + Tutor + Quick Actions ── */}
+        <div className="space-y-4">
+          {/* Recent Records with Dispute buttons */}
+          <div className="card overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b font-semibold text-slate-700 text-sm">
+              🕑 Recent Records
+            </div>
+            {recentRecords.length > 0 ? (
+              <div className="divide-y">
+                {recentRecords.map(r => {
+                  const statusColors = {
+                    present: 'bg-emerald-100 text-emerald-700',
+                    absent: 'bg-red-100 text-red-700',
+                    late: 'bg-amber-100 text-amber-700',
+                    medical_leave: 'bg-blue-100 text-blue-700',
+                    duty_leave: 'bg-purple-100 text-purple-700',
+                  };
+                  return (
+                    <div key={r.record_id} className="px-4 py-2.5 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">{r.subject_name}</p>
+                        <p className="text-xs text-slate-400">{r.date}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${statusColors[r.status] || 'bg-slate-100 text-slate-500'}`}>
+                          {r.status.replace('_', ' ')}
+                        </span>
+                        {r.can_dispute && (
+                          <button
+                            onClick={() => setDisputeModal(r.session_id)}
+                            className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 font-medium"
+                          >
+                            Dispute
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-slate-400 text-sm">No records yet.</div>
+            )}
+          </div>
+
+          {/* My Tutor */}
+          {d.tutor_info && (
+            <div className="card p-4">
+              <h3 className="text-sm font-semibold text-slate-700 mb-2">👨‍🏫 My Tutor</h3>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm">
+                  {(d.tutor_info.name || 'T').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-700">{d.tutor_info.name}</p>
+                  {d.tutor_info.email && <p className="text-xs text-slate-400">{d.tutor_info.email}</p>}
+                  {d.tutor_info.phone && <p className="text-xs text-slate-400">{d.tutor_info.phone}</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Leave & Dispute Summary */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="card p-4 text-center cursor-pointer hover:shadow-md transition" onClick={() => navigate('/student/leaves')}>
+              <p className="text-2xl font-bold text-amber-600">{d.pending_leave_requests}</p>
+              <p className="text-xs text-slate-400">Pending Leaves</p>
+            </div>
+            <div className="card p-4 text-center cursor-pointer hover:shadow-md transition" onClick={() => navigate('/student/disputes')}>
+              <span className="text-2xl">⚖️</span>
+              <p className="text-xs text-slate-400 mt-1">My Disputes</p>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="card overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b font-semibold text-slate-700 text-sm">
+              ⚡ Quick Actions
+            </div>
+            <div className="p-3 grid grid-cols-2 gap-2">
+              <button onClick={() => navigate('/student/attendance')}
+                className="p-3 bg-blue-50 rounded-lg text-center hover:bg-blue-100 transition">
+                <span className="text-xl block">✅</span>
+                <p className="text-xs font-medium text-blue-700 mt-1">Attendance</p>
+              </button>
+              <button onClick={() => navigate('/student/timetable')}
+                className="p-3 bg-green-50 rounded-lg text-center hover:bg-green-100 transition">
+                <span className="text-xl block">🗓️</span>
+                <p className="text-xs font-medium text-green-700 mt-1">Timetable</p>
+              </button>
+              <button onClick={() => navigate('/student/leaves')}
+                className="p-3 bg-amber-50 rounded-lg text-center hover:bg-amber-100 transition">
+                <span className="text-xl block">📋</span>
+                <p className="text-xs font-medium text-amber-700 mt-1">Leaves</p>
+              </button>
+              <button onClick={() => navigate('/student/download')}
+                className="p-3 bg-purple-50 rounded-lg text-center hover:bg-purple-100 transition">
+                <span className="text-xl block">⬇️</span>
+                <p className="text-xs font-medium text-purple-700 mt-1">Report</p>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Dispute Modal ── */}
+      {disputeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="card w-full max-w-md p-6 space-y-4 m-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800">⚖️ Dispute Attendance</h3>
+              <button onClick={() => setDisputeModal(null)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+            </div>
+            <p className="text-sm text-slate-500">Explain why you believe you were wrongly marked absent.</p>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Reason *</label>
+              <textarea value={disputeReason}
+                onChange={e => setDisputeReason(e.target.value)}
+                placeholder="I was present in class but my QR scan failed because…"
+                rows={3} maxLength={1000}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e] resize-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                Proof/Note <span className="text-slate-400 normal-case">(optional)</span>
+              </label>
+              <input value={disputeNote}
+                onChange={e => setDisputeNote(e.target.value)}
+                placeholder="Link to photo, classmate witness, etc."
+                maxLength={500}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+            </div>
+            <button onClick={handleDispute} disabled={submitting}
+              className="w-full py-3 bg-[#1a237e] text-white font-bold rounded-xl hover:bg-[#283593] disabled:opacity-50">
+              {submitting ? '⏳ Submitting…' : '📨 Submit Dispute'}
+            </button>
+          </div>
         </div>
       )}
-
-      {/* Calendar + Recent side by side on large screens */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <AttendanceCalendar days={calendar?.days} />
-        <RecentActivity records={recent?.records} />
-      </div>
     </div>
   );
 }
@@ -939,6 +922,88 @@ function DownloadReportPage() {
   );
 }
 
+// ── Disputes Page (NEW — PROMPT 7) ────────────────────────────────────
+const DISPUTE_STATUS_STYLE = {
+  pending:  'bg-amber-100 text-amber-700',
+  resolved: 'bg-emerald-100 text-emerald-700',
+  rejected: 'bg-red-100 text-red-700',
+};
+
+function DisputesPage() {
+  const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+
+  useEffect(() => {
+    api.get('/student/portal/my-disputes')
+      .then(r => setDisputes(r.data || []))
+      .catch(() => setError('Failed to load disputes.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="card p-10 text-center">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-[#1a237e] rounded-full animate-spin mx-auto" />
+        <p className="text-slate-400 text-sm mt-3">Loading disputes…</p>
+      </div>
+    );
+  }
+  if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="card p-5">
+        <h2 className="text-lg font-bold text-slate-800">⚖️ My Attendance Disputes</h2>
+        <p className="text-sm text-slate-400 mt-1">
+          Disputes you've filed for attendance records you believe are incorrect.
+        </p>
+      </div>
+
+      {disputes.length > 0 ? (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 border-b">
+                <tr>
+                  {['Subject', 'Date', 'Reason', 'Status', 'Resolution'].map(h => (
+                    <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {disputes.map(d => (
+                  <tr key={d.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-700">{d.subject_name}</p>
+                      <p className="text-xs text-slate-400">{d.session_date}</p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{d.created_at?.slice(0, 10)}</td>
+                    <td className="px-4 py-3 text-slate-600 max-w-[250px] truncate">{d.reason}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${DISPUTE_STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-500'}`}>
+                        {d.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500 italic max-w-[200px] truncate">
+                      {d.resolution_note || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="card p-8 text-center text-slate-400">
+          <span className="text-3xl block mb-2">✅</span>
+          <p>No disputes filed yet.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Student Dashboard — Routes tree
 // ═══════════════════════════════════════════════════════════════════════
@@ -952,6 +1017,7 @@ export default function StudentDashboard() {
         <Route path="attendance" element={<AttendanceDetailPage />} />
         <Route path="timetable"  element={<StudentTimetablePage />} />
         <Route path="leaves"     element={<StudentLeavePage />} />
+        <Route path="disputes"   element={<DisputesPage />} />
         <Route path="download"   element={<DownloadReportPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>

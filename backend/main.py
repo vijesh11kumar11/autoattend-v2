@@ -18,6 +18,7 @@ from routes import timetable, tutor, users
 from routes import twm
 from routes import leave
 from routes import analytics
+from routes import student_portal
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
@@ -70,6 +71,7 @@ app.include_router(timetable.router)
 app.include_router(twm.router)
 app.include_router(leave.router)
 app.include_router(analytics.router)
+app.include_router(student_portal.router)
 
 
 @app.get("/api/health")
