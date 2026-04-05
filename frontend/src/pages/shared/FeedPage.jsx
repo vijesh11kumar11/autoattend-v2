@@ -311,7 +311,7 @@ export default function FeedPage() {
               <button onClick={loadMore}
                       className="px-6 py-2.5 bg-white border border-slate-200 rounded-lg text-sm
                                  text-slate-600 hover:bg-slate-50 transition-all">
-                Load More ({total - articles.length} remaining)
+                Load More
               </button>
             </div>
           )}
