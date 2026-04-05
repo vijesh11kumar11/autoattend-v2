@@ -22,6 +22,7 @@ const NAV_ITEMS = {
     { to: '/principal/reports',     icon: '📊', label: 'Reports'      },
     { to: '/principal/alerts',      icon: '🔔', label: 'Alerts'       },
     { to: '/principal/audit',       icon: '🔍', label: 'Audit'        },
+    { to: '/principal/feed',        icon: '📰', label: 'News Feed'    },
   ],
   hod: [
     { to: '/hod/dashboard',         icon: '🏠', label: 'Overview'            },
@@ -38,6 +39,7 @@ const NAV_ITEMS = {
     { to: '/hod/alerts',            icon: '🔔', label: 'Alerts'              },
     { to: '/hod/leave-requests',    icon: '✋', label: 'Leave Approvals'     },
     { to: '/hod/face-reenroll',     icon: '🤳', label: 'Face Re-enroll'      },
+    { to: '/hod/feed',              icon: '📰', label: 'News Feed'           },
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },
@@ -49,6 +51,7 @@ const NAV_ITEMS = {
     { to: '/teacher/leave-requests', icon: '✋', label: 'Leave Requests'     },
     { to: '/teacher/twm',           icon: '🤝', label: 'TWM Meetings'       },
     { to: '/teacher/disputes',       icon: '⚖️', label: 'Disputes'            },
+    { to: '/teacher/feed',          icon: '📰', label: 'News Feed'           },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
@@ -58,6 +61,7 @@ const NAV_ITEMS = {
     { to: '/student/leaves',     icon: '📋', label: 'Leave Requests'   },
     { to: '/student/disputes',   icon: '⚖️', label: 'Disputes'          },
     { to: '/student/download',   icon: '⬇️', label: 'Download Report'   },
+    { to: '/student/feed',       icon: '📰', label: 'News Feed'       },
   ],
 };
 

@@ -10,6 +10,8 @@ import TWMPage from './TWMPage';
 import LeaveRequestsPage from './LeaveRequestsPage';
 import SubjectAnalyticsPage from './SubjectAnalyticsPage';
 import TeacherDisputesPage from './TeacherDisputesPage';
+import FeedPage from '../shared/FeedPage';
+import ArticleDetailPage from '../shared/ArticleDetailPage';
 
 export default function TeacherDashboard() {
   return (
@@ -24,6 +26,8 @@ export default function TeacherDashboard() {
         <Route path="twm"            element={<TWMPage />} />
         <Route path="leave-requests" element={<LeaveRequestsPage />} />
         <Route path="disputes"        element={<TeacherDisputesPage />} />
+        <Route path="feed"             element={<FeedPage />} />
+        <Route path="feed/:articleId"  element={<ArticleDetailPage />} />
         <Route path="analytics/:subjectId" element={<SubjectAnalyticsPage />} />
         <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>

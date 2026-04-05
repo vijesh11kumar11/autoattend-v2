@@ -27,6 +27,8 @@ import TeacherPerformancePage from './TeacherPerformancePage';
 import TutorOverviewPage      from './TutorOverviewPage';
 import HODDisputesPage        from './HODDisputesPage';
 import SemesterProgressPage   from './SemesterProgressPage';
+import FeedPage               from '../shared/FeedPage';
+import ArticleDetailPage      from '../shared/ArticleDetailPage';
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -438,6 +440,8 @@ export default function HODDashboard() {
         <Route path="tutor-overview"    element={<TutorOverviewPage />} />
         <Route path="disputes"          element={<HODDisputesPage />} />
         <Route path="semester-progress" element={<SemesterProgressPage />} />
+        <Route path="feed"              element={<FeedPage />} />
+        <Route path="feed/:articleId"   element={<ArticleDetailPage />} />
         <Route path="*"                 element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

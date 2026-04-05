@@ -21,6 +21,8 @@ import CollegeReportsPage  from './CollegeReportsPage';
 import DepartmentsPage     from './DepartmentsPage';
 import PrincipalAlertsPage from './PrincipalAlertsPage';
 import PrincipalAuditPage  from './PrincipalAuditPage';
+import FeedPage            from '../shared/FeedPage';
+import ArticleDetailPage   from '../shared/ArticleDetailPage';
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -276,6 +278,8 @@ export default function PrincipalDashboard() {
         <Route path="reports"     element={<CollegeReportsPage />} />
         <Route path="alerts"      element={<PrincipalAlertsPage />} />
         <Route path="audit"       element={<PrincipalAuditPage />} />
+        <Route path="feed"        element={<FeedPage />} />
+        <Route path="feed/:articleId" element={<ArticleDetailPage />} />
         <Route path="*"           element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

@@ -36,7 +36,9 @@ class Settings(BaseSettings):
 
     # ── Fast2SMS (Quick route SMS for notifications) ─────────────
     FAST2SMS_API_KEY: str = "will_add_later"
-
+    # ── News Feed ─────────────────────────────────────────────────────
+    NEWS_API_KEY: str = ""
+    FEED_CACHE_MINUTES: int = 60
     # ── Twilio WhatsApp (for parent alerts) ───────────────────────────
     TWILIO_ACCOUNT_SID: str
     TWILIO_AUTH_TOKEN: str

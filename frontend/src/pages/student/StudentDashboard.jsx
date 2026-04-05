@@ -16,6 +16,8 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/DashboardLayout';
+import FeedPage from '../shared/FeedPage';
+import ArticleDetailPage from '../shared/ArticleDetailPage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -1016,6 +1018,8 @@ export default function StudentDashboard() {
         <Route path="leaves"     element={<StudentLeavePage />} />
         <Route path="disputes"   element={<DisputesPage />} />
         <Route path="download"   element={<DownloadReportPage />} />
+        <Route path="feed"       element={<FeedPage />} />
+        <Route path="feed/:articleId" element={<ArticleDetailPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>
