@@ -337,8 +337,43 @@ def _fetch_all() -> list[dict]:
 def get_feed(
     category: str = "all",
     page: int = 1,
+    search: str = "",
     current_user: dict = Depends(get_current_user),
 ):
+    search = search.strip()[:100]  # cap length
+
+    # ── Search mode ──
+    if search:
+        cache_key = f"search:{search.lower()}"
+        if not _is_cache_fresh(cache_key):
+            news = _fetch_newsapi(search, "education", page_size=15)
+            devto = _fetch_devto(search, "technology", per_page=10)
+            # Interleave
+            merged = []
+            ni, di = 0, 0
+            while ni < len(news) or di < len(devto):
+                if ni < len(news):
+                    merged.append(news[ni]); ni += 1
+                if di < len(devto):
+                    merged.append(devto[di]); di += 1
+            _cache[cache_key] = {"data": merged, "ts": time.time()}
+            logger.info("🔍 FEED SEARCH │ q=%s │ results=%d", search, len(merged))
+        data = _cache[cache_key]["data"]
+        per_page = 12
+        start = (page - 1) * per_page
+        end = start + per_page
+        return {
+            "articles": data[start:end],
+            "total": len(data),
+            "page": page,
+            "per_page": per_page,
+            "has_more": end < len(data),
+            "category": "search",
+            "search": search,
+            "cached": True,
+        }
+
+    # ── Category mode ──
     category = category.lower().strip()
     if category not in ("all", "jobs", "education", "ai", "technology", "future"):
         category = "all"

@@ -123,12 +123,20 @@ export default function FeedPage() {
   const [hasMore, setHasMore]     = useState(false);
   const [total, setTotal]         = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
 
-  const fetchFeed = useCallback(async (cat, pg, append = false) => {
+  const fetchFeed = useCallback(async (cat, pg, append = false, query = '') => {
     if (!append) setLoading(true);
     setError('');
     try {
-      const r = await api.get('/feed', { params: { category: cat, page: pg } });
+      const params = { page: pg };
+      if (query) {
+        params.search = query;
+      } else {
+        params.category = cat;
+      }
+      const r = await api.get('/feed', { params });
       const d = r.data;
       if (append) {
         setArticles(prev => [...prev, ...d.articles]);
@@ -146,6 +154,7 @@ export default function FeedPage() {
   }, []);
 
   useEffect(() => {
+    if (activeSearch) return; // don't fetch category when in search mode
     setPage(1);
     fetchFeed(category, 1);
     setSearchParams(category !== 'all' ? { cat: category } : {});
@@ -154,13 +163,37 @@ export default function FeedPage() {
   const refresh = () => {
     setRefreshing(true);
     setPage(1);
-    fetchFeed(category, 1);
+    if (activeSearch) {
+      fetchFeed(category, 1, false, activeSearch);
+    } else {
+      fetchFeed(category, 1);
+    }
   };
 
   const loadMore = () => {
     const next = page + 1;
     setPage(next);
-    fetchFeed(category, next, true);
+    if (activeSearch) {
+      fetchFeed(category, next, true, activeSearch);
+    } else {
+      fetchFeed(category, next, true);
+    }
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) return;
+    setActiveSearch(q);
+    setPage(1);
+    fetchFeed(category, 1, false, q);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setActiveSearch('');
+    setPage(1);
+    fetchFeed(category, 1);
   };
 
   const readMore = (article) => {
@@ -188,8 +221,44 @@ export default function FeedPage() {
         </div>
       </div>
 
+      {/* Search Bar */}
+      <form onSubmit={handleSearch} className="relative">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search news… e.g. AI jobs, React, machine learning"
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm
+                         text-slate-700 placeholder:text-slate-400
+                         focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300
+                         transition-all"
+            />
+          </div>
+          <button type="submit" disabled={!searchQuery.trim()}
+                  className="px-5 py-2.5 bg-[#1a237e] text-white text-sm rounded-xl hover:bg-[#283593]
+                             transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Search
+          </button>
+          {activeSearch && (
+            <button type="button" onClick={clearSearch}
+                    className="px-4 py-2.5 bg-white border border-slate-200 text-sm text-slate-500 rounded-xl
+                               hover:bg-slate-50 transition-colors">
+              ✕ Clear
+            </button>
+          )}
+        </div>
+        {activeSearch && (
+          <p className="text-xs text-indigo-500 mt-2 font-medium">
+            🔍 Showing results for "{activeSearch}"
+          </p>
+        )}
+      </form>
+
       {/* Category Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className={`flex gap-2 overflow-x-auto pb-1 scrollbar-hide ${activeSearch ? 'opacity-40 pointer-events-none' : ''}`}>
         {CATEGORIES.map(c => (
           <button key={c.key} onClick={() => setCategory(c.key)}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap
