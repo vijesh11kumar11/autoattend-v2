@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # ── News Feed ─────────────────────────────────────────────────────
     NEWS_API_KEY: str = ""
     FEED_CACHE_MINUTES: int = 60
+    # ── AI — Career Roadmap ───────────────────────────────────────────
+    GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     # ── Twilio WhatsApp (for parent alerts) ───────────────────────────
     TWILIO_ACCOUNT_SID: str
     TWILIO_AUTH_TOKEN: str

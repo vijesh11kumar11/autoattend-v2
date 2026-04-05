@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/DashboardLayout';
 import FeedPage from '../shared/FeedPage';
 import ArticleDetailPage from '../shared/ArticleDetailPage';
+import CareerRoadmapPage from '../shared/CareerRoadmapPage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -1020,6 +1021,7 @@ export default function StudentDashboard() {
         <Route path="download"   element={<DownloadReportPage />} />
         <Route path="feed"       element={<FeedPage />} />
         <Route path="feed/:articleId" element={<ArticleDetailPage />} />
+        <Route path="career"           element={<CareerRoadmapPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

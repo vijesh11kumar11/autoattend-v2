@@ -25,6 +25,7 @@ from sqlalchemy import (
     create_engine,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
 from config import settings
@@ -794,6 +795,27 @@ class AttendanceDispute(Base):
     student  = relationship("User", foreign_keys=[student_id])
     session  = relationship("AttendanceSession")
     resolver = relationship("User", foreign_keys=[resolved_by])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE — career_roadmaps
+# ═══════════════════════════════════════════════════════════════════════
+
+class CareerRoadmap(Base):
+    __tablename__ = "career_roadmaps"
+    __table_args__ = (
+        Index("ix_career_roadmaps_user_id", "user_id"),
+    )
+
+    id             = Column(Integer, primary_key=True, index=True)
+    user_id        = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_role      = Column(String(20), nullable=False)
+    career_goal    = Column(String(255), nullable=False)
+    roadmap_data   = Column(JSONB, nullable=False)
+    generated_at   = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    is_saved       = Column(Boolean, default=True, nullable=False)
+
+    user = relationship("User")
 
 
 # ═══════════════════════════════════════════════════════════════════════

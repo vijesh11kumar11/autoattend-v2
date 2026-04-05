@@ -12,6 +12,7 @@ import SubjectAnalyticsPage from './SubjectAnalyticsPage';
 import TeacherDisputesPage from './TeacherDisputesPage';
 import FeedPage from '../shared/FeedPage';
 import ArticleDetailPage from '../shared/ArticleDetailPage';
+import CareerRoadmapPage from '../shared/CareerRoadmapPage';
 
 export default function TeacherDashboard() {
   return (
@@ -28,6 +29,7 @@ export default function TeacherDashboard() {
         <Route path="disputes"        element={<TeacherDisputesPage />} />
         <Route path="feed"             element={<FeedPage />} />
         <Route path="feed/:articleId"  element={<ArticleDetailPage />} />
+        <Route path="career"             element={<CareerRoadmapPage />} />
         <Route path="analytics/:subjectId" element={<SubjectAnalyticsPage />} />
         <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>
