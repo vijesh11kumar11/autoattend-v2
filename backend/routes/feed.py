@@ -112,7 +112,7 @@ def _make_id(title: str, source: str) -> str:
 
 
 def _scrape_full_article(url: str) -> str | None:
-    """Fetch and extract article text from source URL."""
+    """Fetch and extract article text from source URL, return clean markdown."""
     if not url:
         return None
     try:
@@ -128,7 +128,13 @@ def _scrape_full_article(url: str) -> str | None:
 
         # Remove unwanted elements
         for tag in soup.find_all(["script", "style", "nav", "footer", "header",
-                                   "aside", "form", "iframe", "noscript"]):
+                                   "aside", "form", "iframe", "noscript",
+                                   "figure", "figcaption", "button", "svg"]):
+            tag.decompose()
+        # Remove ads / social / related sections
+        for tag in soup.find_all(class_=re.compile(
+                r"share|social|comment|related|sidebar|advert|promo|newsletter|popup",
+                re.I)):
             tag.decompose()
 
         # Try to find the main article body
@@ -140,28 +146,60 @@ def _scrape_full_article(url: str) -> str | None:
         if not article_el:
             article_el = soup.body or soup
 
-        # Extract paragraphs
-        paragraphs = []
-        for p in article_el.find_all(["p", "h2", "h3", "h4", "blockquote", "li"]):
-            text = p.get_text(strip=True)
-            if len(text) > 30:  # skip short/empty fragments
-                if p.name in ("h2", "h3", "h4"):
-                    paragraphs.append(f"\n## {text}\n")
-                elif p.name == "blockquote":
-                    paragraphs.append(f"\n> {text}\n")
-                elif p.name == "li":
-                    paragraphs.append(f"- {text}")
-                else:
-                    paragraphs.append(text)
+        # Build structured markdown
+        blocks: list[str] = []
+        seen_texts: set[str] = set()  # deduplicate
+        in_list = False
 
-        if len(paragraphs) < 2:
+        for el in article_el.find_all(["h1", "h2", "h3", "h4", "p", "blockquote",
+                                        "ul", "ol", "li", "strong", "b"]):
+            text = el.get_text(strip=True)
+            if not text or len(text) < 20 or text in seen_texts:
+                continue
+            seen_texts.add(text)
+
+            # Detect stat-like lines (short with numbers/symbols)
+            is_stat = bool(re.match(r"^[~$₹€£\d]", text)) and len(text) < 200
+
+            if el.name == "h1":
+                in_list = False
+                blocks.append(f"\n# {text}\n")
+            elif el.name == "h2":
+                in_list = False
+                blocks.append(f"\n## {text}\n")
+            elif el.name in ("h3", "h4"):
+                in_list = False
+                blocks.append(f"\n### {text}\n")
+            elif el.name == "blockquote":
+                in_list = False
+                blocks.append(f"\n> {text}\n")
+            elif el.name == "li":
+                blocks.append(f"- {text}")
+                in_list = True
+            elif el.name in ("strong", "b") and el.parent and el.parent.name not in ("p", "li", "blockquote"):
+                in_list = False
+                blocks.append(f"\n**{text}**\n")
+            elif is_stat:
+                blocks.append(f"- **{text}**")
+                in_list = True
+            else:
+                if in_list:
+                    blocks.append("")  # gap after list
+                    in_list = False
+                blocks.append(text)
+
+        if len(blocks) < 3:
             return None
 
-        full_text = "\n\n".join(paragraphs)
-        # Cap at ~5000 words to avoid huge payloads
+        full_text = "\n\n".join(blocks)
+
+        # Clean up excessive blank lines
+        full_text = re.sub(r"\n{4,}", "\n\n\n", full_text)
+
+        # Cap at ~5000 words
         words = full_text.split()
         if len(words) > 5000:
-            full_text = " ".join(words[:5000]) + "\n\n*[Article trimmed — read full version at source]*"
+            full_text = " ".join(words[:5000]) + "\n\n---\n\n*Article trimmed — read full version at source.*"
 
         return full_text
     except Exception as exc:
@@ -347,15 +385,19 @@ def get_article(
     if not article:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Article not found.")
 
-    # If content is truncated (NewsAPI free tier), scrape full article
+    # If content is truncated or poorly formatted, scrape full article
     content = article.get("full_content", "")
-    is_truncated = bool(re.search(r"\[\+\d+ chars\]", content)) or len(content) < 300
-    if is_truncated and article.get("source_url"):
+    needs_scrape = (
+        bool(re.search(r"\[\+\d+ chars\]", content))
+        or len(content) < 300
+        or ("##" not in content and "- **" not in content and len(content) < 1500)
+    )
+    if needs_scrape and article.get("source_url"):
         scraped = _scrape_full_article(article["source_url"])
         if scraped and len(scraped) > len(content):
             article["full_content"] = scraped
             article["reading_time"] = _reading_time(scraped)
-            _article_store[article_id] = article  # cache the enriched version
+            _article_store[article_id] = article
 
     # Find related articles (same category, excluding self)
     cache_key = f"feed:{article['category']}"

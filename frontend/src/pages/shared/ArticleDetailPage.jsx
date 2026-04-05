@@ -164,10 +164,84 @@ export default function ArticleDetailPage() {
 
         {/* Markdown body */}
         {article.full_content ? (
-          <div className="prose prose-slate prose-sm max-w-none
-                          prose-headings:text-slate-800 prose-a:text-blue-600
-                          prose-img:rounded-lg prose-pre:bg-slate-50">
-            <ReactMarkdown>{article.full_content}</ReactMarkdown>
+          <div className="article-body text-slate-700 text-[15px] leading-[1.85] space-y-4">
+            <ReactMarkdown
+              components={{
+                h1: ({ children }) => (
+                  <h1 className="text-2xl font-bold text-slate-800 mt-8 mb-3 pb-2 border-b border-slate-100">
+                    {children}
+                  </h1>
+                ),
+                h2: ({ children }) => (
+                  <h2 className="text-xl font-bold text-slate-800 mt-8 mb-3 pb-2 border-b border-slate-100">
+                    {children}
+                  </h2>
+                ),
+                h3: ({ children }) => (
+                  <h3 className="text-lg font-semibold text-slate-800 mt-6 mb-2">
+                    {children}
+                  </h3>
+                ),
+                h4: ({ children }) => (
+                  <h4 className="text-base font-semibold text-slate-700 mt-5 mb-2">
+                    {children}
+                  </h4>
+                ),
+                p: ({ children }) => (
+                  <p className="mb-4 leading-[1.85] text-slate-600">
+                    {children}
+                  </p>
+                ),
+                ul: ({ children }) => (
+                  <ul className="my-4 ml-1 space-y-2">
+                    {children}
+                  </ul>
+                ),
+                ol: ({ children }) => (
+                  <ol className="my-4 ml-1 space-y-2 list-decimal list-inside">
+                    {children}
+                  </ol>
+                ),
+                li: ({ children }) => (
+                  <li className="flex gap-2 items-start text-slate-600 pl-2">
+                    <span className="text-indigo-400 mt-1.5 text-xs flex-shrink-0">●</span>
+                    <span className="flex-1">{children}</span>
+                  </li>
+                ),
+                blockquote: ({ children }) => (
+                  <blockquote className="my-5 pl-5 border-l-4 border-indigo-300 bg-indigo-50/50 py-3 pr-4 rounded-r-lg text-slate-600 italic">
+                    {children}
+                  </blockquote>
+                ),
+                strong: ({ children }) => (
+                  <strong className="font-bold text-slate-800">{children}</strong>
+                ),
+                em: ({ children }) => (
+                  <em className="italic text-slate-500">{children}</em>
+                ),
+                a: ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer"
+                     className="text-blue-600 hover:text-blue-800 underline underline-offset-2 decoration-blue-200 hover:decoration-blue-400 transition-colors">
+                    {children}
+                  </a>
+                ),
+                hr: () => (
+                  <hr className="my-8 border-slate-200" />
+                ),
+                code: ({ children }) => (
+                  <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-sm font-mono">
+                    {children}
+                  </code>
+                ),
+                pre: ({ children }) => (
+                  <pre className="bg-slate-50 border border-slate-200 rounded-xl p-4 overflow-x-auto text-sm my-4">
+                    {children}
+                  </pre>
+                ),
+              }}
+            >
+              {article.full_content}
+            </ReactMarkdown>
           </div>
         ) : (
           <p className="text-slate-500 text-sm bg-slate-50 p-6 rounded-xl text-center">
