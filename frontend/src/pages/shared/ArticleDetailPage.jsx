@@ -163,11 +163,11 @@ export default function ArticleDetailPage() {
         )}
 
         {/* Markdown body */}
-        {article.content ? (
+        {article.full_content ? (
           <div className="prose prose-slate prose-sm max-w-none
                           prose-headings:text-slate-800 prose-a:text-blue-600
                           prose-img:rounded-lg prose-pre:bg-slate-50">
-            <ReactMarkdown>{article.content}</ReactMarkdown>
+            <ReactMarkdown>{article.full_content}</ReactMarkdown>
           </div>
         ) : (
           <p className="text-slate-500 text-sm bg-slate-50 p-6 rounded-xl text-center">

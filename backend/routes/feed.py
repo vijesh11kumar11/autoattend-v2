@@ -298,6 +298,6 @@ def get_article(
                 break
 
     return {
-        **article,
+        "article": article,
         "related": related,
     }
