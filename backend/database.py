@@ -819,6 +819,59 @@ class CareerRoadmap(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# TABLE — suggestions  (Smart Suggestion Box)
+# ═══════════════════════════════════════════════════════════════════════
+
+class Suggestion(Base):
+    __tablename__ = "suggestions"
+    __table_args__ = (
+        Index("ix_suggestions_user_id", "submitted_by_user_id"),
+        Index("ix_suggestions_dept", "target_department_id"),
+        Index("ix_suggestions_subject", "target_subject_id"),
+    )
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    submitted_by_user_id  = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    submitted_by_role     = Column(String(20), nullable=False)
+    category              = Column(String(50), nullable=False)
+    target_scope          = Column(String(30), nullable=False, default="general")
+    target_subject_id     = Column(Integer, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
+    target_department_id  = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True)
+    message               = Column(Text, nullable=False)
+    is_anonymous          = Column(Boolean, default=True, nullable=False)
+    status                = Column(String(20), default="pending", nullable=False)
+    priority              = Column(String(20), default="low", nullable=False)
+    sentiment             = Column(String(20), nullable=True)
+    submitted_at          = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    reviewed_at           = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by_role      = Column(String(20), nullable=True)
+    admin_response        = Column(Text, nullable=True)
+
+    submitter   = relationship("User", foreign_keys=[submitted_by_user_id])
+    subject     = relationship("Subject")
+    department  = relationship("Department")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE — suggestion_ai_reports
+# ═══════════════════════════════════════════════════════════════════════
+
+class SuggestionAIReport(Base):
+    __tablename__ = "suggestion_ai_reports"
+    __table_args__ = (
+        Index("ix_suggestion_reports_scope", "scope", "scope_id"),
+    )
+
+    id                        = Column(Integer, primary_key=True, index=True)
+    scope                     = Column(String(30), nullable=False)
+    scope_id                  = Column(Integer, nullable=True)
+    report_data               = Column(JSONB, nullable=False)
+    generated_at              = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    total_suggestions_analysed = Column(Integer, nullable=False, default=0)
+    ai_provider               = Column(String(20), nullable=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Utilities
 # ═══════════════════════════════════════════════════════════════════════
 

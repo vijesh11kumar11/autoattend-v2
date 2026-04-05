@@ -21,6 +21,7 @@ from routes import analytics
 from routes import student_portal
 from routes import feed
 from routes import career
+from routes import suggestions
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
@@ -76,6 +77,7 @@ app.include_router(analytics.router)
 app.include_router(student_portal.router)
 app.include_router(feed.router)
 app.include_router(career.router)
+app.include_router(suggestions.router)
 
 
 @app.get("/api/health")

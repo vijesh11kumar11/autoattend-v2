@@ -24,6 +24,7 @@ const NAV_ITEMS = {
     { to: '/principal/audit',       icon: '🔍', label: 'Audit'        },
     { to: '/principal/feed',        icon: '📰', label: 'News Feed'    },
     { to: '/principal/career',      icon: '🎯', label: 'Career Roadmap' },
+    { to: '/principal/suggestions',  icon: '💡', label: 'Suggestion Box' },
   ],
   hod: [
     { to: '/hod/dashboard',         icon: '🏠', label: 'Overview'            },
@@ -42,6 +43,7 @@ const NAV_ITEMS = {
     { to: '/hod/face-reenroll',     icon: '🤳', label: 'Face Re-enroll'      },
     { to: '/hod/feed',              icon: '📰', label: 'News Feed'           },
     { to: '/hod/career',            icon: '🎯', label: 'Career Roadmap'     },
+    { to: '/hod/suggestions',      icon: '💡', label: 'Suggestion Box'    },
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },
@@ -55,6 +57,7 @@ const NAV_ITEMS = {
     { to: '/teacher/disputes',       icon: '⚖️', label: 'Disputes'            },
     { to: '/teacher/feed',          icon: '📰', label: 'News Feed'           },
     { to: '/teacher/career',        icon: '🎯', label: 'Career Roadmap'     },
+    { to: '/teacher/suggestions',  icon: '💡', label: 'Suggestion Box'    },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
@@ -66,6 +69,7 @@ const NAV_ITEMS = {
     { to: '/student/download',   icon: '⬇️', label: 'Download Report'   },
     { to: '/student/feed',       icon: '📰', label: 'News Feed'       },
     { to: '/student/career',     icon: '🎯', label: 'Career Roadmap' },
+    { to: '/student/suggestions', icon: '💡', label: 'Suggestion Box' },
   ],
 };
 

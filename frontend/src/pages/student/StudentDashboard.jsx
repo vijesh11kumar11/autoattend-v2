@@ -19,6 +19,7 @@ import DashboardLayout from '../../components/DashboardLayout';
 import FeedPage from '../shared/FeedPage';
 import ArticleDetailPage from '../shared/ArticleDetailPage';
 import CareerRoadmapPage from '../shared/CareerRoadmapPage';
+import SuggestionBoxPage from '../shared/SuggestionBoxPage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -1022,6 +1023,7 @@ export default function StudentDashboard() {
         <Route path="feed"       element={<FeedPage />} />
         <Route path="feed/:articleId" element={<ArticleDetailPage />} />
         <Route path="career"           element={<CareerRoadmapPage />} />
+        <Route path="suggestions"      element={<SuggestionBoxPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>
