@@ -7,11 +7,13 @@ GET  /api/feed/article/{id}       — single article detail
 
 import hashlib
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
 import requests as http_requests
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from config import settings
@@ -107,6 +109,64 @@ def _reading_time(text: str | None) -> int:
 def _make_id(title: str, source: str) -> str:
     raw = f"{title}:{source}"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
+
+
+def _scrape_full_article(url: str) -> str | None:
+    """Fetch and extract article text from source URL."""
+    if not url:
+        return None
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        resp = http_requests.get(url, headers=headers, timeout=12, allow_redirects=True)
+        if resp.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        # Remove unwanted elements
+        for tag in soup.find_all(["script", "style", "nav", "footer", "header",
+                                   "aside", "form", "iframe", "noscript"]):
+            tag.decompose()
+
+        # Try to find the main article body
+        article_el = (
+            soup.find("article")
+            or soup.find("div", class_=re.compile(r"article|post|entry|content|story", re.I))
+            or soup.find("main")
+        )
+        if not article_el:
+            article_el = soup.body or soup
+
+        # Extract paragraphs
+        paragraphs = []
+        for p in article_el.find_all(["p", "h2", "h3", "h4", "blockquote", "li"]):
+            text = p.get_text(strip=True)
+            if len(text) > 30:  # skip short/empty fragments
+                if p.name in ("h2", "h3", "h4"):
+                    paragraphs.append(f"\n## {text}\n")
+                elif p.name == "blockquote":
+                    paragraphs.append(f"\n> {text}\n")
+                elif p.name == "li":
+                    paragraphs.append(f"- {text}")
+                else:
+                    paragraphs.append(text)
+
+        if len(paragraphs) < 2:
+            return None
+
+        full_text = "\n\n".join(paragraphs)
+        # Cap at ~5000 words to avoid huge payloads
+        words = full_text.split()
+        if len(words) > 5000:
+            full_text = " ".join(words[:5000]) + "\n\n*[Article trimmed — read full version at source]*"
+
+        return full_text
+    except Exception as exc:
+        logger.debug("Scrape failed for %s: %s", url, exc)
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -286,6 +346,16 @@ def get_article(
     article = _article_store.get(article_id)
     if not article:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Article not found.")
+
+    # If content is truncated (NewsAPI free tier), scrape full article
+    content = article.get("full_content", "")
+    is_truncated = bool(re.search(r"\[\+\d+ chars\]", content)) or len(content) < 300
+    if is_truncated and article.get("source_url"):
+        scraped = _scrape_full_article(article["source_url"])
+        if scraped and len(scraped) > len(content):
+            article["full_content"] = scraped
+            article["reading_time"] = _reading_time(scraped)
+            _article_store[article_id] = article  # cache the enriched version
 
     # Find related articles (same category, excluding self)
     cache_key = f"feed:{article['category']}"
