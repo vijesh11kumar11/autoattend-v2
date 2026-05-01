@@ -512,13 +512,29 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const heartbeatPausedRef = useRef(false);
+  const [sessionExpiringSoon, setSessionExpiringSoon] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const isPdf = (openData?.file_mime_type || '').toLowerCase() === 'application/pdf'
-              || (openData?.file_url || '').toLowerCase().endsWith('.pdf');
+              || (openData?.file_url || '').toLowerCase().endsWith('.pdf')
+              || (openData?.signed_view_url || '').toLowerCase().includes('serve');
   const totalPages = pdfDoc?.numPages || 0;
   const interaction = openData?.interaction || {};
-  const downloadAllowed = interaction.download_allowed && openData?.file_url;
+  const downloadAllowed = interaction.download_allowed && (openData?.signed_download_url || openData?.file_url);
   const hasQuiz = (openData?.ai_quiz_json || []).length > 0;
+
+  const refreshSession = useCallback(() => {
+    setLoading(true); setError(''); setSessionExpired(false); setSessionExpiringSoon(false);
+    api.post(`/classpulse/student/capsule/${capsuleId}/open`)
+      .then((r) => { setOpenData(r.data); })
+      .catch((e) => {
+        const detail = e.response?.data?.detail;
+        const reason = detail?.reason || detail || 'Could not open capsule';
+        setError(typeof reason === 'string' ? reason : 'Access denied');
+      })
+      .finally(() => setLoading(false));
+  }, [capsuleId]);
 
   /* ── 1. open capsule ─────────────────────────── */
   useEffect(() => {
@@ -538,17 +554,26 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
 
   /* ── 2. load PDF ─────────────────────────── */
   useEffect(() => {
-    if (!openData?.file_url || !isPdf) return;
+    if (!openData || !isPdf) return;
+    if (!openData.signed_view_url && !openData.file_url) return;
     let alive = true;
     setPdfLoading(true);
     (async () => {
       try {
         const pdfjsLib = await loadPdfJs();
-        // Fetch the PDF bytes via axios so the JWT is automatically attached
-        const fileRes = await api.get(`/classpulse/student/capsule/${capsuleId}/file`, {
-          responseType: 'arraybuffer',
-        });
-        const task = pdfjsLib.getDocument({ data: new Uint8Array(fileRes.data) });
+        let pdfData;
+        if (openData.signed_view_url) {
+          // Signed URL — no auth header, fetch directly so PDF.js gets bytes
+          const resp = await fetch(openData.signed_view_url, { credentials: 'omit' });
+          if (!resp.ok) throw new Error('signed url fetch failed');
+          pdfData = new Uint8Array(await resp.arrayBuffer());
+        } else {
+          const fileRes = await api.get(`/classpulse/student/capsule/${capsuleId}/file`, {
+            responseType: 'arraybuffer',
+          });
+          pdfData = new Uint8Array(fileRes.data);
+        }
+        const task = pdfjsLib.getDocument({ data: pdfData });
         const doc = await task.promise;
         if (alive) { setPdfDoc(doc); setPage(1); }
       } catch (e) {
@@ -587,10 +612,11 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
     return () => { cancelled = true; renderTask?.cancel?.(); };
   }, [pdfDoc, page, zoom, showToast]);
 
-  /* ── 4. heartbeat every 30s ─────────────────────────── */
+  /* ── 4. heartbeat every 30s (paused when tab hidden) ─────────── */
   useEffect(() => {
     if (!openData) return;
     const id = setInterval(() => {
+      if (heartbeatPausedRef.current) return;
       api.post(`/classpulse/student/capsule/${capsuleId}/heartbeat`, {
         pages_viewed: maxPagesViewed,
         total_pages:  totalPages || 1,
@@ -601,12 +627,48 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
     return () => clearInterval(id);
   }, [openData, capsuleId, maxPagesViewed, totalPages]);
 
-  /* ── 5. block Ctrl+S / Ctrl+P ─────────────────────────── */
+  /* ── 4b. pause heartbeat while tab is hidden ─────────── */
+  useEffect(() => {
+    const handleVisibility = () => {
+      heartbeatPausedRef.current = document.hidden;
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  /* ── 4c. signed-URL session expiry watcher ─────────── */
+  useEffect(() => {
+    const expIso = openData?.signed_url_expires_at;
+    if (!expIso) return;
+    const expiresAt = new Date(expIso).getTime();
+    const tick = () => {
+      const msLeft = expiresAt - Date.now();
+      if (msLeft <= 0) {
+        setSessionExpired(true);
+        setSessionExpiringSoon(false);
+        return;
+      }
+      if (msLeft <= 5 * 60 * 1000 && !sessionExpiringSoon) {
+        setSessionExpiringSoon(true);
+        showToast(`⏳ Session expiring in ${Math.max(1, Math.ceil(msLeft / 60000))} minutes`);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [openData, sessionExpiringSoon, showToast]);
+
+  /* ── 5. block save / print / select-all / view-source / screenshot ── */
   useEffect(() => {
     const block = (e) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.key === 'p' || e.key === 'P')) {
+      const k = (e.key || '').toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && ['s', 'p', 'a', 'u'].includes(k)) {
         e.preventDefault();
-        showToast('📋 Download available after quiz completion');
+        showToast('⚠️ Saving/printing is disabled for this content');
+      }
+      if (e.key === 'PrintScreen') {
+        e.preventDefault();
+        showToast('📋 Screenshots disabled for protected content');
       }
       if (e.key === 'Escape') {
         if (contextMenu) setContextMenu(null);
@@ -617,6 +679,16 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
     window.addEventListener('keydown', block);
     return () => window.removeEventListener('keydown', block);
   }, [showToast, onClose, contextMenu, askDoubt]);
+
+  /* ── 5b. block image drag-out from canvas ─────────── */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const blockDrag = (e) => e.preventDefault();
+    canvas.addEventListener('dragstart', blockDrag);
+    canvas.setAttribute('draggable', 'false');
+    return () => canvas.removeEventListener('dragstart', blockDrag);
+  }, [pdfDoc]);
 
   /* ── page tracking ─────────────────────────── */
   useEffect(() => { setMaxPagesViewed((p) => Math.max(p, page)); }, [page]);
@@ -641,6 +713,23 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
     if (downloading) return;
     setDownloading(true);
     try {
+      // Prefer signed URL → no auth header, server handles watermarking.
+      if (openData?.signed_download_url) {
+        const resp = await fetch(openData.signed_download_url, { credentials: 'omit' });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(txt || 'Download not allowed yet');
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${openData?.title || 'capsule'}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('🔒 Watermarked with your name — happy reading!');
+        return;
+      }
       const r = await api.post(`/classpulse/student/capsule/${capsuleId}/download`, null, {
         responseType: 'blob',
       });
@@ -654,7 +743,7 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
       showToast('🔒 Watermarked with your name — happy reading!');
     } catch (e) {
       const detail = e.response?.data?.detail;
-      showToast('⛔ ' + (detail?.reason || 'Download not allowed yet'));
+      showToast('⛔ ' + (detail?.reason || e.message || 'Download not allowed yet'));
     } finally {
       setDownloading(false);
     }
@@ -712,6 +801,22 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
                  onContextMenu={handleContext}
                  className="flex-1 overflow-auto bg-slate-800 relative"
                  style={{ userSelect: 'none' }}>
+              {sessionExpired && (
+                <div className="absolute inset-x-0 top-0 z-10 bg-red-600/95 text-white text-xs flex items-center gap-3 px-4 py-2 shadow">
+                  <span>🔄 Your secure viewing session expired.</span>
+                  <button
+                    onClick={refreshSession}
+                    className="ml-auto px-3 py-1 rounded-md bg-white text-red-700 text-xs font-semibold hover:bg-red-50"
+                  >
+                    Refresh session
+                  </button>
+                </div>
+              )}
+              {sessionExpiringSoon && !sessionExpired && (
+                <div className="absolute inset-x-0 top-0 z-10 bg-amber-500/95 text-slate-900 text-xs px-4 py-1.5 text-center shadow">
+                  ⏳ Session expiring soon — keep reading or refresh to continue.
+                </div>
+              )}
               {!isPdf && (
                 <div className="h-full flex flex-col items-center justify-center text-white/80 text-center p-6">
                   <div className="text-6xl mb-3">{TYPE_ICON[openData?.capsule_type] || '📄'}</div>

@@ -67,7 +67,12 @@ from database import (
     WallPostStatus,
     get_db,
 )
+from config import settings
 from utils.auth_utils import get_current_user
+from utils.classpulse_access import (
+    check_capsule_access,
+    verify_student_subject_access,
+)
 from utils.classpulse_ai import (
     auto_answer_doubt,
     extract_text_from_pdf_url,
@@ -75,6 +80,11 @@ from utils.classpulse_ai import (
     generate_capsule_summary,
 )
 from utils.notification_utils import send_push_notification
+from utils.pdf_watermark import (
+    cleanup_expired_watermarks,
+    watermark_pdf_for_student,
+)
+from utils.signed_urls import generate_signed_capsule_url, verify_signed_url
 from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
@@ -127,6 +137,7 @@ class TeacherAnswerRequest(BaseModel):
 
 class QuizSubmitRequest(BaseModel):
     answers: dict[str, str]
+    elapsed_seconds: Optional[int] = Field(default=None, ge=0)
 
 
 class HeartbeatRequest(BaseModel):
@@ -568,6 +579,109 @@ def _cleanup_old_watermarks() -> None:
                 continue
     except Exception:
         pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Rate limiting (lightweight in-memory; resets on process restart)
+# ═══════════════════════════════════════════════════════════════════════
+# Buckets keyed by (route_tag, user_id, scope_id, window_id) -> count
+_RATE_BUCKETS: dict[tuple, int] = {}
+_RATE_LAST_GC = [datetime.utcnow()]
+
+RATE_LIMITS = {
+    # tag                     : (max_calls, window_seconds, scope_label)
+    "open_capsule":             (10, 86400, "per capsule per day"),
+    "wall_post":                (5,  86400, "per subject per day"),
+    "wall_resonate":            (50, 3600,  "per hour"),
+    "submit_quiz":              (1,  86400, "per capsule per day"),
+}
+
+
+def _rate_limit_check(tag: str, user_id: int, scope_id: int = 0) -> None:
+    """Raise HTTP 429 when the caller exceeds the configured bucket."""
+    cfg = RATE_LIMITS.get(tag)
+    if not cfg:
+        return
+    max_calls, window_sec, scope_label = cfg
+    now = datetime.utcnow()
+    # Periodic GC of stale buckets
+    if (now - _RATE_LAST_GC[0]).total_seconds() > 600:
+        cutoff_window = int(now.timestamp() // window_sec) - 2
+        for k in list(_RATE_BUCKETS.keys()):
+            if k[0] == tag and k[3] < cutoff_window:
+                _RATE_BUCKETS.pop(k, None)
+        _RATE_LAST_GC[0] = now
+    window_id = int(now.timestamp() // window_sec)
+    key = (tag, int(user_id), int(scope_id), window_id)
+    current = _RATE_BUCKETS.get(key, 0)
+    if current >= max_calls:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded ({max_calls} {scope_label}). Try again later.",
+        )
+    _RATE_BUCKETS[key] = current + 1
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Suspicious activity detection (logged, NOT blocking)
+# ═══════════════════════════════════════════════════════════════════════
+SUSPICIOUS_PREFIX = "suspicious:"
+
+
+def check_suspicious_activity(
+    student_id: int,
+    capsule_id: int,
+    db: Session,
+    request: Optional[Request] = None,
+    quiz_seconds: Optional[int] = None,
+    download_attempt: bool = False,
+) -> list[str]:
+    """
+    Inspect interaction telemetry, log any anomalies, and return the list
+    of detected flags (purely informational — never blocks the request).
+
+    Flags:
+      • opened_short_visit  — opened but spent < 10 seconds total
+      • download_no_heartbeat — download attempt without any heartbeats
+      • quiz_too_fast        — quiz submitted in < 30 seconds
+    """
+    flags: list[str] = []
+    try:
+        inter = db.query(CapsuleInteraction).filter(
+            CapsuleInteraction.capsule_id == capsule_id,
+            CapsuleInteraction.student_id == student_id,
+        ).first()
+
+        if inter and inter.first_opened_at and (inter.total_time_spent_sec or 0) < 10:
+            flags.append("opened_short_visit")
+
+        if download_attempt and (not inter or (inter.total_time_spent_sec or 0) == 0):
+            flags.append("download_no_heartbeat")
+
+        if quiz_seconds is not None and quiz_seconds < 30:
+            flags.append("quiz_too_fast")
+
+        if not flags:
+            return flags
+
+        ip = request.client.host if (request and request.client) else None
+        ua = request.headers.get("user-agent") if request else None
+        if ua:
+            ua = ua[:500]
+        for flag in flags:
+            db.add(CapsuleAccessLog(
+                capsule_id=capsule_id,
+                user_id=student_id,
+                action=CapsuleAccessAction.view_denied,  # reuse enum, prefix in deny_reason
+                deny_reason=f"{SUSPICIOUS_PREFIX}{flag}",
+                ip_address=ip,
+                user_agent=ua,
+            ))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning("suspicious activity logger failed: %s", e)
+    return flags
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1255,6 +1369,15 @@ def student_open_capsule(
     if not capsule:
         raise HTTPException(404, "Capsule not found")
 
+    # Subject enrollment guard (centralized)
+    if not verify_student_subject_access(student.id, capsule.subject_id, db):
+        _log_access(db, capsule_id, student.id, CapsuleAccessAction.view_denied,
+                    request=request, deny_reason="not_enrolled")
+        raise HTTPException(403, detail={"error": "Access denied", "reason": "not_enrolled"})
+
+    # Rate limit: max 10 opens per capsule per day
+    _rate_limit_check("open_capsule", student.id, capsule_id)
+
     _log_access(db, capsule_id, student.id, CapsuleAccessAction.view_attempt, request=request)
 
     access_status, meta = _resolve_access_status(db, student, capsule)
@@ -1303,6 +1426,28 @@ def student_open_capsule(
         file_url = None
         voice_url = None
 
+    # ── Signed URLs (replace direct file_url for the PDF viewer) ────────
+    signed_view_url = None
+    signed_download_url = None
+    signed_url_expires_at = None
+    if file_url:
+        signed_view_url = generate_signed_capsule_url(
+            file_path=capsule.file_url,
+            student_id=student.id,
+            capsule_id=capsule.id,
+            expires_in_minutes=30,
+            mode="view",
+        )
+        signed_url_expires_at = (now + timedelta(minutes=30)).isoformat()
+        if inter.download_allowed:
+            signed_download_url = generate_signed_capsule_url(
+                file_path=capsule.file_url,
+                student_id=student.id,
+                capsule_id=capsule.id,
+                expires_in_minutes=30,
+                mode="download",
+            )
+
     return {
         "capsule_id": capsule.id,
         "title": capsule.title,
@@ -1313,6 +1458,10 @@ def student_open_capsule(
         "file_name": capsule.file_name,
         "file_mime_type": capsule.file_mime_type,
         "voice_memo_url": voice_url,
+        "signed_view_url": signed_view_url,
+        "signed_download_url": signed_download_url,
+        "signed_url_expires_at": signed_url_expires_at,
+        "signed_url_ttl_minutes": 30,
         "ai_summary": summary_obj,
         "ai_quiz_json": quiz_for_student,
         "interaction": {
@@ -1377,6 +1526,13 @@ def student_submit_quiz(
     if inter.quiz_attempted:
         raise HTTPException(403, "Quiz already attempted")
 
+    # Suspicious-activity flag for ultra-fast quiz answers (logged, not blocking)
+    if body.elapsed_seconds is not None:
+        check_suspicious_activity(
+            student.id, capsule.id, db,
+            request=request, quiz_seconds=body.elapsed_seconds,
+        )
+
     _log_access(db, capsule_id, student.id, CapsuleAccessAction.quiz_submit, request=request)
 
     quiz = capsule.ai_quiz_json if isinstance(capsule.ai_quiz_json, list) else []
@@ -1439,7 +1595,7 @@ def student_submit_quiz(
 
 
 @router.post("/student/capsule/{capsule_id}/download")
-def student_download_capsule(
+async def student_download_capsule(
     capsule_id: int,
     request: Request,
     current_user: dict = Depends(get_current_user),
@@ -1461,29 +1617,47 @@ def student_download_capsule(
     inter.download_attempted = True
     db.commit()
 
-    if not inter.download_allowed:
-        access_status, meta = _resolve_access_status(db, student, capsule)
+    # Suspicious flag: download attempt without any heartbeats
+    check_suspicious_activity(student.id, capsule.id, db,
+                              request=request, download_attempt=True)
+
+    # Centralized download access check
+    allowed, deny_reason, ctx = await check_capsule_access(
+        capsule, student, db, require_mode="download"
+    )
+    if not allowed:
         _log_access(db, capsule_id, student.id, CapsuleAccessAction.download_denied,
-                    request=request, deny_reason="not_unlocked")
+                    request=request, deny_reason=deny_reason)
         raise HTTPException(403, detail={
-            "error": "Download not unlocked",
-            "reason": "Pass the comprehension quiz (≥2/3) to unlock download",
-            "access_status": access_status,
-            "access_meta": meta,
+            "error": "Download not allowed",
+            "reason": deny_reason,
+            "access_meta": ctx,
         })
 
+    # Periodic GC of expired watermarks
     _cleanup_old_watermarks()
+    try:
+        cleanup_expired_watermarks()
+    except Exception:
+        pass
 
     is_pdf = (capsule.file_mime_type or "").lower() == "application/pdf" or \
              (capsule.file_url or "").lower().endswith(".pdf")
 
+    subj = db.query(Subject).filter(Subject.id == capsule.subject_id).first()
+    subject_name = subj.name if subj else "Subject"
+    college_name = getattr(settings, "COLLEGE_NAME", "AutoAttend AI")
+
     if is_pdf:
-        footer = (
-            f"Downloaded by {student.name} ({student.roll_number or 'N/A'}) "
-            f"on {date.today().isoformat()} — AutoAttend ClassPulse"
-        )
         try:
-            wm_path = _watermark_pdf(capsule.file_url, footer)
+            wm_path = await watermark_pdf_for_student(
+                file_path=capsule.file_url,
+                student_name=student.name or "Student",
+                roll_no=student.roll_number or "N/A",
+                subject_name=subject_name,
+                capsule_title=capsule.title,
+                college_name=college_name,
+            )
         except Exception as exc:
             logger.error("watermark failed for capsule %d: %s", capsule_id, exc)
             raise HTTPException(500, "Failed to prepare watermarked file")
@@ -1491,10 +1665,12 @@ def student_download_capsule(
         capsule.download_count = (capsule.download_count or 0) + 1
         db.commit()
         _log_access(db, capsule_id, student.id, CapsuleAccessAction.download_granted, request=request)
+        safe_title = (capsule.title or "capsule").replace(" ", "_")
+        safe_roll = (student.roll_number or str(student.id)).replace("/", "_")
         return FileResponse(
             wm_path,
             media_type="application/pdf",
-            filename=f"{capsule.title.replace(' ', '_')}.pdf",
+            filename=f"{safe_title}_{safe_roll}.pdf",
         )
 
     # non-PDF — serve as-is (no watermark possible)
@@ -1572,8 +1748,11 @@ def student_post_doubt(
     student = db.query(User).filter(User.id == current_user["id"]).first()
     if not student:
         raise HTTPException(404, "User not found")
-    if not _student_in_subject(db, student, body.subject_id):
+    if not verify_student_subject_access(student.id, body.subject_id, db):
         raise HTTPException(403, "You are not enrolled in this subject")
+
+    # Rate-limit: max 5 posts per student per subject per day
+    _rate_limit_check("wall_post", student.id, body.subject_id)
 
     section_id = body.section_id if body.section_id else student.section_id
 
@@ -1627,6 +1806,9 @@ def student_resonate(
         raise HTTPException(404, "Post not found")
     if post.student_id == student_id:
         raise HTTPException(400, "Cannot resonate your own post")
+
+    # Rate-limit: max 50 resonances per student per hour
+    _rate_limit_check("wall_resonate", student_id, 0)
 
     existing = db.query(ClassWallResonance).filter(
         ClassWallResonance.post_id == post_id,
@@ -1898,4 +2080,225 @@ def hod_subject_full_report(
         } for c in capsules],
         "per_student_matrix": matrix,
         "wall_summary": wall_summary,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SIGNED-URL FILE SERVING — no auth header (URL itself is the auth)
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/serve/{token}")
+async def serve_signed_capsule(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Serve a capsule file via a short-lived signed URL.
+
+    No Bearer token is required — the JWT in the path IS the credential.
+    Verifies signature + expiry + purpose, then re-checks live access via
+    ``check_capsule_access`` (fail-safe: any error → 403).
+    """
+    payload = verify_signed_url(token)  # raises 403 on bad/expired
+    file_path = payload.get("file_path")
+    student_id = int(payload.get("student_id"))
+    capsule_id = int(payload.get("capsule_id"))
+    mode = payload.get("mode", "view")
+
+    capsule = db.query(Capsule).filter(Capsule.id == capsule_id).first()
+    student = db.query(User).filter(User.id == student_id).first()
+    if not capsule or not student:
+        raise HTTPException(403, "Resource not found")
+
+    # Re-verify live access (in case the unlock state changed)
+    allowed, deny_reason, _ctx = await check_capsule_access(
+        capsule, student, db, require_mode=mode
+    )
+    if not allowed:
+        _log_access(db, capsule_id, student.id, CapsuleAccessAction.view_denied,
+                    request=request,
+                    deny_reason=f"signed_{mode}:{deny_reason}")
+        raise HTTPException(403, f"Access denied: {deny_reason}")
+
+    if not file_path or not os.path.isfile(file_path):
+        raise HTTPException(404, "File missing")
+
+    if mode == "download":
+        # Download path — must produce/serve a watermarked copy
+        inter = _get_or_create_interaction(db, capsule.id, student.id)
+        wm_path = inter.watermarked_url if inter.watermarked_url and \
+            os.path.isfile(inter.watermarked_url) else None
+        if not wm_path:
+            try:
+                subj = db.query(Subject).filter(Subject.id == capsule.subject_id).first()
+                wm_path = await watermark_pdf_for_student(
+                    file_path=file_path,
+                    student_name=student.name or "Student",
+                    roll_no=student.roll_number or "N/A",
+                    subject_name=subj.name if subj else "Subject",
+                    capsule_title=capsule.title,
+                    college_name=getattr(settings, "COLLEGE_NAME", "AutoAttend AI"),
+                )
+                inter.watermarked_url = wm_path
+                capsule.download_count = (capsule.download_count or 0) + 1
+                db.commit()
+            except Exception as exc:
+                logger.error("signed download watermark failed: %s", exc)
+                raise HTTPException(500, "Failed to prepare watermarked file")
+        _log_access(db, capsule.id, student.id,
+                    CapsuleAccessAction.download_granted, request=request)
+        safe_title = (capsule.title or "capsule").replace(" ", "_")
+        safe_roll = (student.roll_number or str(student.id)).replace("/", "_")
+        return FileResponse(
+            wm_path,
+            media_type="application/pdf",
+            filename=f"{safe_title}_{safe_roll}.pdf",
+        )
+
+    # mode == "view" — inline serve original with anti-embed headers
+    _log_access(db, capsule.id, student.id,
+                CapsuleAccessAction.view_granted, request=request)
+    return FileResponse(
+        file_path,
+        media_type=capsule.file_mime_type or "application/pdf",
+        filename=capsule.file_name or os.path.basename(file_path),
+        headers={
+            "Content-Disposition": "inline",
+            "X-Frame-Options": "SAMEORIGIN",
+            "Content-Security-Policy": "frame-ancestors 'self'",
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# HOD / PRINCIPAL — Security Audit
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/hod/security-audit")
+def hod_security_audit(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Surface suspicious activity for HOD / Principal review.
+      • recent_suspicious_events  — last 20 entries flagged as suspicious
+      • students_with_high_denials — > 5 view_denied in 7 days
+      • bulk_download_attempts    — > 10 downloads in 1 day
+    """
+    _require_role(current_user, "hod", "principal")
+    requester = db.query(User).filter(User.id == current_user["id"]).first()
+
+    # Optional dept scoping (HOD = own dept, Principal = all)
+    capsule_filter = None
+    if current_user["role"] == "hod" and requester and requester.department_id:
+        dept_capsule_ids = [
+            c.id for c in db.query(Capsule)
+            .join(Subject, Subject.id == Capsule.subject_id)
+            .join(Subject.course)
+            .filter(Subject.course.has(department_id=requester.department_id))
+            .all()
+        ]
+        capsule_filter = dept_capsule_ids
+
+    base_q = db.query(CapsuleAccessLog)
+    if capsule_filter is not None:
+        if not capsule_filter:
+            return {
+                "recent_suspicious_events": [],
+                "students_with_high_denials": [],
+                "bulk_download_attempts": [],
+            }
+        base_q = base_q.filter(CapsuleAccessLog.capsule_id.in_(capsule_filter))
+
+    # 1. Recent suspicious events
+    susp_rows = (
+        base_q.filter(CapsuleAccessLog.deny_reason.like(f"{SUSPICIOUS_PREFIX}%"))
+        .order_by(desc(CapsuleAccessLog.created_at))
+        .limit(20).all()
+    )
+    user_ids = {r.user_id for r in susp_rows}
+    capsule_ids_set = {r.capsule_id for r in susp_rows}
+    users_idx = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+    caps_idx = {c.id: c for c in db.query(Capsule).filter(Capsule.id.in_(capsule_ids_set)).all()} if capsule_ids_set else {}
+    subj_idx = {s.id: s for s in db.query(Subject).filter(
+        Subject.id.in_([c.subject_id for c in caps_idx.values()])
+    ).all()} if caps_idx else {}
+
+    recent_suspicious_events = []
+    for r in susp_rows:
+        u = users_idx.get(r.user_id)
+        c = caps_idx.get(r.capsule_id)
+        s = subj_idx.get(c.subject_id) if c else None
+        recent_suspicious_events.append({
+            "id": r.id,
+            "student_name": u.name if u else None,
+            "student_roll": u.roll_number if u else None,
+            "capsule_id": r.capsule_id,
+            "capsule_title": c.title if c else None,
+            "subject_name": s.name if s else None,
+            "action": r.action.value if r.action else None,
+            "deny_reason": r.deny_reason,
+            "ip_address": r.ip_address,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+
+    # 2. Students with > 5 view_denied in last 7 days
+    seven_days_ago = datetime.now(tz=timezone.utc) - timedelta(days=7)
+    high_denial_q = (
+        base_q
+        .filter(
+            CapsuleAccessLog.action == CapsuleAccessAction.view_denied,
+            CapsuleAccessLog.created_at >= seven_days_ago,
+        )
+        .with_entities(
+            CapsuleAccessLog.user_id,
+            sqlfunc.count(CapsuleAccessLog.id).label("n"),
+        )
+        .group_by(CapsuleAccessLog.user_id)
+        .having(sqlfunc.count(CapsuleAccessLog.id) > 5)
+        .order_by(desc("n"))
+        .all()
+    )
+    hd_user_ids = [uid for uid, _ in high_denial_q]
+    hd_users = {u.id: u for u in db.query(User).filter(User.id.in_(hd_user_ids)).all()} if hd_user_ids else {}
+    students_with_high_denials = [{
+        "student_id": uid,
+        "name": hd_users[uid].name if uid in hd_users else None,
+        "roll_number": hd_users[uid].roll_number if uid in hd_users else None,
+        "denial_count": int(n),
+    } for uid, n in high_denial_q]
+
+    # 3. Bulk download attempts (> 10 downloads in 1 day per student)
+    one_day_ago = datetime.now(tz=timezone.utc) - timedelta(days=1)
+    bulk_q = (
+        base_q
+        .filter(
+            CapsuleAccessLog.action == CapsuleAccessAction.download_granted,
+            CapsuleAccessLog.created_at >= one_day_ago,
+        )
+        .with_entities(
+            CapsuleAccessLog.user_id,
+            sqlfunc.count(CapsuleAccessLog.id).label("n"),
+        )
+        .group_by(CapsuleAccessLog.user_id)
+        .having(sqlfunc.count(CapsuleAccessLog.id) > 10)
+        .order_by(desc("n"))
+        .all()
+    )
+    bd_user_ids = [uid for uid, _ in bulk_q]
+    bd_users = {u.id: u for u in db.query(User).filter(User.id.in_(bd_user_ids)).all()} if bd_user_ids else {}
+    bulk_download_attempts = [{
+        "student_id": uid,
+        "name": bd_users[uid].name if uid in bd_users else None,
+        "roll_number": bd_users[uid].roll_number if uid in bd_users else None,
+        "download_count_24h": int(n),
+    } for uid, n in bulk_q]
+
+    return {
+        "recent_suspicious_events": recent_suspicious_events,
+        "students_with_high_denials": students_with_high_denials,
+        "bulk_download_attempts": bulk_download_attempts,
     }
