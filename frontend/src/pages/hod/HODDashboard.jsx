@@ -31,6 +31,7 @@ import FeedPage               from '../shared/FeedPage';
 import ArticleDetailPage      from '../shared/ArticleDetailPage';
 import CareerRoadmapPage      from '../shared/CareerRoadmapPage';
 import SuggestionBoxPage      from '../shared/SuggestionBoxPage';
+import HODClassPulsePage      from './HODClassPulsePage';
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -68,6 +69,55 @@ function FaceReenrollPage() {
       <span className="text-5xl">🤳</span>
       <p className="font-medium text-slate-600">Face Re-enroll Requests</p>
       <p className="text-sm">Full implementation coming in a later prompt.</p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ClassPulseOverviewCard — small summary on HOD dashboard
+// ═══════════════════════════════════════════════════════════════════════
+function ClassPulseOverviewCard() {
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    api.get('/api/classpulse/hod/department-analytics')
+      .then(r => setData(r.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+  if (loading) return null;
+  if (!data)   return null;
+  const stats = data.department_stats || {};
+  const gapCount = (data.subjects_overview || []).filter(s => s.content_gap_alert).length;
+  return (
+    <div className="card p-4 border-violet-100">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">📚</span>
+          <div>
+            <p className="text-sm font-bold text-slate-800">ClassPulse Overview</p>
+            <p className="text-xs text-slate-500">{stats.total_capsules || 0} capsules across department</p>
+          </div>
+        </div>
+        <a href="/hod/classpulse" className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-3 py-2">
+          View Details →
+        </a>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+        <Metric label="Avg Engagement"    value={`${stats.avg_engagement_pct ?? 0}%`}    tone={(stats.avg_engagement_pct ?? 0) >= 70 ? 'text-emerald-600' : (stats.avg_engagement_pct ?? 0) >= 50 ? 'text-amber-600' : 'text-red-600'} />
+        <Metric label="Avg Comprehension" value={`${stats.avg_comprehension_pct ?? 0}%`} tone={(stats.avg_comprehension_pct ?? 0) >= 70 ? 'text-emerald-600' : (stats.avg_comprehension_pct ?? 0) >= 50 ? 'text-amber-600' : 'text-red-600'} />
+        <Metric label="Content Gaps"      value={gapCount}                               tone={gapCount > 0 ? 'text-red-600' : 'text-slate-700'} />
+        <Metric label="Students at Risk"  value={stats.students_at_risk_count ?? 0}      tone={(stats.students_at_risk_count ?? 0) > 0 ? 'text-red-600' : 'text-slate-700'} />
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }) {
+  return (
+    <div className="bg-slate-50 rounded-lg p-2 text-center">
+      <p className={`text-lg font-bold ${tone || 'text-slate-800'}`}>{value}</p>
+      <p className="text-[10px] uppercase text-slate-500 tracking-wide">{label}</p>
     </div>
   );
 }
@@ -193,6 +243,9 @@ function HODOverview() {
           <p className="text-xs text-slate-400">Planned vs conducted</p>
         </a>
       </div>
+
+      {/* ── ClassPulse Overview ── */}
+      <ClassPulseOverviewCard />
 
       {/* ── Quick Actions ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -446,6 +499,7 @@ export default function HODDashboard() {
         <Route path="feed/:articleId"   element={<ArticleDetailPage />} />
         <Route path="career"              element={<CareerRoadmapPage />} />
         <Route path="suggestions"         element={<SuggestionBoxPage />} />
+        <Route path="classpulse"          element={<HODClassPulsePage />} />
         <Route path="*"                 element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

@@ -25,6 +25,7 @@ const NAV_ITEMS = {
     { to: '/principal/feed',        icon: '📰', label: 'News Feed'    },
     { to: '/principal/career',      icon: '🎯', label: 'Career Roadmap' },
     { to: '/principal/suggestions',  icon: '💡', label: 'Suggestion Box' },
+    { to: '/principal/classpulse',  icon: '📚', label: 'ClassPulse'    },
   ],
   hod: [
     { to: '/hod/dashboard',         icon: '🏠', label: 'Overview'            },
@@ -44,6 +45,7 @@ const NAV_ITEMS = {
     { to: '/hod/feed',              icon: '📰', label: 'News Feed'           },
     { to: '/hod/career',            icon: '🎯', label: 'Career Roadmap'     },
     { to: '/hod/suggestions',      icon: '💡', label: 'Suggestion Box'    },
+    { to: '/hod/classpulse',       icon: '📚', label: 'ClassPulse'          },
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },

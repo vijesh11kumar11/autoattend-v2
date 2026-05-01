@@ -891,9 +891,10 @@ def teacher_view_wall(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _require_role(current_user, "teacher")
-    if not _teacher_owns_subject(db, current_user["id"], subject_id):
-        raise HTTPException(403, "You do not teach this subject")
+    _require_role(current_user, "teacher", "hod", "principal")
+    if current_user["role"] == "teacher":
+        if not _teacher_owns_subject(db, current_user["id"], subject_id):
+            raise HTTPException(403, "You do not teach this subject")
 
     q = db.query(ClassWallPost).filter(ClassWallPost.subject_id == subject_id)
     if status_filter != "all":
@@ -1660,15 +1661,19 @@ def student_resonate(
 
 @router.get("/hod/department-analytics")
 def hod_department_analytics(
+    department_id: int | None = None,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _require_role(current_user, "hod", "principal")
     hod = db.query(User).filter(User.id == current_user["id"]).first()
-    if not hod or hod.department_id is None:
-        raise HTTPException(404, "Department context missing")
-
-    dept_id = hod.department_id
+    # Principal may pass any department_id; HOD always uses their own
+    if current_user["role"] == "principal" and department_id is not None:
+        dept_id = department_id
+    else:
+        if not hod or hod.department_id is None:
+            raise HTTPException(404, "Department context missing")
+        dept_id = hod.department_id
     # Subjects in this department
     subjects = (
         db.query(Subject)
