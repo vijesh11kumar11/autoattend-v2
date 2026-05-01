@@ -872,6 +872,222 @@ class SuggestionAIReport(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# ClassPulse — Session-Aware Learning Space
+# ═══════════════════════════════════════════════════════════════════════
+
+class CapsuleType(str, enum.Enum):
+    notes                = "notes"
+    slides               = "slides"
+    reference            = "reference"
+    assignment_material  = "assignment_material"
+    lab_manual           = "lab_manual"
+    previous_year        = "previous_year"
+    formula_sheet        = "formula_sheet"
+
+
+class CapsuleUnlockMode(str, enum.Enum):
+    always                    = "always"
+    session_active            = "session_active"
+    after_attendance_marked   = "after_attendance_marked"
+    attendance_gated          = "attendance_gated"
+
+
+class CapsuleAccessAction(str, enum.Enum):
+    view_attempt     = "view_attempt"
+    view_granted     = "view_granted"
+    view_denied      = "view_denied"
+    download_attempt = "download_attempt"
+    download_granted = "download_granted"
+    download_denied  = "download_denied"
+    quiz_start       = "quiz_start"
+    quiz_submit      = "quiz_submit"
+    quiz_pass        = "quiz_pass"
+    quiz_fail        = "quiz_fail"
+
+
+class WallPostStatus(str, enum.Enum):
+    open      = "open"
+    answered  = "answered"
+    resolved  = "resolved"
+    escalated = "escalated"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE — capsules  (ClassPulse content units)
+# ═══════════════════════════════════════════════════════════════════════
+
+class Capsule(Base):
+    __tablename__ = "capsules"
+    __table_args__ = (
+        Index("ix_capsules_subject_id",  "subject_id"),
+        Index("ix_capsules_teacher_id",  "teacher_id"),
+        Index("ix_capsules_section_id",  "section_id"),
+        Index("ix_capsules_is_active",   "is_active"),
+        Index("ix_capsules_created_at",  "created_at"),
+    )
+
+    id                       = Column(Integer, primary_key=True, index=True)
+    subject_id               = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    teacher_id               = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
+    section_id               = Column(Integer, ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
+    title                    = Column(String(200), nullable=False)
+    description              = Column(Text, nullable=True)
+    capsule_type             = Column(SAEnum(CapsuleType, name="capsuletype"), default=CapsuleType.notes, nullable=False)
+    file_url                 = Column(String(500), nullable=True)
+    file_name                = Column(String(255), nullable=True)
+    file_size_kb             = Column(Integer, nullable=True)
+    file_mime_type           = Column(String(100), nullable=True)
+    voice_memo_url           = Column(String(500), nullable=True)
+    voice_memo_duration_sec  = Column(Integer, nullable=True)
+    ai_summary               = Column(Text, nullable=True)
+    ai_quiz_json             = Column(JSONB, nullable=True)
+    ai_processed             = Column(Boolean, default=False, nullable=False)
+    unlock_mode              = Column(SAEnum(CapsuleUnlockMode, name="capsuleunlockmode"), default=CapsuleUnlockMode.always, nullable=False)
+    min_attendance_pct       = Column(Float, default=75.0, nullable=False)
+    is_active                = Column(Boolean, default=True, nullable=False)
+    view_count               = Column(Integer, default=0, nullable=False)
+    download_count           = Column(Integer, default=0, nullable=False)
+    created_at               = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at               = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    subject      = relationship("Subject", backref="capsules")
+    teacher      = relationship("User",    foreign_keys=[teacher_id], backref="capsules_created")
+    section      = relationship("Section", foreign_keys=[section_id])
+    interactions = relationship("CapsuleInteraction", back_populates="capsule", cascade="all, delete-orphan")
+    wall_posts   = relationship("ClassWallPost",      back_populates="capsule")
+    access_logs  = relationship("CapsuleAccessLog",   back_populates="capsule", cascade="all, delete-orphan")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE — capsule_interactions
+# ═══════════════════════════════════════════════════════════════════════
+
+class CapsuleInteraction(Base):
+    __tablename__ = "capsule_interactions"
+    __table_args__ = (
+        UniqueConstraint("capsule_id", "student_id", name="uq_capsule_interaction_capsule_student"),
+        Index("ix_capsule_interactions_capsule_id", "capsule_id"),
+        Index("ix_capsule_interactions_student_id", "student_id"),
+    )
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    capsule_id            = Column(Integer, ForeignKey("capsules.id", ondelete="CASCADE"), nullable=False)
+    student_id            = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
+    first_opened_at       = Column(DateTime(timezone=True), nullable=True)
+    last_opened_at        = Column(DateTime(timezone=True), nullable=True)
+    total_time_spent_sec  = Column(Integer, default=0, nullable=False)
+    pages_viewed          = Column(Integer, default=0, nullable=False)
+    total_pages           = Column(Integer, default=0, nullable=False)
+    completion_pct        = Column(Float, default=0.0, nullable=False)
+    quiz_attempted        = Column(Boolean, default=False, nullable=False)
+    quiz_score            = Column(Integer, default=0, nullable=False)
+    quiz_answers_json     = Column(JSONB, nullable=True)
+    quiz_passed           = Column(Boolean, default=False, nullable=False)
+    download_attempted    = Column(Boolean, default=False, nullable=False)
+    download_allowed      = Column(Boolean, default=False, nullable=False)
+    watermarked_url       = Column(String(500), nullable=True)
+    created_at            = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at            = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    capsule = relationship("Capsule", back_populates="interactions")
+    student = relationship("User",    foreign_keys=[student_id], backref="capsule_interactions")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE — class_wall_posts
+# ═══════════════════════════════════════════════════════════════════════
+
+class ClassWallPost(Base):
+    __tablename__ = "class_wall_posts"
+    __table_args__ = (
+        Index("ix_class_wall_posts_subject_id", "subject_id"),
+        Index("ix_class_wall_posts_section_id", "section_id"),
+        Index("ix_class_wall_posts_student_id", "student_id"),
+        Index("ix_class_wall_posts_capsule_id", "capsule_id"),
+        Index("ix_class_wall_posts_status",     "status"),
+        Index("ix_class_wall_posts_is_hot",     "is_hot"),
+    )
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    subject_id            = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    section_id            = Column(Integer, ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
+    student_id            = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
+    capsule_id            = Column(Integer, ForeignKey("capsules.id", ondelete="SET NULL"), nullable=True)
+    page_number           = Column(Integer, nullable=True)
+    content               = Column(Text, nullable=False)
+    ai_suggested_answer   = Column(Text, nullable=True)
+    ai_answer_confidence  = Column(Float, nullable=True)
+    teacher_answer        = Column(Text, nullable=True)
+    teacher_answered_by   = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    teacher_answered_at   = Column(DateTime(timezone=True), nullable=True)
+    resonance_count       = Column(Integer, default=0, nullable=False)
+    status                = Column(SAEnum(WallPostStatus, name="wallpoststatus"), default=WallPostStatus.open, nullable=False)
+    is_hot                = Column(Boolean, default=False, nullable=False)
+    is_anonymous_to_peers = Column(Boolean, default=True, nullable=False)
+    created_at            = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at            = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    subject     = relationship("Subject")
+    section     = relationship("Section", foreign_keys=[section_id])
+    student     = relationship("User",    foreign_keys=[student_id], backref="wall_posts")
+    capsule     = relationship("Capsule", back_populates="wall_posts")
+    answerer    = relationship("User",    foreign_keys=[teacher_answered_by])
+    resonances  = relationship("ClassWallResonance", back_populates="post", cascade="all, delete-orphan")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE — class_wall_resonances
+# ═══════════════════════════════════════════════════════════════════════
+
+class ClassWallResonance(Base):
+    __tablename__ = "class_wall_resonances"
+    __table_args__ = (
+        UniqueConstraint("post_id", "student_id", name="uq_class_wall_resonance_post_student"),
+        Index("ix_class_wall_resonances_post_id",    "post_id"),
+        Index("ix_class_wall_resonances_student_id", "student_id"),
+    )
+
+    id         = Column(Integer, primary_key=True, index=True)
+    post_id    = Column(Integer, ForeignKey("class_wall_posts.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(Integer, ForeignKey("users.id",            ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    post    = relationship("ClassWallPost", back_populates="resonances")
+    student = relationship("User", foreign_keys=[student_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TABLE — capsule_access_logs
+# ═══════════════════════════════════════════════════════════════════════
+
+class CapsuleAccessLog(Base):
+    __tablename__ = "capsule_access_logs"
+    __table_args__ = (
+        Index("ix_capsule_access_logs_capsule_id", "capsule_id"),
+        Index("ix_capsule_access_logs_user_id",    "user_id"),
+        Index("ix_capsule_access_logs_action",     "action"),
+        Index("ix_capsule_access_logs_created_at", "created_at"),
+    )
+
+    id          = Column(Integer, primary_key=True, index=True)
+    capsule_id  = Column(Integer, ForeignKey("capsules.id", ondelete="CASCADE"), nullable=False)
+    user_id     = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
+    action      = Column(SAEnum(CapsuleAccessAction, name="capsuleaccessaction"), nullable=False)
+    deny_reason = Column(String(200), nullable=True)
+    ip_address  = Column(String(45), nullable=True)
+    user_agent  = Column(String(500), nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    capsule = relationship("Capsule", back_populates="access_logs")
+    user    = relationship("User",    foreign_keys=[user_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Utilities
 # ═══════════════════════════════════════════════════════════════════════
 
