@@ -85,6 +85,7 @@ from utils.pdf_watermark import (
     watermark_pdf_for_student,
 )
 from utils.signed_urls import generate_signed_capsule_url, verify_signed_url
+from utils.sms import send_sms
 from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,10 @@ HOT_DOUBT_THRESHOLD = 5
 WATERMARK_TTL_SECONDS = 3600                 # 1 hour
 ATTENDANCE_READ_ONLY_FLOOR = 65.0            # below min_pct but >=65 → read_only
 ATTENDANCE_NO_DOWNLOAD_FLOOR = 0.0
+QUIZ_MAX_ATTEMPTS = 2                        # Prompt 6: allow up to 2 attempts
+QUIZ_RETRY_COOLDOWN_HOURS = 24               # Prompt 6: wait 24h between attempts
+HOD_ESCALATION_FAIL_THRESHOLD = 3            # ≥3 fails in last 7d for same subj → notify HOD
+HOD_ESCALATION_WINDOW_DAYS = 7
 
 
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
@@ -481,22 +486,100 @@ def _notify_tutor_quiz_fail(student_id: int, capsule_id: int, score: int) -> Non
             TutorAssignment.student_id == student_id,
             TutorAssignment.is_active == True,  # noqa: E712
         ).first()
-        if not ta:
-            return
-        tutor = db.query(User).filter(User.id == ta.tutor_id).first()
         student = db.query(User).filter(User.id == student_id).first()
         capsule = db.query(Capsule).filter(Capsule.id == capsule_id).first()
-        if not (tutor and student and capsule and tutor.phone):
+        if not (student and capsule):
             return
         subj = db.query(Subject).filter(Subject.id == capsule.subject_id).first()
         subject_name = subj.name if subj else "subject"
-        msg = (
-            f"Your ward {student.name} ({student.roll_number or 'N/A'}) failed comprehension "
-            f"check for '{capsule.title}' in {subject_name}. Score: {score}/3. "
-            f"May need academic support."
+
+        # ── (1) Notify direct tutor: WhatsApp + Push + SMS ────────────
+        tutor = db.query(User).filter(User.id == ta.tutor_id).first() if ta else None
+        if tutor:
+            wa_msg = (
+                f"Your ward {student.name} ({student.roll_number or 'N/A'}) failed comprehension "
+                f"check for '{capsule.title}' in {subject_name}. Score: {score}/3. "
+                f"May need academic support."
+            )
+            if tutor.phone:
+                try:
+                    send_whatsapp_message(tutor.phone, wa_msg)
+                except Exception as e:
+                    logger.warning("tutor WA failed: %s", e)
+                try:
+                    sms_msg = (
+                        f"AutoAttend: Your ward {student.name} failed quiz '{capsule.title}' "
+                        f"({subject_name}) with {score}/3. Please review."
+                    )
+                    send_sms(tutor.phone, sms_msg)
+                except Exception as e:
+                    logger.warning("tutor SMS failed: %s", e)
+            try:
+                send_push_notification(
+                    user_id=tutor.id,
+                    title=f"⚠️ Ward quiz failure: {student.name}",
+                    body=f"{student.name} failed '{capsule.title}' ({subject_name}) — {score}/3",
+                    db=db,
+                    data={
+                        "type": "classpulse_tutor_alert",
+                        "student_id": student.id,
+                        "capsule_id": capsule.id,
+                        "subject_id": capsule.subject_id,
+                        "screen": "TWMDashboard",
+                    },
+                )
+            except Exception as e:
+                logger.warning("tutor push failed: %s", e)
+
+        # ── (2) HOD escalation: ≥3 fails in last 7d for same subject ──
+        try:
+            cutoff = datetime.now(tz=timezone.utc) - timedelta(days=HOD_ESCALATION_WINDOW_DAYS)
+            cap_ids_subj = [
+                c.id for c in db.query(Capsule).filter(Capsule.subject_id == capsule.subject_id).all()
+            ]
+            recent_fails = db.query(CapsuleInteraction).filter(
+                CapsuleInteraction.student_id == student_id,
+                CapsuleInteraction.capsule_id.in_(cap_ids_subj) if cap_ids_subj else False,
+                CapsuleInteraction.quiz_attempted == True,  # noqa: E712
+                CapsuleInteraction.quiz_passed == False,  # noqa: E712
+                CapsuleInteraction.last_quiz_at.isnot(None),
+                CapsuleInteraction.last_quiz_at >= cutoff,
+            ).count() if cap_ids_subj else 0
+
+            if recent_fails >= HOD_ESCALATION_FAIL_THRESHOLD and student.department_id:
+                hod = db.query(User).filter(
+                    User.department_id == student.department_id,
+                    User.role == UserRole.hod,
+                    User.is_active == True,  # noqa: E712
+                ).first()
+                if hod:
+                    send_push_notification(
+                        user_id=hod.id,
+                        title="🚨 ClassPulse academic alert",
+                        body=(
+                            f"{student.name} ({student.roll_number or 'N/A'}) — "
+                            f"{recent_fails} quiz failures in {subject_name} (7d)"
+                        ),
+                        db=db,
+                        data={
+                            "type": "classpulse_hod_escalation",
+                            "student_id": student.id,
+                            "subject_id": capsule.subject_id,
+                            "fail_count": recent_fails,
+                            "screen": "HODClassPulse",
+                        },
+                    )
+                    logger.info(
+                        "🚨 HOD escalation: student=%d subject=%d fails=%d",
+                        student_id, capsule.subject_id, recent_fails,
+                    )
+        except Exception as e:
+            logger.warning("HOD escalation check failed: %s", e)
+
+        logger.info(
+            "📱 tutor channels notified for quiz fail (student=%d, capsule=%d)",
+            student_id, capsule_id,
         )
-        send_whatsapp_message(tutor.phone, msg)
-        logger.info("📱 tutor WhatsApp sent for quiz fail (student=%d, capsule=%d)", student_id, capsule_id)
     except Exception as exc:
         logger.warning("notify_tutor_quiz_fail failed: %s", exc)
     finally:
@@ -593,7 +676,7 @@ RATE_LIMITS = {
     "open_capsule":             (10, 86400, "per capsule per day"),
     "wall_post":                (5,  86400, "per subject per day"),
     "wall_resonate":            (50, 3600,  "per hour"),
-    "submit_quiz":              (1,  86400, "per capsule per day"),
+    "submit_quiz":              (2,  86400, "per capsule per day"),
 }
 
 
@@ -1274,6 +1357,8 @@ def student_list_capsules(
             "access_status": access_status,
             "access_meta": meta,
             "my_interaction": my_interaction,
+            "featured": bool(getattr(c, "featured", False)),
+            "featured_at": c.featured_at.isoformat() if getattr(c, "featured_at", None) else None,
         })
     return {"subject_id": subject_id, "capsules": out, "total": len(out)}
 
@@ -1523,8 +1608,25 @@ def student_submit_quiz(
         raise HTTPException(400, "No quiz available for this capsule yet")
 
     inter = _get_or_create_interaction(db, capsule_id, student.id)
-    if inter.quiz_attempted:
-        raise HTTPException(403, "Quiz already attempted")
+    # ── Quiz retry policy (Prompt 6): up to 2 attempts, 24h cooldown ──
+    now_dt = datetime.now(tz=timezone.utc)
+    if inter.quiz_passed:
+        raise HTTPException(403, "Quiz already passed")
+    attempts_used = inter.quiz_attempts_count or 0
+    if attempts_used >= QUIZ_MAX_ATTEMPTS:
+        raise HTTPException(403, "Max quiz attempts (2) reached")
+    if attempts_used > 0 and inter.last_quiz_at:
+        last = inter.last_quiz_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        elapsed = now_dt - last
+        cooldown = timedelta(hours=QUIZ_RETRY_COOLDOWN_HOURS)
+        if elapsed < cooldown:
+            secs = int((cooldown - elapsed).total_seconds())
+            raise HTTPException(
+                429,
+                f"Please wait {secs // 3600}h {(secs % 3600) // 60}m before retrying",
+            )
 
     # Suspicious-activity flag for ultra-fast quiz answers (logged, not blocking)
     if body.elapsed_seconds is not None:
@@ -1562,6 +1664,8 @@ def student_submit_quiz(
 
     passed = score >= QUIZ_PASS_SCORE
     inter.quiz_attempted = True
+    inter.quiz_attempts_count = (inter.quiz_attempts_count or 0) + 1
+    inter.last_quiz_at = now_dt
     inter.quiz_score = score
     inter.quiz_passed = passed
     inter.quiz_answers_json = body.answers
@@ -1582,6 +1686,9 @@ def student_submit_quiz(
     if not passed:
         background.add_task(_notify_tutor_quiz_fail, student.id, capsule.id, score)
 
+    attempts_remaining = max(0, QUIZ_MAX_ATTEMPTS - (inter.quiz_attempts_count or 0))
+    can_retry = (not passed) and attempts_remaining > 0
+
     return {
         "score": score,
         "out_of": len(quiz),
@@ -1590,6 +1697,10 @@ def student_submit_quiz(
         "correct_answers": correct_answers,
         "explanations": explanations,
         "detail": detail,
+        "attempts_used": inter.quiz_attempts_count,
+        "attempts_remaining": attempts_remaining,
+        "can_retry": can_retry,
+        "retry_after": (now_dt + timedelta(hours=QUIZ_RETRY_COOLDOWN_HOURS)).isoformat() if can_retry else None,
         "message": "Great job!" if passed else "Review the material and revisit key points.",
     }
 
@@ -2301,4 +2412,210 @@ def hod_security_audit(
         "recent_suspicious_events": recent_suspicious_events,
         "students_with_high_denials": students_with_high_denials,
         "bulk_download_attempts": bulk_download_attempts,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Prompt 6 — New endpoints: reprocess-ai, my-progress, retry-status, feature
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.post("/teacher/capsule/{capsule_id}/reprocess-ai")
+async def teacher_reprocess_capsule_ai(
+    capsule_id: int,
+    background: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-run AI summary + quiz generation for a capsule (teacher-only)."""
+    _require_role(current_user, "teacher", "hod", "principal")
+    cap = db.query(Capsule).filter(Capsule.id == capsule_id).first()
+    if not cap:
+        raise HTTPException(404, "Capsule not found")
+    if current_user["role"] == "teacher" and not _teacher_owns_subject(db, current_user["id"], cap.subject_id):
+        raise HTTPException(403, "Not your subject")
+    cap.ai_processed = False
+    cap.ai_summary = None
+    cap.ai_quiz_json = None
+    db.commit()
+    background.add_task(_process_capsule_ai, capsule_id)
+    logger.info("♻️ AI reprocess queued for capsule %d by user %d", capsule_id, current_user["id"])
+    return {"ok": True, "capsule_id": capsule_id, "message": "AI reprocessing queued"}
+
+
+@router.get("/student/my-progress")
+def student_my_progress(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Per-subject + overall progress + learning streak for the student."""
+    _require_role(current_user, "student")
+    student = db.query(User).filter(User.id == current_user["id"]).first()
+    if not student:
+        raise HTTPException(404, "User not found")
+
+    subjects = db.query(Subject).filter(
+        Subject.course_id == student.course_id,
+        Subject.semester == student.semester,
+    ).all()
+
+    per_subject = []
+    overall_total = overall_opened = overall_attempted = overall_passed = 0
+
+    for subj in subjects:
+        cap_ids = [
+            c.id for c in db.query(Capsule).filter(
+                Capsule.subject_id == subj.id, Capsule.is_active == True,  # noqa: E712
+            ).all()
+        ]
+        total = len(cap_ids)
+        if not total:
+            continue
+        inters = db.query(CapsuleInteraction).filter(
+            CapsuleInteraction.student_id == student.id,
+            CapsuleInteraction.capsule_id.in_(cap_ids),
+        ).all()
+        opened = sum(1 for i in inters if i.first_opened_at)
+        attempted = sum(1 for i in inters if i.quiz_attempted)
+        passed = sum(1 for i in inters if i.quiz_passed)
+        per_subject.append({
+            "subject_id": subj.id,
+            "subject_name": subj.name,
+            "subject_code": subj.code,
+            "capsules_total": total,
+            "capsules_opened": opened,
+            "quizzes_attempted": attempted,
+            "quizzes_passed": passed,
+            "completion_pct": round((opened / total) * 100, 1) if total else 0.0,
+            "comprehension_pct": round((passed / attempted) * 100, 1) if attempted else 0.0,
+        })
+        overall_total += total
+        overall_opened += opened
+        overall_attempted += attempted
+        overall_passed += passed
+
+    # Learning streak: consecutive days (ending today) with at least one CapsuleAccessLog
+    streak_days = 0
+    try:
+        today = date.today()
+        for d_offset in range(0, 60):  # cap streak at 60d
+            day = today - timedelta(days=d_offset)
+            day_start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+            day_end = day_start + timedelta(days=1)
+            has_act = db.query(CapsuleAccessLog.id).filter(
+                CapsuleAccessLog.user_id == student.id,
+                CapsuleAccessLog.created_at >= day_start,
+                CapsuleAccessLog.created_at < day_end,
+            ).first()
+            if has_act:
+                streak_days += 1
+            else:
+                if d_offset == 0:
+                    # no activity today — streak still counted from yesterday onward
+                    continue
+                break
+    except Exception as e:
+        logger.warning("streak calc failed: %s", e)
+        streak_days = 0
+
+    return {
+        "per_subject": per_subject,
+        "overall": {
+            "capsules_total": overall_total,
+            "capsules_opened": overall_opened,
+            "quizzes_attempted": overall_attempted,
+            "quizzes_passed": overall_passed,
+            "completion_pct": round((overall_opened / overall_total) * 100, 1) if overall_total else 0.0,
+            "comprehension_pct": round((overall_passed / overall_attempted) * 100, 1) if overall_attempted else 0.0,
+        },
+        "learning_streak_days": streak_days,
+    }
+
+
+@router.get("/student/capsule/{capsule_id}/quiz-retry-status")
+def student_quiz_retry_status(
+    capsule_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check if student can retry the quiz, attempts left, and cooldown remaining."""
+    _require_role(current_user, "student")
+    student_id = current_user["id"]
+    inter = db.query(CapsuleInteraction).filter(
+        CapsuleInteraction.capsule_id == capsule_id,
+        CapsuleInteraction.student_id == student_id,
+    ).first()
+    attempts_used = (inter.quiz_attempts_count or 0) if inter else 0
+    attempts_remaining = max(0, QUIZ_MAX_ATTEMPTS - attempts_used)
+    passed = bool(inter and inter.quiz_passed)
+    cooldown_remaining_sec = 0
+    next_retry_at = None
+    if inter and inter.last_quiz_at and not passed and attempts_used > 0:
+        last = inter.last_quiz_at
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        cooldown = timedelta(hours=QUIZ_RETRY_COOLDOWN_HOURS)
+        elapsed = datetime.now(tz=timezone.utc) - last
+        if elapsed < cooldown:
+            cooldown_remaining_sec = int((cooldown - elapsed).total_seconds())
+            next_retry_at = (last + cooldown).isoformat()
+    can_retry = (
+        not passed
+        and attempts_remaining > 0
+        and cooldown_remaining_sec == 0
+    )
+    return {
+        "capsule_id": capsule_id,
+        "passed": passed,
+        "attempts_used": attempts_used,
+        "attempts_remaining": attempts_remaining,
+        "max_attempts": QUIZ_MAX_ATTEMPTS,
+        "cooldown_remaining_sec": cooldown_remaining_sec,
+        "next_retry_at": next_retry_at,
+        "can_retry": can_retry,
+    }
+
+
+class FeatureToggleRequest(BaseModel):
+    featured: bool
+
+
+@router.post("/hod/capsule/{capsule_id}/feature")
+def hod_feature_capsule(
+    capsule_id: int,
+    body: FeatureToggleRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """HOD toggles 'featured' status of a capsule within their department."""
+    _require_role(current_user, "hod", "principal")
+    requester = db.query(User).filter(User.id == current_user["id"]).first()
+    cap = db.query(Capsule).filter(Capsule.id == capsule_id).first()
+    if not cap:
+        raise HTTPException(404, "Capsule not found")
+
+    # Verify capsule belongs to HOD's department (Principal: any)
+    if current_user["role"] == "hod":
+        if not requester or not requester.department_id:
+            raise HTTPException(403, "HOD has no department assigned")
+        subj = db.query(Subject).filter(Subject.id == cap.subject_id).first()
+        if not subj:
+            raise HTTPException(404, "Subject not found")
+        from database import Course
+        course = db.query(Course).filter(Course.id == subj.course_id).first()
+        if not course or course.department_id != requester.department_id:
+            raise HTTPException(403, "Capsule not in your department")
+
+    cap.featured = bool(body.featured)
+    cap.featured_by = current_user["id"] if body.featured else None
+    cap.featured_at = datetime.now(tz=timezone.utc) if body.featured else None
+    db.commit()
+    logger.info(
+        "⭐ Capsule %d featured=%s by user %d",
+        capsule_id, cap.featured, current_user["id"],
+    )
+    return {
+        "ok": True,
+        "capsule_id": capsule_id,
+        "featured": cap.featured,
+        "featured_at": cap.featured_at.isoformat() if cap.featured_at else None,
     }

@@ -947,6 +947,10 @@ class Capsule(Base):
     is_active                = Column(Boolean, default=True, nullable=False)
     view_count               = Column(Integer, default=0, nullable=False)
     download_count           = Column(Integer, default=0, nullable=False)
+    # ── HOD Featured (PROMPT 6) ───────────────────────────────────────
+    featured                 = Column(Boolean, default=False, nullable=False)
+    featured_by              = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    featured_at              = Column(DateTime(timezone=True), nullable=True)
     created_at               = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at               = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -987,6 +991,9 @@ class CapsuleInteraction(Base):
     download_attempted    = Column(Boolean, default=False, nullable=False)
     download_allowed      = Column(Boolean, default=False, nullable=False)
     watermarked_url       = Column(String(500), nullable=True)
+    # ── Quiz retry support (PROMPT 6) ─────────────────────────────────
+    quiz_attempts_count   = Column(Integer, default=0, nullable=False)
+    last_quiz_at          = Column(DateTime(timezone=True), nullable=True)
     created_at            = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at            = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

@@ -30,6 +30,7 @@ from database import (
     SessionStatus,
     Subject,
     User,
+    UserRole,
 )
 
 logger = logging.getLogger(__name__)
@@ -233,3 +234,149 @@ async def check_capsule_access(
     except Exception as e:
         logger.exception("check_capsule_access fail-safe DENY: %s", e)
         return False, "error", {}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Department-level KPI helpers (used by HOD dashboard widget)
+# ═══════════════════════════════════════════════════════════════════════
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+
+CONTENT_GAP_DAYS = 14
+
+
+def _dept_subject_ids(dept_id: int, db: Session) -> list[int]:
+    try:
+        return [
+            s.id for s in db.query(Subject)
+            .join(Subject.course)
+            .filter(Subject.course.has(department_id=dept_id))
+            .all()
+        ]
+    except Exception:
+        return []
+
+
+def calculate_dept_engagement(dept_id: int, db: Session) -> float:
+    """Mean engagement (% of (capsule × student) pairs ever opened)."""
+    try:
+        subj_ids = _dept_subject_ids(dept_id, db)
+        if not subj_ids:
+            return 0.0
+        sums = []
+        for sid in subj_ids:
+            subj = db.query(Subject).filter(Subject.id == sid).first()
+            if not subj:
+                continue
+            cap_ids = [c.id for c in db.query(Capsule).filter(
+                Capsule.subject_id == sid, Capsule.is_active == True  # noqa: E712
+            ).all()]
+            if not cap_ids:
+                continue
+            total_students = db.query(User).filter(
+                User.role == UserRole.student, User.is_active == True,  # noqa: E712
+                User.course_id == subj.course_id, User.semester == subj.semester,
+            ).count()
+            if not total_students:
+                continue
+            opened = db.query(CapsuleInteraction).filter(
+                CapsuleInteraction.capsule_id.in_(cap_ids),
+                CapsuleInteraction.first_opened_at.isnot(None),
+            ).count()
+            possible = len(cap_ids) * total_students
+            sums.append((opened / possible) * 100 if possible else 0.0)
+        return round(sum(sums) / len(sums), 1) if sums else 0.0
+    except Exception as e:
+        logger.warning("calculate_dept_engagement failed: %s", e)
+        return 0.0
+
+
+def calculate_dept_comprehension(dept_id: int, db: Session) -> float:
+    """Mean comprehension (% of attempted quizzes that passed)."""
+    try:
+        subj_ids = _dept_subject_ids(dept_id, db)
+        if not subj_ids:
+            return 0.0
+        cap_ids = [c.id for c in db.query(Capsule).filter(
+            Capsule.subject_id.in_(subj_ids), Capsule.is_active == True  # noqa: E712
+        ).all()]
+        if not cap_ids:
+            return 0.0
+        attempted = db.query(CapsuleInteraction).filter(
+            CapsuleInteraction.capsule_id.in_(cap_ids),
+            CapsuleInteraction.quiz_attempted == True,  # noqa: E712
+        ).all()
+        if not attempted:
+            return 0.0
+        passed = sum(1 for i in attempted if i.quiz_passed)
+        return round((passed / len(attempted)) * 100, 1)
+    except Exception as e:
+        logger.warning("calculate_dept_comprehension failed: %s", e)
+        return 0.0
+
+
+def count_content_gaps(dept_id: int, db: Session) -> int:
+    """Number of subjects with no upload in the last 14 days."""
+    try:
+        subj_ids = _dept_subject_ids(dept_id, db)
+        if not subj_ids:
+            return 0
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=CONTENT_GAP_DAYS)
+        gaps = 0
+        for sid in subj_ids:
+            last = db.query(Capsule).filter(
+                Capsule.subject_id == sid, Capsule.is_active == True  # noqa: E712
+            ).order_by(Capsule.created_at.desc()).first()
+            if not last or (last.created_at and last.created_at < cutoff):
+                gaps += 1
+        return gaps
+    except Exception as e:
+        logger.warning("count_content_gaps failed: %s", e)
+        return 0
+
+
+def count_at_risk_students(dept_id: int, db: Session) -> int:
+    """Distinct students with > 2 quiz failures across dept capsules."""
+    try:
+        subj_ids = _dept_subject_ids(dept_id, db)
+        if not subj_ids:
+            return 0
+        cap_ids = [c.id for c in db.query(Capsule).filter(
+            Capsule.subject_id.in_(subj_ids)
+        ).all()]
+        if not cap_ids:
+            return 0
+        rows = db.query(CapsuleInteraction).filter(
+            CapsuleInteraction.capsule_id.in_(cap_ids),
+            CapsuleInteraction.quiz_attempted == True,  # noqa: E712
+            CapsuleInteraction.quiz_passed == False,  # noqa: E712
+        ).all()
+        counter = Counter(r.student_id for r in rows)
+        return sum(1 for _sid, n in counter.items() if n > 2)
+    except Exception as e:
+        logger.warning("count_at_risk_students failed: %s", e)
+        return 0
+
+
+def classpulse_summary_for_dept(dept_id: int, db: Session) -> dict:
+    """Compact summary used by HOD's main dashboard widget."""
+    try:
+        subj_ids = _dept_subject_ids(dept_id, db)
+        total = db.query(Capsule).filter(
+            Capsule.subject_id.in_(subj_ids) if subj_ids else False,
+            Capsule.is_active == True,  # noqa: E712
+        ).count() if subj_ids else 0
+        return {
+            "total_capsules": int(total),
+            "avg_engagement_pct": calculate_dept_engagement(dept_id, db),
+            "avg_comprehension_pct": calculate_dept_comprehension(dept_id, db),
+            "content_gap_alerts": count_content_gaps(dept_id, db),
+            "students_at_risk": count_at_risk_students(dept_id, db),
+        }
+    except Exception as e:
+        logger.warning("classpulse_summary_for_dept failed: %s", e)
+        return {
+            "total_capsules": 0, "avg_engagement_pct": 0.0,
+            "avg_comprehension_pct": 0.0, "content_gap_alerts": 0,
+            "students_at_risk": 0,
+        }

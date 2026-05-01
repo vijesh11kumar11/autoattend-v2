@@ -390,8 +390,7 @@ function CapsulesTab({ subjects, activeSubjectId, setActiveSubjectId, onUploaded
   );
 }
 
-function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {
-  const tcfg = CAPSULE_TYPES.find((t) => t.key === capsule.capsule_type) || CAPSULE_TYPES[0];
+function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  const tcfg = CAPSULE_TYPES.find((t) => t.key === capsule.capsule_type) || CAPSULE_TYPES[0];
   const ucfg = UNLOCK_MODES.find((u) => u.key === capsule.unlock_mode) || UNLOCK_MODES[0];
   const s = capsule.interactions_summary || {};
   const opened = s.read_count || 0;
@@ -454,6 +453,20 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {
           className="flex-1 px-3 py-2 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg text-xs font-medium"
         >
           📊 Analytics
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              await api.post(`/api/classpulse/teacher/capsule/${capsule.id}/reprocess-ai`);
+              alert('AI reprocessing queued. Refresh in a moment.');
+            } catch (e) {
+              alert(e?.response?.data?.detail || 'Reprocess failed');
+            }
+          }}
+          className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-medium"
+          title="Re-run AI summary & quiz"
+        >
+          🤖 Reprocess
         </button>
         <button
           onClick={onToggleActive}

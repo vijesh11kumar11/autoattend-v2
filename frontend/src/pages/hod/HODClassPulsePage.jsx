@@ -553,7 +553,7 @@ function SubjectDetailModal({ subject, onClose }) {
 
 function CapsulesTable({ capsules, matrix }) {
   // engagement = % of students who opened; comprehension = % quiz_passed among quiz_attempted
-  const rows = capsules.map(c => {
+  const initialRows = capsules.map(c => {
     let opened = 0, attempted = 0, passed = 0;
     matrix.forEach(row => {
       const cell = (row.capsules || []).find(x => x.capsule_id === c.id);
@@ -568,9 +568,58 @@ function CapsulesTable({ capsules, matrix }) {
       comprehension_pct: attempted > 0 ? Math.round((passed / attempted) * 100) : null,
     };
   });
+  const [rows, setRows] = useState(initialRows);
+  const [busy, setBusy] = useState(null);
+
+  const toggleFeature = async (cap) => {
+    setBusy(cap.id);
+    try {
+      const r = await api.post(`/api/classpulse/hod/capsule/${cap.id}/feature`, {
+        featured: !cap.featured,
+      });
+      setRows(rs => rs.map(x => x.id === cap.id ? { ...x, featured: r.data.featured } : x));
+    } catch (e) {
+      alert(e?.response?.data?.detail || 'Failed to toggle feature');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const exportCSV = () => {
+    const header = ['Title', 'Type', 'Views', 'Downloads', 'Engagement %', 'Comprehension %', 'Featured'];
+    const lines = [header.join(',')];
+    rows.forEach(r => {
+      const cells = [
+        `"${(r.title || '').replace(/"/g, '""')}"`,
+        r.capsule_type || '',
+        r.view_count || 0,
+        r.download_count || 0,
+        r.engagement_pct ?? 0,
+        r.comprehension_pct ?? '',
+        r.featured ? 'Yes' : 'No',
+      ];
+      lines.push(cells.join(','));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `classpulse-capsules-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (rows.length === 0) return <p className="text-sm text-slate-400">No capsules.</p>;
   return (
     <div className="overflow-x-auto">
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={exportCSV}
+          className="px-3 py-1 text-xs font-semibold rounded bg-violet-600 text-white hover:bg-violet-700"
+        >
+          ⬇ Export Full Report (CSV)
+        </button>
+      </div>
       <table className="w-full text-xs">
         <thead className="text-left text-slate-500 border-b border-slate-100">
           <tr>
@@ -579,19 +628,36 @@ function CapsulesTable({ capsules, matrix }) {
             <th className="py-2 pr-2">Views</th>
             <th className="py-2 pr-2">Downloads</th>
             <th className="py-2 pr-2">Engagement</th>
-            <th className="py-2">Comprehension</th>
+            <th className="py-2 pr-2">Comprehension</th>
+            <th className="py-2">Feature</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(r => (
             <tr key={r.id} className="border-b border-slate-50">
-              <td className="py-2 pr-2 font-medium text-slate-800">{r.title}</td>
+              <td className="py-2 pr-2 font-medium text-slate-800">
+                {r.featured && <span title="Featured" className="mr-1">⭐</span>}
+                {r.title}
+              </td>
               <td className="py-2 pr-2 text-slate-600">{r.capsule_type}</td>
               <td className="py-2 pr-2">{r.view_count}</td>
               <td className="py-2 pr-2">{r.download_count}</td>
               <td className={`py-2 pr-2 font-bold ${pctText(r.engagement_pct)}`}>{r.engagement_pct}%</td>
-              <td className={`py-2 font-bold ${r.comprehension_pct === null ? 'text-slate-400' : pctText(r.comprehension_pct)}`}>
+              <td className={`py-2 pr-2 font-bold ${r.comprehension_pct === null ? 'text-slate-400' : pctText(r.comprehension_pct)}`}>
                 {r.comprehension_pct === null ? '—' : `${r.comprehension_pct}%`}
+              </td>
+              <td className="py-2">
+                <button
+                  disabled={busy === r.id}
+                  onClick={() => toggleFeature(r)}
+                  className={`px-2 py-1 text-[11px] font-semibold rounded ${
+                    r.featured
+                      ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  } disabled:opacity-50`}
+                >
+                  {busy === r.id ? '…' : r.featured ? 'Unfeature' : 'Feature'}
+                </button>
               </td>
             </tr>
           ))}

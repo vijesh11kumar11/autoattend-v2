@@ -101,6 +101,7 @@ export default function StudentClassPulsePage() {
   const [tab, setTab] = useState('capsules');
   const [perSubjectMeta, setPerSubjectMeta] = useState({}); // {sid: {capsule_count, unread, doubts}}
   const [toast, setToast] = useState(null);
+  const [progress, setProgress] = useState(null); // {learning_streak_days, overall, per_subject}
 
   // Subject list
   const loadSubjects = useCallback(async () => {
@@ -118,7 +119,16 @@ export default function StudentClassPulsePage() {
     }
   }, [activeSubjectId]);
 
-  useEffect(() => { loadSubjects(); }, []); // eslint-disable-line
+  const loadProgress = useCallback(async () => {
+    try {
+      const r = await api.get('/classpulse/student/my-progress');
+      setProgress(r.data);
+    } catch {
+      setProgress(null);
+    }
+  }, []);
+
+  useEffect(() => { loadSubjects(); loadProgress(); }, []); // eslint-disable-line
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -133,12 +143,38 @@ export default function StudentClassPulsePage() {
     <div className="space-y-4">
       {/* Banner */}
       <div className="bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 rounded-2xl p-5 md:p-6 text-white shadow-lg">
-        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-          <span>📚</span> ClassPulse
-        </h1>
-        <p className="text-white/80 text-xs md:text-sm mt-1">
-          Catch up on lectures · ask doubts anonymously · earn comprehension badges
-        </p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <span>📚</span> ClassPulse
+            </h1>
+            <p className="text-white/80 text-xs md:text-sm mt-1">
+              Catch up on lectures · ask doubts anonymously · earn comprehension badges
+            </p>
+          </div>
+          {progress && (
+            <div className="flex items-center gap-3 bg-white/15 backdrop-blur rounded-xl px-4 py-2">
+              <div className="text-3xl">🔥</div>
+              <div className="leading-tight">
+                <div className="text-2xl font-bold">{progress.learning_streak_days || 0}</div>
+                <div className="text-[11px] uppercase tracking-wide text-white/85">day streak</div>
+              </div>
+              {progress.overall && (
+                <div className="border-l border-white/30 pl-3 ml-1 leading-tight">
+                  <div className="text-sm font-semibold">
+                    {progress.overall.completion_pct ?? 0}% read
+                    <span className="opacity-70 ml-1">
+                      · {progress.overall.comprehension_pct ?? 0}% pass
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-white/85">
+                    {progress.overall.capsules_opened || 0}/{progress.overall.capsules_total || 0} capsules
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -312,8 +348,29 @@ function CapsulesTab({ subjectId, showToast, onMeta }) {
     return <EmptyState icon="📦" title="No capsules yet" desc="Your teacher hasn't published any learning material for this subject." />;
   }
 
+  const featured = capsules.filter((c) => c.featured);
+
   return (
     <div className="space-y-3">
+      {featured.length > 0 && (
+        <div className="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-2xl p-4">
+          <div className="text-xs font-bold text-amber-700 mb-2 flex items-center gap-1">
+            ⭐ FEATURED BY HOD
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {featured.map((c) => (
+              <CapsuleCard
+                key={`feat-${c.capsule_id}`}
+                capsule={c}
+                expanded={expandedSummary === c.capsule_id}
+                onToggleSummary={() => setExpandedSummary(expandedSummary === c.capsule_id ? null : c.capsule_id)}
+                onOpen={() => handleCardClick(c)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {capsules.map((c) => (
           <CapsuleCard

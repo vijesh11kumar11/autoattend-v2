@@ -13,6 +13,7 @@ from database import SessionLocal, Base, engine
 from database import (
     College, Department, Course, Subject, User, Timetable,
     UserRole, DayOfWeek,
+    Capsule, CapsuleType, CapsuleUnlockMode,
 )
 
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -199,6 +200,143 @@ try:
             print(f"✅ {count} timetable entries created")
         else:
             print("ℹ️  Timetable already populated")
+
+    # ── 7. ClassPulse sample capsules (Prompt 6) ─────────────────
+    if teacher and created_subjects:
+        capsule_seed = [
+            {
+                "subject": created_subjects[0],
+                "title": "Intro to Trees & Traversals",
+                "type": CapsuleType.notes,
+                "unlock": CapsuleUnlockMode.always,
+                "desc": "Binary trees, BST basics, in/pre/post-order traversal.",
+                "min_pct": 65.0,
+                "ai_summary": (
+                    '{"summary":"Trees are hierarchical data structures. '
+                    'Each node has parent/children. Traversals visit each node once.",'
+                    '"key_points":["Binary tree: ≤2 children per node","BST: left<root<right",'
+                    '"Inorder of BST gives sorted","Preorder/postorder useful for serialization"],'
+                    '"estimated_read_time_min":7,"difficulty_level":"beginner"}'
+                ),
+                "ai_quiz": [
+                    {
+                        "question": "Which traversal of a BST returns sorted order?",
+                        "options": ["Preorder", "Inorder", "Postorder", "Level order"],
+                        "correct_answer": "B",
+                        "explanation": "Inorder visits left → root → right.",
+                    },
+                    {
+                        "question": "Max children per node in a binary tree?",
+                        "options": ["1", "2", "3", "Unlimited"],
+                        "correct_answer": "B",
+                        "explanation": "Binary trees allow at most two children.",
+                    },
+                    {
+                        "question": "Which is true for a BST?",
+                        "options": ["Left>root", "Right<root", "Left<root<Right", "All equal"],
+                        "correct_answer": "C",
+                        "explanation": "BST invariant.",
+                    },
+                ],
+            },
+            {
+                "subject": created_subjects[1],
+                "title": "Normalization 1NF / 2NF / 3NF",
+                "type": CapsuleType.notes,
+                "unlock": CapsuleUnlockMode.after_attendance_marked,
+                "desc": "Reducing redundancy in relational schemas.",
+                "min_pct": 70.0,
+                "ai_summary": (
+                    '{"summary":"Normalization decomposes tables to remove anomalies.",'
+                    '"key_points":["1NF: atomic values","2NF: no partial dependency on key",'
+                    '"3NF: no transitive dependency","BCNF: stricter form of 3NF"],'
+                    '"estimated_read_time_min":6,"difficulty_level":"intermediate"}'
+                ),
+                "ai_quiz": [
+                    {
+                        "question": "1NF requires?",
+                        "options": ["Atomic values", "No nulls", "PK present", "Foreign keys"],
+                        "correct_answer": "A",
+                        "explanation": "1NF: each cell holds atomic value.",
+                    },
+                    {
+                        "question": "2NF removes?",
+                        "options": ["Multivalued deps", "Partial deps", "Transitive deps", "Joins"],
+                        "correct_answer": "B",
+                        "explanation": "2NF eliminates partial dependencies on composite keys.",
+                    },
+                    {
+                        "question": "3NF removes?",
+                        "options": ["Partial", "Transitive", "Functional", "Join"],
+                        "correct_answer": "B",
+                        "explanation": "3NF eliminates transitive dependencies.",
+                    },
+                ],
+            },
+            {
+                "subject": created_subjects[2],
+                "title": "TCP vs UDP — Quick Reference",
+                "type": CapsuleType.notes,
+                "unlock": CapsuleUnlockMode.session_active,
+                "desc": "Protocol differences, when to use each.",
+                "min_pct": 65.0,
+                "ai_summary": (
+                    '{"summary":"TCP is connection-oriented & reliable; UDP is connectionless & fast.",'
+                    '"key_points":["TCP: handshake + ack","UDP: fire-and-forget",'
+                    '"TCP for HTTP/SSH","UDP for DNS/streaming"],'
+                    '"estimated_read_time_min":4,"difficulty_level":"beginner"}'
+                ),
+                "ai_quiz": [
+                    {
+                        "question": "Which protocol uses 3-way handshake?",
+                        "options": ["UDP", "TCP", "ICMP", "ARP"],
+                        "correct_answer": "B",
+                        "explanation": "TCP performs SYN → SYN-ACK → ACK.",
+                    },
+                    {
+                        "question": "Which is best for live video streaming?",
+                        "options": ["TCP", "UDP", "FTP", "SMTP"],
+                        "correct_answer": "B",
+                        "explanation": "UDP's low overhead suits real-time media.",
+                    },
+                    {
+                        "question": "Which protocol guarantees delivery?",
+                        "options": ["UDP", "TCP", "Both", "Neither"],
+                        "correct_answer": "B",
+                        "explanation": "TCP has retransmission and acks.",
+                    },
+                ],
+            },
+        ]
+        cap_count = 0
+        for cs in capsule_seed:
+            existing = db.query(Capsule).filter_by(
+                subject_id=cs["subject"].id, title=cs["title"],
+            ).first()
+            if existing:
+                continue
+            cap = Capsule(
+                subject_id=cs["subject"].id,
+                teacher_id=teacher.id,
+                title=cs["title"],
+                description=cs["desc"],
+                capsule_type=cs["type"],
+                unlock_mode=cs["unlock"],
+                min_attendance_pct=cs["min_pct"],
+                ai_summary=cs["ai_summary"],
+                ai_quiz_json=cs["ai_quiz"],
+                ai_processed=True,
+                is_active=True,
+                featured=(cap_count == 0),
+                featured_at=datetime.now(timezone.utc) if cap_count == 0 else None,
+            )
+            db.add(cap)
+            cap_count += 1
+        if cap_count:
+            db.flush()
+            print(f"✅ {cap_count} ClassPulse capsules created")
+        else:
+            print("ℹ️  ClassPulse capsules already seeded")
 
     db.commit()
     print("\n🎉 Seed complete!")

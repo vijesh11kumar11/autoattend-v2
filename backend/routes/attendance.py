@@ -26,6 +26,8 @@ from database import (
     AttendanceSession,
     AttendanceStatus,
     AuditResult,
+    Capsule,
+    CapsuleUnlockMode,
     Course,
     Department,
     MarkedBy,
@@ -230,6 +232,29 @@ def start_session(
             db=db,
             data={"type": "session_started", "session_id": session.id, "screen": "ScanQR"},
         )
+
+    # ── ClassPulse: notify session-active capsules now unlocked ──────
+    try:
+        sa_capsules = db.query(Capsule).filter(
+            Capsule.subject_id == body.subject_id,
+            Capsule.unlock_mode == CapsuleUnlockMode.session_active,
+            Capsule.is_active == True,  # noqa: E712
+        ).count()
+        if sa_capsules and student_ids:
+            send_push_to_many(
+                user_ids=student_ids,
+                title=f"📚 {sa_capsules} ClassPulse capsule(s) unlocked",
+                body=f"Open ClassPulse for {subject.name} — capsules available during this session.",
+                db=db,
+                data={
+                    "type": "classpulse_session_unlocked",
+                    "subject_id": body.subject_id,
+                    "session_id": session.id,
+                    "screen": "ClassPulseStudent",
+                },
+            )
+    except Exception as e:
+        logger.warning("ClassPulse start-session notify failed: %s", e)
 
     logger.info(
         "Session started: id=%d subject_id=%d teacher_id=%d students=%d",
@@ -525,6 +550,28 @@ def mark_attendance(
         data={"type": "attendance_marked", "session_id": body.session_id},
     )
 
+    # ── ClassPulse: notify after-attendance-marked capsules unlocked ─
+    try:
+        aam_count = db.query(Capsule).filter(
+            Capsule.subject_id == session.subject_id,
+            Capsule.unlock_mode == CapsuleUnlockMode.after_attendance_marked,
+            Capsule.is_active == True,  # noqa: E712
+        ).count()
+        if aam_count:
+            send_push_notification(
+                user_id=student_id,
+                title=f"📚 {aam_count} ClassPulse capsule(s) unlocked",
+                body=f"Open ClassPulse for {subject.name} — new content available.",
+                db=db,
+                data={
+                    "type": "classpulse_attendance_unlocked",
+                    "subject_id": session.subject_id,
+                    "screen": "ClassPulseStudent",
+                },
+            )
+    except Exception as e:
+        logger.warning("ClassPulse attendance-marked notify failed: %s", e)
+
     logger.info(
         "🎉 ATTENDANCE MARKED │ student_id=%d │ session_id=%d │ "
         "face=✓ │ qr=✓ │ gps=%s (%.1f m) │ bluetooth=%s │ suspicious=%s",
@@ -619,6 +666,31 @@ def end_session(
         "Session ended: id=%d present=%d/%d (%.1f%%)",
         session_id, present, total, pct,
     )
+
+    # ── ClassPulse: notify present students that session capsules are locked ─
+    try:
+        sa_count = db.query(Capsule).filter(
+            Capsule.subject_id == session.subject_id,
+            Capsule.unlock_mode == CapsuleUnlockMode.session_active,
+            Capsule.is_active == True,  # noqa: E712
+        ).count()
+        if sa_count:
+            present_ids = [r.student_id for r in all_records if r.status == AttendanceStatus.present]
+            subj = db.query(Subject).filter(Subject.id == session.subject_id).first()
+            subj_name = subj.name if subj else "Subject"
+            if present_ids:
+                send_push_to_many(
+                    user_ids=present_ids,
+                    title=f"🔒 {subj_name} — Session capsules locked",
+                    body=f"{sa_count} session capsule(s) are now locked. Review notes any time.",
+                    db=db,
+                    data={
+                        "type": "classpulse_session_locked",
+                        "subject_id": session.subject_id,
+                    },
+                )
+    except Exception as e:
+        logger.warning("ClassPulse end-session notify failed: %s", e)
 
     return EndSessionSummary(
         session_id = session_id,
