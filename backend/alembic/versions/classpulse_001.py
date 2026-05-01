@@ -19,33 +19,40 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # Enum type names (must match SAEnum names in database.py)
-CAPSULE_TYPE = sa.Enum(
+# We use postgresql.ENUM with create_type=False so that op.create_table()
+# does NOT auto-issue CREATE TYPE for the column references.
+# The types are explicitly created (idempotently) inside upgrade().
+_CAPSULE_TYPE_VALUES = (
     "notes", "slides", "reference", "assignment_material",
     "lab_manual", "previous_year", "formula_sheet",
-    name="capsuletype",
 )
-CAPSULE_UNLOCK_MODE = sa.Enum(
+_CAPSULE_UNLOCK_MODE_VALUES = (
     "always", "session_active", "after_attendance_marked", "attendance_gated",
-    name="capsuleunlockmode",
 )
-CAPSULE_ACCESS_ACTION = sa.Enum(
+_CAPSULE_ACCESS_ACTION_VALUES = (
     "view_attempt", "view_granted", "view_denied",
     "download_attempt", "download_granted", "download_denied",
     "quiz_start", "quiz_submit", "quiz_pass", "quiz_fail",
-    name="capsuleaccessaction",
 )
-WALL_POST_STATUS = sa.Enum(
-    "open", "answered", "resolved", "escalated",
-    name="wallpoststatus",
-)
+_WALL_POST_STATUS_VALUES = ("open", "answered", "resolved", "escalated")
+
+CAPSULE_TYPE = postgresql.ENUM(*_CAPSULE_TYPE_VALUES, name="capsuletype", create_type=False)
+CAPSULE_UNLOCK_MODE = postgresql.ENUM(*_CAPSULE_UNLOCK_MODE_VALUES, name="capsuleunlockmode", create_type=False)
+CAPSULE_ACCESS_ACTION = postgresql.ENUM(*_CAPSULE_ACCESS_ACTION_VALUES, name="capsuleaccessaction", create_type=False)
+WALL_POST_STATUS = postgresql.ENUM(*_WALL_POST_STATUS_VALUES, name="wallpoststatus", create_type=False)
+
+
+def _ensure_enum(bind, type_name: str, values: tuple[str, ...]) -> None:
+    """Create a PostgreSQL enum type only if it does not already exist."""
+    sa.Enum(*values, name=type_name).create(bind, checkfirst=True)
 
 
 def upgrade() -> None:
     bind = op.get_bind()
-    CAPSULE_TYPE.create(bind, checkfirst=True)
-    CAPSULE_UNLOCK_MODE.create(bind, checkfirst=True)
-    CAPSULE_ACCESS_ACTION.create(bind, checkfirst=True)
-    WALL_POST_STATUS.create(bind, checkfirst=True)
+    _ensure_enum(bind, "capsuletype",         _CAPSULE_TYPE_VALUES)
+    _ensure_enum(bind, "capsuleunlockmode",   _CAPSULE_UNLOCK_MODE_VALUES)
+    _ensure_enum(bind, "capsuleaccessaction", _CAPSULE_ACCESS_ACTION_VALUES)
+    _ensure_enum(bind, "wallpoststatus",      _WALL_POST_STATUS_VALUES)
 
     # ── capsules ───────────────────────────────────────────────────
     op.create_table(
@@ -225,7 +232,7 @@ def downgrade() -> None:
     op.drop_table("capsules")
 
     bind = op.get_bind()
-    WALL_POST_STATUS.drop(bind, checkfirst=True)
-    CAPSULE_ACCESS_ACTION.drop(bind, checkfirst=True)
-    CAPSULE_UNLOCK_MODE.drop(bind, checkfirst=True)
-    CAPSULE_TYPE.drop(bind, checkfirst=True)
+    sa.Enum(*_WALL_POST_STATUS_VALUES,      name="wallpoststatus").drop(bind, checkfirst=True)
+    sa.Enum(*_CAPSULE_ACCESS_ACTION_VALUES, name="capsuleaccessaction").drop(bind, checkfirst=True)
+    sa.Enum(*_CAPSULE_UNLOCK_MODE_VALUES,   name="capsuleunlockmode").drop(bind, checkfirst=True)
+    sa.Enum(*_CAPSULE_TYPE_VALUES,          name="capsuletype").drop(bind, checkfirst=True)

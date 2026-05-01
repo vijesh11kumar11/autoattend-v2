@@ -20,6 +20,7 @@ import FeedPage from '../shared/FeedPage';
 import ArticleDetailPage from '../shared/ArticleDetailPage';
 import CareerRoadmapPage from '../shared/CareerRoadmapPage';
 import SuggestionBoxPage from '../shared/SuggestionBoxPage';
+import StudentClassPulsePage from './StudentClassPulsePage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -62,6 +63,67 @@ function ActivityRing({ pct, size = 80, strokeWidth = 7, label, sublabel }) {
       </div>
       {label && <p className="text-xs font-semibold text-slate-700 mt-1 text-center truncate max-w-[90px]">{label}</p>}
       {sublabel && <p className="text-[10px] text-slate-400 text-center">{sublabel}</p>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ClassPulseSummary — alert chips for new capsules + pending quizzes
+// ═══════════════════════════════════════════════════════════════════════
+function ClassPulseSummary({ subjects, navigate }) {
+  const [counts, setCounts] = useState({ newCount: 0, pendingQuiz: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = (subjects || []).map(s => s.subject_id).filter(Boolean);
+    if (ids.length === 0) { setLoading(false); return; }
+    Promise.all(
+      ids.map(id =>
+        api.get(`/api/classpulse/student/subject/${id}/capsules`)
+          .then(r => r.data?.capsules || [])
+          .catch(() => [])
+      )
+    ).then(lists => {
+      if (cancelled) return;
+      let newCount = 0, pendingQuiz = 0;
+      lists.flat().forEach(c => {
+        const opened = c.my_interaction?.opened;
+        if (!opened) newCount += 1;
+        if (opened && c.has_quiz && !c.my_interaction?.quiz_attempted) pendingQuiz += 1;
+      });
+      setCounts({ newCount, pendingQuiz });
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [subjects]);
+
+  if (loading || (counts.newCount === 0 && counts.pendingQuiz === 0)) return null;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-violet-100 p-5 flex flex-wrap items-center gap-3">
+      <span className="text-2xl">📚</span>
+      <div className="flex-1 min-w-[200px]">
+        <p className="text-sm font-bold text-slate-800">ClassPulse</p>
+        <div className="flex flex-wrap gap-2 mt-1">
+          {counts.newCount > 0 && (
+            <span className="text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200 rounded-full px-2.5 py-1">
+              {counts.newCount} new capsule{counts.newCount > 1 ? 's' : ''} available
+            </span>
+          )}
+          {counts.pendingQuiz > 0 && (
+            <span className="text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2.5 py-1">
+              📝 {counts.pendingQuiz} quiz{counts.pendingQuiz > 1 ? 'zes' : ''} pending
+            </span>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={() => navigate('/student/classpulse')}
+        className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-3 py-2"
+      >
+        Open ClassPulse →
+      </button>
     </div>
   );
 }
@@ -178,6 +240,9 @@ function StudentHome() {
           ))}
         </div>
       )}
+
+      {/* ── ClassPulse quick alerts (PROMPT 2) ── */}
+      <ClassPulseSummary subjects={subjects} navigate={navigate} />
 
       {/* ── Activity Rings — Subject Attendance ── */}
       {subjects.length > 0 && (
@@ -1024,6 +1089,7 @@ export default function StudentDashboard() {
         <Route path="feed/:articleId" element={<ArticleDetailPage />} />
         <Route path="career"           element={<CareerRoadmapPage />} />
         <Route path="suggestions"      element={<SuggestionBoxPage />} />
+        <Route path="classpulse"       element={<StudentClassPulsePage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

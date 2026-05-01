@@ -14,6 +14,7 @@ import FeedPage from '../shared/FeedPage';
 import ArticleDetailPage from '../shared/ArticleDetailPage';
 import CareerRoadmapPage from '../shared/CareerRoadmapPage';
 import SuggestionBoxPage from '../shared/SuggestionBoxPage';
+import ClassPulsePage from './ClassPulsePage';
 
 export default function TeacherDashboard() {
   return (
@@ -32,6 +33,7 @@ export default function TeacherDashboard() {
         <Route path="feed/:articleId"  element={<ArticleDetailPage />} />
         <Route path="career"             element={<CareerRoadmapPage />} />
         <Route path="suggestions"        element={<SuggestionBoxPage />} />
+        <Route path="classpulse"         element={<ClassPulsePage />} />
         <Route path="analytics/:subjectId" element={<SubjectAnalyticsPage />} />
         <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>

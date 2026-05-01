@@ -58,6 +58,7 @@ const NAV_ITEMS = {
     { to: '/teacher/feed',          icon: '📰', label: 'News Feed'           },
     { to: '/teacher/career',        icon: '🎯', label: 'Career Roadmap'     },
     { to: '/teacher/suggestions',  icon: '💡', label: 'Suggestion Box'    },
+    { to: '/teacher/classpulse',   icon: '📚', label: 'ClassPulse'         },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
@@ -70,6 +71,7 @@ const NAV_ITEMS = {
     { to: '/student/feed',       icon: '📰', label: 'News Feed'       },
     { to: '/student/career',     icon: '🎯', label: 'Career Roadmap' },
     { to: '/student/suggestions', icon: '💡', label: 'Suggestion Box' },
+    { to: '/student/classpulse', icon: '📚', label: 'ClassPulse'      },
   ],
 };
 

@@ -1163,6 +1163,82 @@ def student_list_capsules(
     return {"subject_id": subject_id, "capsules": out, "total": len(out)}
 
 
+@router.get("/student/capsule/{capsule_id}/file")
+def student_stream_capsule_file(
+    capsule_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stream the (un-watermarked) source file inline for in-browser viewing.
+
+    Access is re-validated on every request. Used by the student PDF viewer.
+    Watermarked downloads still go through the dedicated /download endpoint.
+    """
+    _require_role(current_user, "student")
+    student = db.query(User).filter(User.id == current_user["id"]).first()
+    if not student:
+        raise HTTPException(404, "User not found")
+    capsule = db.query(Capsule).filter(Capsule.id == capsule_id).first()
+    if not capsule:
+        raise HTTPException(404, "Capsule not found")
+
+    access_status, _meta = _resolve_access_status(db, student, capsule)
+    DENY = {
+        "not_enrolled", "wrong_section", "capsule_inactive",
+        "locked_session_ended", "locked_attend_first", "locked_no_attendance",
+        "summary_only",
+    }
+    if access_status in DENY:
+        _log_access(db, capsule_id, student.id, CapsuleAccessAction.view_denied,
+                    request=request, deny_reason=access_status)
+        raise HTTPException(403, "Access denied for this capsule")
+
+    if not capsule.file_url or not os.path.isfile(capsule.file_url):
+        raise HTTPException(404, "No file attached to this capsule")
+
+    return FileResponse(
+        capsule.file_url,
+        media_type=capsule.file_mime_type or "application/octet-stream",
+        filename=capsule.file_name or os.path.basename(capsule.file_url),
+        headers={"Content-Disposition": f'inline; filename="{capsule.file_name or "capsule"}"'},
+    )
+
+
+@router.get("/student/capsule/{capsule_id}/voice")
+def student_stream_capsule_voice(
+    capsule_id: int,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stream the teacher's voice memo for a capsule (authenticated)."""
+    _require_role(current_user, "student")
+    student = db.query(User).filter(User.id == current_user["id"]).first()
+    if not student:
+        raise HTTPException(404, "User not found")
+    capsule = db.query(Capsule).filter(Capsule.id == capsule_id).first()
+    if not capsule:
+        raise HTTPException(404, "Capsule not found")
+
+    access_status, _meta = _resolve_access_status(db, student, capsule)
+    DENY = {
+        "not_enrolled", "wrong_section", "capsule_inactive",
+        "locked_session_ended", "locked_attend_first", "locked_no_attendance",
+    }
+    if access_status in DENY:
+        raise HTTPException(403, "Access denied for this capsule")
+
+    if not capsule.voice_memo_url or not os.path.isfile(capsule.voice_memo_url):
+        raise HTTPException(404, "No voice memo for this capsule")
+
+    return FileResponse(
+        capsule.voice_memo_url,
+        media_type="audio/webm",
+        headers={"Content-Disposition": 'inline; filename="voice-memo.webm"'},
+    )
+
+
 @router.post("/student/capsule/{capsule_id}/open")
 def student_open_capsule(
     capsule_id: int,
