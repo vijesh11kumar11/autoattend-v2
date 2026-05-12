@@ -531,6 +531,9 @@ class AttendanceSession(Base):
     qr_secret         = Column(String(255), nullable=False)
     total_students    = Column(Integer, default=0, nullable=False)
     present_count     = Column(Integer, default=0, nullable=False)
+    # ── ClassPulse Live integration (live_session_002) ───────────────
+    session_type             = Column(String(20), default="offline", nullable=False)
+    linked_live_session_id   = Column(Integer, ForeignKey("live_sessions.id", ondelete="SET NULL"), nullable=True)
     created_at        = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships
@@ -1099,6 +1102,7 @@ class ClassWallPost(Base):
     section_id            = Column(Integer, ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
     student_id            = Column(Integer, ForeignKey("users.id",    ondelete="CASCADE"), nullable=False)
     capsule_id            = Column(Integer, ForeignKey("capsules.id", ondelete="SET NULL"), nullable=True)
+    live_session_id       = Column(Integer, ForeignKey("live_sessions.id", ondelete="SET NULL"), nullable=True)
     page_number           = Column(Integer, nullable=True)
     content               = Column(Text, nullable=False)
     ai_suggested_answer   = Column(Text, nullable=True)
