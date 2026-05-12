@@ -26,6 +26,10 @@ const FaceEnrollmentPage = lazy(() => import('./pages/student/FaceEnrollmentPage
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const TOTPSetupPage      = lazy(() => import('./pages/TOTPSetupPage'));
 
+// Live session pages (Prompts 4 + 5)
+const JoinSessionPage    = lazy(() => import('./pages/live/JoinSessionPage'));
+const StudentLiveSession = lazy(() => import('./pages/live/StudentLiveSession'));
+
 // ── Loading fallback ──────────────────────────────────────────────────
 function PageLoading() {
   return (
@@ -91,6 +95,16 @@ function AppRoutes() {
         <Route path="/login"           element={<LoginPage />} />
         <Route path="/unauthorized"    element={<UnauthorizedPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+        {/* Public live-session join (no auth required) */}
+        <Route path="/live/:joinCode"  element={<JoinSessionPage />} />
+
+        {/* Authenticated full-screen live session */}
+        <Route path="/student/live/:sessionId" element={
+          <PrivateRoute minRole="student" skipFaceCheck>
+            <StudentLiveSession />
+          </PrivateRoute>
+        } />
 
         {/* Root — dispatch by role */}
         <Route path="/" element={<RoleRedirect />} />

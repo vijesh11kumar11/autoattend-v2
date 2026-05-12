@@ -61,6 +61,7 @@ const NAV_ITEMS = {
     { to: '/teacher/career',        icon: '🎯', label: 'Career Roadmap'     },
     { to: '/teacher/suggestions',  icon: '💡', label: 'Suggestion Box'    },
     { to: '/teacher/classpulse',   icon: '📚', label: 'ClassPulse'         },
+    { to: '/teacher/live',         icon: '🔴', label: 'Live Classes'      },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
@@ -74,6 +75,7 @@ const NAV_ITEMS = {
     { to: '/student/career',     icon: '🎯', label: 'Career Roadmap' },
     { to: '/student/suggestions', icon: '💡', label: 'Suggestion Box' },
     { to: '/student/classpulse', icon: '📚', label: 'ClassPulse'      },
+    { to: '/student/knowledge-graph', icon: '🧠', label: 'My Progress' },
   ],
 };
 

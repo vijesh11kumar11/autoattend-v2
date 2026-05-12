@@ -21,6 +21,7 @@ import ArticleDetailPage from '../shared/ArticleDetailPage';
 import CareerRoadmapPage from '../shared/CareerRoadmapPage';
 import SuggestionBoxPage from '../shared/SuggestionBoxPage';
 import StudentClassPulsePage from './StudentClassPulsePage';
+import StudentKnowledgeGraphPage from '../live/StudentKnowledgeGraphPage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -1090,6 +1091,7 @@ export default function StudentDashboard() {
         <Route path="career"           element={<CareerRoadmapPage />} />
         <Route path="suggestions"      element={<SuggestionBoxPage />} />
         <Route path="classpulse"       element={<StudentClassPulsePage />} />
+        <Route path="knowledge-graph"  element={<StudentKnowledgeGraphPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

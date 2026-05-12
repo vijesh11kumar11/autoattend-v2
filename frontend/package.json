@@ -9,15 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "agora-rtc-sdk-ng": "^4.24.3",
     "axios": "^1.7.7",
+    "pdfjs-dist": "^4.6.82",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-qr-code": "^2.0.15",
     "react-router-dom": "^6.26.2",
     "react-webcam": "^7.2.0",
-    "recharts": "^2.12.7",
-    "pdfjs-dist": "^4.6.82"
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.11",

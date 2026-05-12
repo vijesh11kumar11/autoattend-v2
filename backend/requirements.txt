@@ -25,3 +25,4 @@ exponent_server_sdk==2.1.0
 slowapi==0.1.9
 PyMuPDF==1.24.10
 aiofiles==24.1.0
+agora-token-builder==1.0.0

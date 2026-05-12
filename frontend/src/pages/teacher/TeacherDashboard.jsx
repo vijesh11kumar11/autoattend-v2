@@ -15,6 +15,9 @@ import ArticleDetailPage from '../shared/ArticleDetailPage';
 import CareerRoadmapPage from '../shared/CareerRoadmapPage';
 import SuggestionBoxPage from '../shared/SuggestionBoxPage';
 import ClassPulsePage from './ClassPulsePage';
+import TeacherLiveDashboard from '../live/TeacherLiveDashboard';
+import TeacherPreClassBrief from '../live/TeacherPreClassBrief';
+import SessionHealthReport from '../live/SessionHealthReport';
 
 export default function TeacherDashboard() {
   return (
@@ -34,6 +37,9 @@ export default function TeacherDashboard() {
         <Route path="career"             element={<CareerRoadmapPage />} />
         <Route path="suggestions"        element={<SuggestionBoxPage />} />
         <Route path="classpulse"         element={<ClassPulsePage />} />
+        <Route path="live"               element={<TeacherLiveDashboard />} />
+        <Route path="live/:sessionId/brief"  element={<TeacherPreClassBrief />} />
+        <Route path="live/:sessionId/report" element={<SessionHealthReport />} />
         <Route path="analytics/:subjectId" element={<SubjectAnalyticsPage />} />
         <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>

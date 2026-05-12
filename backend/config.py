@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     LIVE_SESSION_MIN_ATTENDANCE_MINUTES: int = 30
     LIVE_SESSION_LIVENESS_CHECK_INTERVAL: int = 600
 
+    # ── Agora RTC (WebRTC provider for live sessions) ─────────────────
+    AGORA_APP_ID: str = ""
+    AGORA_APP_CERTIFICATE: str = ""
+    AGORA_TOKEN_EXPIRY_SECONDS: int = 3600
+
     class Config:
         env_file = ".env"
         case_sensitive = True

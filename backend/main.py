@@ -5,7 +5,7 @@ AutoAttend AI v2.0 — FastAPI entry point
 import logging
 import sys
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -87,6 +87,160 @@ app.include_router(live_session.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": "2.0.0"}
+
+
+# ── WebSocket: real-time live-session signalling ────────────────────────
+from utils.session_manager import manager as live_ws_manager  # noqa: E402
+from utils.auth_utils import decode_access_token  # noqa: E402
+from database import LiveSession, LiveSessionParticipant, SessionLocal  # noqa: E402
+from utils.live_session_ai import generate_ai_observation  # noqa: E402
+
+
+def _verify_ws_token(token: str) -> dict | None:
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        return None
+    return payload
+
+
+@app.websocket("/ws/live/{session_id}/{user_id}")
+async def live_session_ws(
+    websocket: WebSocket,
+    session_id: int,
+    user_id: int,
+    token: str = "",
+):
+    """Real-time channel for a live session.
+
+    Auth: query-param `?token=<JWT>` (issued by /api/auth/login or
+    `_create_guest_token` from the join endpoint). The token's `id` (or
+    `participant_id` for guests) must match the URL `user_id`.
+    """
+    payload = _verify_ws_token(token)
+    if payload is None:
+        await websocket.close(code=4401)
+        return
+
+    role = payload.get("role")
+    token_uid = payload.get("id") or payload.get("participant_id")
+    if token_uid is None or int(token_uid) != int(user_id):
+        # Guests use participant_id as user_id in the URL; allow if it matches.
+        if role != "guest" or int(payload.get("participant_id", -1)) != int(user_id):
+            await websocket.close(code=4403)
+            return
+
+    # Verify the session exists and resolve teacher_id
+    db = SessionLocal()
+    try:
+        sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+        if not sess:
+            await websocket.close(code=4404)
+            return
+        is_teacher = role in ("teacher", "hod", "principal") and sess.teacher_id == int(token_uid or 0)
+    finally:
+        db.close()
+
+    await live_ws_manager.connect(websocket, session_id, user_id, is_teacher=is_teacher)
+    try:
+        # Greet the joiner
+        await websocket.send_json({
+            "type": "ws_ready",
+            "session_id": session_id,
+            "user_id": user_id,
+            "role": role,
+            "is_teacher": is_teacher,
+        })
+
+        while True:
+            data = await websocket.receive_json()
+            event_type = (data or {}).get("type")
+
+            # ── Teacher transcript → AI observation ────────────────────
+            if event_type == "transcript_chunk" and is_teacher:
+                text = (data.get("text") or "").strip()
+                if text:
+                    db2 = SessionLocal()
+                    try:
+                        obs = generate_ai_observation(db2, sess.id, text)
+                    except Exception as exc:
+                        logger.warning("AI observation failed: %s", exc)
+                        obs = None
+                    finally:
+                        db2.close()
+                    if obs:
+                        await live_ws_manager.send_to_teacher(session_id, {
+                            "type": "ai_observation",
+                            **(obs if isinstance(obs, dict) else {"observation": str(obs)}),
+                        })
+
+            # ── Student answers a pulse check ──────────────────────────
+            elif event_type == "pulse_response":
+                # Echo aggregate update to teacher
+                await live_ws_manager.send_to_teacher(session_id, {
+                    "type": "pulse_update",
+                    "pulse_id": data.get("pulse_id"),
+                    "answer": data.get("answer"),
+                    "from_user_id": user_id,
+                })
+
+            # ── New doubt posted (server already saved via REST) ───────
+            elif event_type == "doubt_posted":
+                # Anonymised broadcast to all participants
+                await live_ws_manager.broadcast_to_session(session_id, {
+                    "type": "new_doubt",
+                    "doubt_id": data.get("doubt_id"),
+                    "question": data.get("question"),
+                    "resonance_count": data.get("resonance_count", 0),
+                })
+                # Identified copy to teacher
+                await live_ws_manager.send_to_teacher(session_id, {
+                    "type": "new_doubt",
+                    "doubt_id": data.get("doubt_id"),
+                    "question": data.get("question"),
+                    "resonance_count": data.get("resonance_count", 0),
+                    "posted_by_user_id": user_id,
+                })
+
+            # ── Resonance click ────────────────────────────────────────
+            elif event_type == "resonance":
+                await live_ws_manager.send_to_teacher(session_id, {
+                    "type": "hot_doubt",
+                    "doubt_id": data.get("doubt_id"),
+                    "resonance_count": data.get("resonance_count", 1),
+                    "question": data.get("question"),
+                })
+
+            # ── Bandwidth alert ────────────────────────────────────────
+            elif event_type == "low_bandwidth_detected":
+                await live_ws_manager.send_to_teacher(session_id, {
+                    "type": "bandwidth_alert",
+                    "student_id": user_id,
+                    "quality": data.get("quality", "poor"),
+                })
+                # Server can later push micro_summary frames; placeholder ack:
+                await websocket.send_json({"type": "low_bandwidth_ack", "mode": "text"})
+
+            # ── Ping/keepalive ─────────────────────────────────────────
+            elif event_type == "ping":
+                await websocket.send_json({"type": "pong"})
+
+            else:
+                # Unknown event — echo back for debugging
+                await websocket.send_json({"type": "unknown_event", "received": event_type})
+
+    except WebSocketDisconnect:
+        live_ws_manager.disconnect(session_id, user_id)
+        await live_ws_manager.broadcast_to_session(session_id, {
+            "type": "student_left",
+            "user_id": user_id,
+            "total_count": len(live_ws_manager.participants(session_id)),
+        })
+    except Exception as exc:  # pragma: no cover
+        logger.exception("WebSocket error: %s", exc)
+        live_ws_manager.disconnect(session_id, user_id)
 
 
 @app.on_event("startup")

@@ -76,6 +76,7 @@ from utils.auth_utils import (
     teacher_or_above,
 )
 from utils.classpulse_ai import auto_answer_doubt
+from utils.agora_token import generate_agora_token
 from utils.live_session_ai import (
     generate_ai_observation,
     generate_auto_capsule_from_session,
@@ -141,10 +142,23 @@ def _create_guest_token(session_id: int, participant_id: int, guest_name: str) -
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def _build_webrtc_config(join_link: str, participant_token: str) -> dict:
+def _build_webrtc_config(
+    join_link: str,
+    participant_token: str,
+    *,
+    uid: int = 0,
+    role: str = "subscriber",
+) -> dict:
+    agora = generate_agora_token(
+        channel_name=join_link,
+        uid=uid,
+        role=role,
+        expiry_seconds=settings.AGORA_TOKEN_EXPIRY_SECONDS,
+    )
     return {
         "room_id": join_link,
         "participant_token": participant_token,
+        "agora": agora,
         "ice_servers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
             {"urls": ["stun:stun1.l.google.com:19302"]},
@@ -977,7 +991,11 @@ def join_live_session(
                 "recording_enabled": sess.recording_enabled,
                 "allow_guest_interaction": sess.allow_guest_interaction,
             },
-            "webrtc_config": _build_webrtc_config(sess.join_link, guest_token),
+            "webrtc_config": _build_webrtc_config(
+                sess.join_link, guest_token,
+                uid=-new_part.id,  # negative-id space for guests; agora helper masks to uint32
+                role="subscriber",
+            ),
             "guest_token": guest_token,
             "low_bandwidth_mode": False,
             "attendance_will_be_counted": False,
@@ -1064,7 +1082,11 @@ def join_live_session(
             "recording_enabled": sess.recording_enabled,
             "allow_guest_interaction": sess.allow_guest_interaction,
         },
-        "webrtc_config": _build_webrtc_config(sess.join_link, str(uuid4())),
+        "webrtc_config": _build_webrtc_config(
+            sess.join_link, str(uuid4()),
+            uid=user_id,
+            role="publisher" if p_type == LiveParticipantType.teacher else "subscriber",
+        ),
         "low_bandwidth_mode": part.connection_quality == LiveConnectionQuality.poor,
         "attendance_will_be_counted": p_type == LiveParticipantType.student,
     }
