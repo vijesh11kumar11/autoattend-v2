@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+
+# ClassPulse uploaded files
+uploads/
 .Python
 
 # Virtual environment

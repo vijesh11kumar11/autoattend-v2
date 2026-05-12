@@ -55,6 +55,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import hash_password, hod_or_above, principal_only, teacher_or_above
+from utils.classpulse_access import classpulse_summary_for_dept
 from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
@@ -1078,6 +1079,17 @@ def get_hod_dashboard(
         AttendanceDispute.status == DisputeStatus.pending,
     ).scalar() or 0 if student_ids else 0
 
+    # ── ClassPulse summary widget (Prompt 6) ─────────────────────────
+    try:
+        classpulse_summary = classpulse_summary_for_dept(dept_id, db)
+    except Exception as e:
+        logger.warning("classpulse_summary_for_dept failed: %s", e)
+        classpulse_summary = {
+            "total_capsules": 0, "avg_engagement_pct": 0.0,
+            "avg_comprehension_pct": 0.0, "content_gap_alerts": 0,
+            "students_at_risk": 0,
+        }
+
     return {
         "department_name":     dept.name,
         "department_code":     dept.code,
@@ -1094,6 +1106,7 @@ def get_hod_dashboard(
             "unassigned_students": unassigned_students,
         },
         "pending_disputes_count": pending_disputes_count,
+        "classpulse_summary":  classpulse_summary,
     }
 
 

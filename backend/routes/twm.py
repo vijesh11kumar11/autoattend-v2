@@ -14,7 +14,7 @@ Endpoints:
   GET    /api/twm/history                  — past sessions
 """
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -26,6 +26,8 @@ from database import (
     AttendanceRecord,
     AttendanceSession,
     AttendanceStatus,
+    Capsule,
+    CapsuleInteraction,
     SessionStatus,
     Subject,
     TWMAttendance,
@@ -467,6 +469,53 @@ def session_report(
         })
 
     present = sum(1 for s in students if s["twm_status"] in ("present", "late"))
+
+    # ── ClassPulse engagement (last 7 days) for ward students ────────
+    classpulse = {
+        "capsules_opened": 0,
+        "quizzes_attempted": 0,
+        "quizzes_passed": 0,
+        "engagement_pct": 0.0,
+        "most_failed_capsule": None,
+    }
+    try:
+        ward_ids = [r.student_id for r in recs]
+        if ward_ids:
+            cutoff = datetime.now(tz=timezone.utc) - timedelta(days=7)
+            inters = db.query(CapsuleInteraction).filter(
+                CapsuleInteraction.student_id.in_(ward_ids),
+                CapsuleInteraction.first_opened_at.isnot(None),
+                CapsuleInteraction.first_opened_at >= cutoff,
+            ).all()
+            opened = len(inters)
+            attempted = sum(1 for i in inters if i.quiz_attempted)
+            passed = sum(1 for i in inters if i.quiz_passed)
+
+            # most-failed capsule (failed quizzes ↑)
+            from collections import Counter
+            fail_counter = Counter(
+                i.capsule_id for i in inters if i.quiz_attempted and not i.quiz_passed
+            )
+            most_failed = None
+            if fail_counter:
+                cap_id, fcnt = fail_counter.most_common(1)[0]
+                cap = db.query(Capsule).filter(Capsule.id == cap_id).first()
+                if cap:
+                    most_failed = {
+                        "capsule_id": cap.id, "title": cap.title, "fail_count": fcnt,
+                    }
+
+            engagement_pct = round((opened / (len(ward_ids) * 5)) * 100, 1) if ward_ids else 0.0
+            classpulse = {
+                "capsules_opened": opened,
+                "quizzes_attempted": attempted,
+                "quizzes_passed": passed,
+                "engagement_pct": min(engagement_pct, 100.0),
+                "most_failed_capsule": most_failed,
+            }
+    except Exception:
+        pass
+
     return {
         "session_id": sess.id,
         "date": str(sess.date),
@@ -477,6 +526,7 @@ def session_report(
         "present": present,
         "total": len(students),
         "students": students,
+        "classpulse_engagement": classpulse,
     }
 
 

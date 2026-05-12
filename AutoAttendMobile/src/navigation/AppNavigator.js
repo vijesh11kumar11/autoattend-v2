@@ -47,14 +47,25 @@ import TeacherReportsScreen from '../screens/teacher/TeacherReportsScreen';
 import StudentDashboard        from '../screens/student/StudentDashboard';
 import ScanQRScreen            from '../screens/student/ScanQRScreen';
 import AttendanceHistoryScreen from '../screens/student/AttendanceHistoryScreen';
-import TimetableScreen         from '../screens/student/TimetableScreen';
-
+import TimetableScreen         from '../screens/student/TimetableScreen';import {
+  ClassPulseHomeScreen,
+  ClassPulseSubjectScreen,
+  CapsuleMobileDetailScreen,
+  ClassWallMobileScreen,
+} from '../screens/student/ClassPulseMobileScreen';
+import {
+  TeacherClassPulseHomeScreen,
+  CapsuleAnalyticsMobileScreen,
+  AnswerDoubtMobileScreen,
+} from '../screens/teacher/TeacherClassPulseMobileScreen';
 // ── Navigation ref (used by axios interceptor for 401 redirect) ───────
 export const navigationRef = createNavigationContainerRef();
 
 // ── Navigators ────────────────────────────────────────────────────────
 const AuthStack    = createStackNavigator();
 const HODStack     = createStackNavigator();
+const StudentStack = createStackNavigator();
+const TeacherStack = createStackNavigator();
 const PrincipalTab = createBottomTabNavigator();
 const HODTab       = createBottomTabNavigator();
 const TeacherTab   = createBottomTabNavigator();
@@ -158,7 +169,7 @@ function HODNavigator() {
 }
 
 // ── Teacher navigator ─────────────────────────────────────────────────
-function TeacherNavigator() {
+function TeacherTabNavigator() {
   return (
     <TeacherTab.Navigator screenOptions={SHARED_TAB_OPTS}>
       <TeacherTab.Screen
@@ -174,6 +185,10 @@ function TeacherNavigator() {
         options={{ title: 'Classes',     tabBarIcon: icon('book-outline') }}
       />
       <TeacherTab.Screen
+        name="ClassPulse" component={TeacherClassPulseHomeScreen}
+        options={{ title: 'ClassPulse',  tabBarIcon: icon('library-outline') }}
+      />
+      <TeacherTab.Screen
         name="Reports"    component={TeacherReportsScreen}
         options={{ title: 'Reports',     tabBarIcon: icon('bar-chart-outline') }}
       />
@@ -181,8 +196,18 @@ function TeacherNavigator() {
   );
 }
 
+function TeacherNavigator() {
+  return (
+    <TeacherStack.Navigator screenOptions={{ headerShown: false }}>
+      <TeacherStack.Screen name="TeacherTabs"      component={TeacherTabNavigator} />
+      <TeacherStack.Screen name="CapsuleAnalytics" component={CapsuleAnalyticsMobileScreen} options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="AnswerDoubt"      component={AnswerDoubtMobileScreen}      options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
+    </TeacherStack.Navigator>
+  );
+}
+
 // ── Student navigator ─────────────────────────────────────────────────
-function StudentNavigator() {
+function StudentTabNavigator() {
   return (
     <StudentTab.Navigator screenOptions={SHARED_TAB_OPTS}>
       <StudentTab.Screen
@@ -194,6 +219,10 @@ function StudentNavigator() {
         options={{ title: 'Scan QR',    tabBarIcon: icon('scan-outline') }}
       />
       <StudentTab.Screen
+        name="ClassPulse" component={ClassPulseHomeScreen}
+        options={{ title: 'ClassPulse', tabBarIcon: icon('library-outline') }}
+      />
+      <StudentTab.Screen
         name="Attendance" component={AttendanceHistoryScreen}
         options={{ title: 'Attendance', tabBarIcon: icon('checkmark-circle-outline') }}
       />
@@ -202,6 +231,17 @@ function StudentNavigator() {
         options={{ title: 'Timetable',  tabBarIcon: icon('calendar-outline') }}
       />
     </StudentTab.Navigator>
+  );
+}
+
+function StudentNavigator() {
+  return (
+    <StudentStack.Navigator screenOptions={{ headerShown: false }}>
+      <StudentStack.Screen name="StudentTabs"        component={StudentTabNavigator} />
+      <StudentStack.Screen name="ClassPulseSubject" component={ClassPulseSubjectScreen}   options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="CapsuleDetail"     component={CapsuleMobileDetailScreen} options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="ClassWall"         component={ClassWallMobileScreen}     options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
+    </StudentStack.Navigator>
   );
 }
 

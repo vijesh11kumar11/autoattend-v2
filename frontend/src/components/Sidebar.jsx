@@ -25,6 +25,7 @@ const NAV_ITEMS = {
     { to: '/principal/feed',        icon: '📰', label: 'News Feed'    },
     { to: '/principal/career',      icon: '🎯', label: 'Career Roadmap' },
     { to: '/principal/suggestions',  icon: '💡', label: 'Suggestion Box' },
+    { to: '/principal/classpulse',  icon: '📚', label: 'ClassPulse'    },
   ],
   hod: [
     { to: '/hod/dashboard',         icon: '🏠', label: 'Overview'            },
@@ -44,6 +45,7 @@ const NAV_ITEMS = {
     { to: '/hod/feed',              icon: '📰', label: 'News Feed'           },
     { to: '/hod/career',            icon: '🎯', label: 'Career Roadmap'     },
     { to: '/hod/suggestions',      icon: '💡', label: 'Suggestion Box'    },
+    { to: '/hod/classpulse',       icon: '📚', label: 'ClassPulse'          },
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },
@@ -58,6 +60,7 @@ const NAV_ITEMS = {
     { to: '/teacher/feed',          icon: '📰', label: 'News Feed'           },
     { to: '/teacher/career',        icon: '🎯', label: 'Career Roadmap'     },
     { to: '/teacher/suggestions',  icon: '💡', label: 'Suggestion Box'    },
+    { to: '/teacher/classpulse',   icon: '📚', label: 'ClassPulse'         },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
@@ -70,6 +73,7 @@ const NAV_ITEMS = {
     { to: '/student/feed',       icon: '📰', label: 'News Feed'       },
     { to: '/student/career',     icon: '🎯', label: 'Career Roadmap' },
     { to: '/student/suggestions', icon: '💡', label: 'Suggestion Box' },
+    { to: '/student/classpulse', icon: '📚', label: 'ClassPulse'      },
   ],
 };
 
