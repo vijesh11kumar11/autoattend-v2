@@ -117,6 +117,83 @@ class LeaveRequestStatus(str, enum.Enum):
     cancelled = "cancelled"
 
 
+# ── ClassPulse Live (live_session_001) ────────────────────────────────
+
+class LiveSessionType(str, enum.Enum):
+    standalone      = "standalone"
+    capsule_locked  = "capsule_locked"
+    public          = "public"
+
+
+class LiveSessionStatus(str, enum.Enum):
+    scheduled = "scheduled"
+    waiting   = "waiting"
+    live      = "live"
+    ended     = "ended"
+    cancelled = "cancelled"
+
+
+class LiveParticipantType(str, enum.Enum):
+    teacher  = "teacher"
+    student  = "student"
+    guest    = "guest"
+    external = "external"
+
+
+class LiveConnectionQuality(str, enum.Enum):
+    excellent = "excellent"
+    good      = "good"
+    poor      = "poor"
+    offline   = "offline"
+
+
+class LiveEventType(str, enum.Enum):
+    session_start         = "session_start"
+    session_end           = "session_end"
+    student_joined        = "student_joined"
+    student_left          = "student_left"
+    ai_observation        = "ai_observation"
+    ai_intervention       = "ai_intervention"
+    teacher_response      = "teacher_response"
+    confusion_detected    = "confusion_detected"
+    topic_change          = "topic_change"
+    pace_alert            = "pace_alert"
+    pulse_check_started   = "pulse_check_started"
+    pulse_check_ended     = "pulse_check_ended"
+    breakout_started      = "breakout_started"
+    breakout_ended        = "breakout_ended"
+    hot_doubt_detected    = "hot_doubt_detected"
+    liveness_check        = "liveness_check"
+    bandwidth_switch      = "bandwidth_switch"
+    whiteboard_generated  = "whiteboard_generated"
+
+
+class LiveEventTrigger(str, enum.Enum):
+    ai      = "ai"
+    teacher = "teacher"
+    student = "student"
+    system  = "system"
+
+
+class PulseCheckTrigger(str, enum.Enum):
+    teacher = "teacher"
+    ai      = "ai"
+
+
+class PulseCheckAnswer(str, enum.Enum):
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+
+
+class KnowledgeLevel(str, enum.Enum):
+    strong       = "strong"
+    moderate     = "moderate"
+    weak         = "weak"
+    not_covered  = "not_covered"
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # SQLAlchemy Base
 # ═══════════════════════════════════════════════════════════════════════
@@ -1092,6 +1169,207 @@ class CapsuleAccessLog(Base):
     # Relationships
     capsule = relationship("Capsule", back_populates="access_logs")
     user    = relationship("User",    foreign_keys=[user_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ClassPulse Live — live_sessions
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveSession(Base):
+    __tablename__ = "live_sessions"
+    __table_args__ = (
+        Index("ix_live_sessions_join_link",  "join_link"),
+        Index("ix_live_sessions_teacher_id", "teacher_id"),
+        Index("ix_live_sessions_subject_id", "subject_id"),
+        Index("ix_live_sessions_section_id", "section_id"),
+        Index("ix_live_sessions_status",     "status"),
+        Index("ix_live_sessions_created_at", "created_at"),
+    )
+
+    id                       = Column(Integer, primary_key=True, index=True)
+    session_type             = Column(SAEnum(LiveSessionType, name="livesessiontype"), nullable=False)
+    title                    = Column(String(200), nullable=False)
+    teacher_id               = Column(Integer, ForeignKey("users.id",     ondelete="CASCADE"), nullable=False)
+    subject_id               = Column(Integer, ForeignKey("subjects.id",  ondelete="SET NULL"), nullable=True)
+    section_id               = Column(Integer, ForeignKey("sections.id",  ondelete="SET NULL"), nullable=True)
+    capsule_id               = Column(Integer, ForeignKey("capsules.id",  ondelete="SET NULL"), nullable=True)
+    timetable_id             = Column(Integer, ForeignKey("timetable.id", ondelete="SET NULL"), nullable=True)
+    status                   = Column(SAEnum(LiveSessionStatus, name="livesessionstatus"), default=LiveSessionStatus.waiting, nullable=False)
+    join_link                = Column(String(100), unique=True, nullable=False)
+    join_password            = Column(String(100), nullable=True)
+    max_guests               = Column(Integer, default=50, nullable=False)
+    allow_guests             = Column(Boolean, default=False, nullable=False)
+    allow_guest_interaction  = Column(Boolean, default=False, nullable=False)
+    recording_enabled        = Column(Boolean, default=True,  nullable=False)
+    recording_url            = Column(String(500), nullable=True)
+    transcript_text          = Column(Text, nullable=True)
+    ai_session_log           = Column(JSONB, nullable=True)
+    session_health_score     = Column(Integer, nullable=True)
+    health_report_json       = Column(JSONB, nullable=True)
+    auto_capsule_id          = Column(Integer, ForeignKey("capsules.id", ondelete="SET NULL"), nullable=True)
+    started_at               = Column(DateTime(timezone=True), nullable=True)
+    ended_at                 = Column(DateTime(timezone=True), nullable=True)
+    duration_minutes         = Column(Integer, nullable=True)
+    created_at               = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    teacher       = relationship("User",    foreign_keys=[teacher_id])
+    subject       = relationship("Subject", foreign_keys=[subject_id])
+    section       = relationship("Section", foreign_keys=[section_id])
+    capsule       = relationship("Capsule", foreign_keys=[capsule_id])
+    auto_capsule  = relationship("Capsule", foreign_keys=[auto_capsule_id])
+    participants  = relationship("LiveSessionParticipant", back_populates="live_session", cascade="all, delete-orphan")
+    events        = relationship("LiveSessionEvent",       back_populates="live_session", cascade="all, delete-orphan")
+    pulse_checks  = relationship("PulseCheck",             back_populates="live_session", cascade="all, delete-orphan")
+    breakout_rooms = relationship("LiveSessionBreakoutRoom", back_populates="live_session", cascade="all, delete-orphan")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ClassPulse Live — live_session_participants
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveSessionParticipant(Base):
+    __tablename__ = "live_session_participants"
+    __table_args__ = (
+        Index("ix_lsp_live_session_id", "live_session_id"),
+        Index("ix_lsp_user_id",         "user_id"),
+        Index("ix_lsp_is_active",       "is_active"),
+    )
+
+    id                      = Column(Integer, primary_key=True, index=True)
+    live_session_id         = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    user_id                 = Column(Integer, ForeignKey("users.id",         ondelete="SET NULL"), nullable=True)
+    participant_type        = Column(SAEnum(LiveParticipantType, name="liveparticipanttype"), nullable=False)
+    guest_name              = Column(String(100), nullable=True)
+    guest_email             = Column(String(200), nullable=True)
+    joined_at               = Column(DateTime(timezone=True), nullable=True)
+    left_at                 = Column(DateTime(timezone=True), nullable=True)
+    total_duration_seconds  = Column(Integer, default=0, nullable=False)
+    is_attendance_counted   = Column(Boolean, default=False, nullable=False)
+    attendance_record_id    = Column(Integer, ForeignKey("attendance_records.id", ondelete="SET NULL"), nullable=True)
+    last_heartbeat          = Column(DateTime(timezone=True), nullable=True)
+    is_active               = Column(Boolean, default=False, nullable=False)
+    camera_on               = Column(Boolean, default=False, nullable=False)
+    mic_on                  = Column(Boolean, default=False, nullable=False)
+    connection_quality      = Column(SAEnum(LiveConnectionQuality, name="liveconnectionquality"), default=LiveConnectionQuality.good, nullable=False)
+    liveness_check_passed   = Column(Boolean, default=False, nullable=False)
+    liveness_check_time     = Column(DateTime(timezone=True), nullable=True)
+
+    live_session = relationship("LiveSession", back_populates="participants")
+    user         = relationship("User", foreign_keys=[user_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ClassPulse Live — live_session_events
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveSessionEvent(Base):
+    __tablename__ = "live_session_events"
+    __table_args__ = (
+        Index("ix_lse_live_session_id", "live_session_id"),
+        Index("ix_lse_event_type",      "event_type"),
+        Index("ix_lse_event_timestamp", "event_timestamp"),
+    )
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    live_session_id       = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    event_type            = Column(SAEnum(LiveEventType, name="liveeventtype"), nullable=False)
+    event_timestamp       = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    triggered_by          = Column(SAEnum(LiveEventTrigger, name="liveeventtrigger"), nullable=False)
+    affected_student_ids  = Column(JSONB, nullable=True)
+    ai_observation_text   = Column(Text, nullable=True)
+    teacher_action_taken  = Column(String(500), nullable=True)
+    metadata_json         = Column(JSONB, nullable=True)
+
+    live_session = relationship("LiveSession", back_populates="events")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ClassPulse Live — pulse_checks
+# ═══════════════════════════════════════════════════════════════════════
+
+class PulseCheck(Base):
+    __tablename__ = "pulse_checks"
+    __table_args__ = (
+        Index("ix_pulse_checks_live_session_id", "live_session_id"),
+        Index("ix_pulse_checks_triggered_at",    "triggered_at"),
+    )
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    live_session_id       = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    question_text         = Column(Text, nullable=False)
+    option_a              = Column(String(300), nullable=False)
+    option_b              = Column(String(300), nullable=False)
+    option_c              = Column(String(300), nullable=False)
+    option_d              = Column(String(300), nullable=False)
+    correct_answer        = Column(SAEnum(PulseCheckAnswer, name="pulsecheckanswer"), nullable=False)
+    explanation           = Column(Text, nullable=True)
+    triggered_by          = Column(SAEnum(PulseCheckTrigger, name="pulsechecktrigger"), nullable=False)
+    triggered_at          = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    duration_seconds      = Column(Integer, default=30, nullable=False)
+    closed_at             = Column(DateTime(timezone=True), nullable=True)
+    total_responses       = Column(Integer, default=0, nullable=False)
+    correct_responses     = Column(Integer, default=0, nullable=False)
+    response_distribution = Column(JSONB, nullable=True)
+    ai_analysis           = Column(Text, nullable=True)
+
+    live_session = relationship("LiveSession", back_populates="pulse_checks")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ClassPulse Live — student_knowledge_graphs
+# ═══════════════════════════════════════════════════════════════════════
+
+class StudentKnowledgeGraph(Base):
+    __tablename__ = "student_knowledge_graphs"
+    __table_args__ = (
+        UniqueConstraint("student_id", "subject_id", "topic_name", name="uq_skg_student_subject_topic"),
+        Index("ix_skg_student_id",  "student_id"),
+        Index("ix_skg_subject_id",  "subject_id"),
+        Index("ix_skg_topic_name",  "topic_name"),
+    )
+
+    id                        = Column(Integer, primary_key=True, index=True)
+    student_id                = Column(Integer, ForeignKey("users.id",          ondelete="CASCADE"), nullable=False)
+    subject_id                = Column(Integer, ForeignKey("subjects.id",       ondelete="CASCADE"), nullable=False)
+    topic_name                = Column(String(200), nullable=False)
+    understanding_level       = Column(SAEnum(KnowledgeLevel, name="knowledgelevel"), default=KnowledgeLevel.not_covered, nullable=False)
+    confidence_score          = Column(Float, default=0.0, nullable=False)
+    last_assessed_session_id  = Column(Integer, ForeignKey("live_sessions.id",  ondelete="SET NULL"), nullable=True)
+    times_confused            = Column(Integer, default=0, nullable=False)
+    times_understood          = Column(Integer, default=0, nullable=False)
+    last_updated              = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    ai_notes                  = Column(Text, nullable=True)
+
+    student            = relationship("User",    foreign_keys=[student_id])
+    subject            = relationship("Subject", foreign_keys=[subject_id])
+    last_session       = relationship("LiveSession", foreign_keys=[last_assessed_session_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ClassPulse Live — live_session_breakout_rooms
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveSessionBreakoutRoom(Base):
+    __tablename__ = "live_session_breakout_rooms"
+    __table_args__ = (
+        Index("ix_lsbr_live_session_id", "live_session_id"),
+    )
+
+    id                            = Column(Integer, primary_key=True, index=True)
+    live_session_id               = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    room_name                     = Column(String(100), nullable=False)
+    room_number                   = Column(Integer, nullable=False)
+    participant_ids               = Column(JSONB, nullable=False)
+    started_at                    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ended_at                      = Column(DateTime(timezone=True), nullable=True)
+    ai_monitoring_log             = Column(JSONB, nullable=True)
+    productivity_score            = Column(Integer, nullable=True)
+    peer_expert_detected_user_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    is_stuck                      = Column(Boolean, default=False, nullable=False)
+    teacher_visited               = Column(Boolean, default=False, nullable=False)
+
+    live_session = relationship("LiveSession", back_populates="breakout_rooms")
+    peer_expert  = relationship("User", foreign_keys=[peer_expert_detected_user_id])
 
 
 # ═══════════════════════════════════════════════════════════════════════

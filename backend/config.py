@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     # ── AI — Career Roadmap ───────────────────────────────────────────
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     # ── Twilio WhatsApp (for parent alerts) ───────────────────────────
     TWILIO_ACCOUNT_SID: str
     TWILIO_AUTH_TOKEN: str
@@ -73,6 +75,11 @@ class Settings(BaseSettings):
     LEAVE_MAX_DAYS_PER_REQUEST: int = 14
     LEAVE_ALLOW_PAST_DATE_DAYS: int = 2
     LEAVE_DOCUMENT_REQUIRED_TYPES: str = "medical,sports"
+
+    # ── ClassPulse Live ───────────────────────────────────────────────
+    LIVE_SESSION_HEARTBEAT_INTERVAL: int = 30
+    LIVE_SESSION_MIN_ATTENDANCE_MINUTES: int = 30
+    LIVE_SESSION_LIVENESS_CHECK_INTERVAL: int = 600
 
     class Config:
         env_file = ".env"
