@@ -44,6 +44,8 @@ from database import (
     AttendanceSession,
     AttendanceStatus,
     Capsule,
+    CapsuleType,
+    CapsuleUnlockMode,
     ClassWallPost,
     KnowledgeLevel,
     LiveConnectionQuality,
@@ -86,7 +88,7 @@ from utils.live_session_ai import (
     generate_session_health_report,
     update_student_knowledge_graph,
 )
-from utils.notification_utils import send_push_to_many
+from utils.notification_utils import send_push_notification, send_push_to_many
 
 logger = logging.getLogger(__name__)
 
@@ -352,7 +354,7 @@ class BreakoutCreateReq(BaseModel):
 # ═══════════════════════════════════════════════════════════════════════
 
 async def _generate_session_capsule_async(session_id: int) -> None:
-    from database import SessionLocal
+    from database import SessionLocal, CapsuleInteraction
     db = SessionLocal()
     try:
         sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
@@ -388,22 +390,72 @@ async def _generate_session_capsule_async(session_id: int) -> None:
         if not result or not result.get("title"):
             return
 
+        # Build "homework + topics" combined description for backwards compat
+        topic_labels = result.get("topic_labels") or []
         cap = Capsule(
             subject_id=sess.subject_id,
             teacher_id=sess.teacher_id,
             section_id=sess.section_id,
             title=f"[Live] {result['title'][:170]}",
-            description=result.get("homework_suggestion") or None,
+            description=(
+                f"Auto-generated from live session on "
+                f"{(sess.started_at or datetime.utcnow()).strftime('%d %b %Y')}"
+            ),
+            capsule_type=CapsuleType.notes,
+            unlock_mode=CapsuleUnlockMode.after_attendance_marked,
             ai_summary=result.get("summary") or None,
             ai_quiz_json=result.get("quiz_questions") or None,
             ai_processed=True,
+            # ── Auto-capsule extras (PROMPT 6) ────────────────────────
+            is_auto_generated=True,
+            source_live_session_id=sess.id,
+            chapters=result.get("chapters") or [],
+            student_specific_notes=result.get("student_specific_notes") or [],
+            homework_suggestion=result.get("homework_suggestion") or None,
+            recording_url=sess.recording_url,
         )
         db.add(cap)
+        db.flush()
+        sess.auto_capsule_id = cap.id
+
+        # Pre-create interactions for students who attended → instant unlock
+        attending_ids = [
+            p.user_id for p in db.query(LiveSessionParticipant)
+            .filter(
+                LiveSessionParticipant.live_session_id == session_id,
+                LiveSessionParticipant.participant_type == LiveParticipantType.student,
+                LiveSessionParticipant.user_id.isnot(None),
+                LiveSessionParticipant.is_attendance_counted.is_(True),
+            ).all()
+        ]
+        now = datetime.utcnow()
+        for sid in attending_ids:
+            interaction = CapsuleInteraction(
+                capsule_id=cap.id,
+                student_id=sid,
+                first_opened_at=None,
+                total_pages=len(cap.chapters or []) or 1,
+            )
+            db.add(interaction)
+
         db.commit()
         db.refresh(cap)
-        sess.auto_capsule_id = cap.id
-        db.commit()
-        logger.info("Auto-capsule %s generated for live session %s", cap.id, session_id)
+        logger.info(
+            "Auto-capsule %s generated for live session %s (%d students unlocked)",
+            cap.id, session_id, len(attending_ids),
+        )
+
+        # Notify teacher
+        try:
+            send_push_notification(
+                user_id=sess.teacher_id,
+                title="Auto-Capsule Generated ✅",
+                body=f"Your '{sess.title}' capsule is ready. {len(attending_ids)} students have access.",
+                db=db,
+                data={"type": "capsule_generated", "capsule_id": cap.id},
+            )
+        except Exception:
+            logger.debug("Teacher push notification skipped (no token).")
     except Exception as exc:
         logger.error("auto-capsule generation failed for session %s: %s", session_id, exc)
     finally:
@@ -535,6 +587,100 @@ def _update_all_knowledge_graphs_sync(session_id: int) -> None:
         logger.info("Knowledge graphs updated for session %s (%d students)", session_id, len(student_ids))
     except Exception as exc:
         logger.error("knowledge-graph update failed for session %s: %s", session_id, exc)
+    finally:
+        db.close()
+
+
+def _notify_absent_students_async(session_id: int) -> None:
+    """
+    For students enrolled in the section but NOT counted as present in the
+    just-ended live session, compute consecutive misses across recent live
+    sessions for the same subject+section, then notify tutor (and parent if
+    >= 3).  PROMPT 7.
+    """
+    from database import SessionLocal
+    from utils.live_notifications import notify_parent_student_missed_live_session
+    db = SessionLocal()
+    try:
+        sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+        if not sess or not sess.subject_id or not sess.section_id:
+            return
+
+        # Enrolled students in the section
+        enrolled = (
+            db.query(User.id)
+            .filter(
+                User.section_id == sess.section_id,
+                User.role == UserRole.student,
+                User.is_active.is_(True),
+            )
+            .all()
+        )
+        enrolled_ids = {r[0] for r in enrolled}
+
+        # Present (attendance counted) in this session
+        present_ids = {
+            r[0]
+            for r in db.query(LiveSessionParticipant.user_id)
+            .filter(
+                LiveSessionParticipant.live_session_id == session_id,
+                LiveSessionParticipant.is_attendance_counted.is_(True),
+                LiveSessionParticipant.user_id.isnot(None),
+            )
+            .all()
+        }
+        absent_ids = enrolled_ids - present_ids
+        if not absent_ids:
+            return
+
+        subject_name = (
+            db.query(Subject.name).filter(Subject.id == sess.subject_id).scalar()
+            or "Subject"
+        )
+
+        # Last 5 live sessions for this subject+section (chronological desc)
+        recent = (
+            db.query(LiveSession.id)
+            .filter(
+                LiveSession.subject_id == sess.subject_id,
+                LiveSession.section_id == sess.section_id,
+                LiveSession.status == LiveSessionStatus.ended,
+            )
+            .order_by(LiveSession.ended_at.desc().nullslast())
+            .limit(5)
+            .all()
+        )
+        recent_ids = [r[0] for r in recent]
+
+        for sid in absent_ids:
+            # Walk recent sessions until we find one where they were present
+            consecutive = 0
+            for rid in recent_ids:
+                was_present = (
+                    db.query(LiveSessionParticipant.id)
+                    .filter(
+                        LiveSessionParticipant.live_session_id == rid,
+                        LiveSessionParticipant.user_id == sid,
+                        LiveSessionParticipant.is_attendance_counted.is_(True),
+                    )
+                    .first()
+                )
+                if was_present:
+                    break
+                consecutive += 1
+            if consecutive >= 2:
+                try:
+                    notify_parent_student_missed_live_session(
+                        student_id=sid,
+                        session_title=sess.title,
+                        subject_name=subject_name,
+                        consecutive_misses=consecutive,
+                        db=db,
+                    )
+                except Exception as e:
+                    logger.warning("absent notify failed for %s: %s", sid, e)
+    except Exception as exc:
+        logger.error("_notify_absent_students_async failed: %s", exc)
     finally:
         db.close()
 
@@ -791,6 +937,7 @@ def end_live_session(
     background.add_task(_generate_session_capsule_async, sess.id)
     background.add_task(_generate_health_report_async,   sess.id)
     background.add_task(_update_all_knowledge_graphs_sync, sess.id)
+    background.add_task(_notify_absent_students_async, sess.id)
 
     return {
         "status": "ended",

@@ -1031,6 +1031,13 @@ class Capsule(Base):
     featured                 = Column(Boolean, default=False, nullable=False)
     featured_by              = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     featured_at              = Column(DateTime(timezone=True), nullable=True)
+    # ── Auto-generated capsule (PROMPT 6 — Live Sessions) ─────────────
+    is_auto_generated        = Column(Boolean, default=False, nullable=False)
+    source_live_session_id   = Column(Integer, ForeignKey("live_sessions.id", ondelete="SET NULL", use_alter=True, name="fk_capsules_source_live_session_id"), nullable=True)
+    chapters                 = Column(JSONB, nullable=True)
+    student_specific_notes   = Column(JSONB, nullable=True)
+    homework_suggestion      = Column(Text, nullable=True)
+    recording_url            = Column(String(500), nullable=True)
     created_at               = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at               = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -1040,6 +1047,7 @@ class Capsule(Base):
     section      = relationship("Section", foreign_keys=[section_id])
     interactions = relationship("CapsuleInteraction", back_populates="capsule", cascade="all, delete-orphan")
     wall_posts   = relationship("ClassWallPost",      back_populates="capsule")
+    source_live_session = relationship("LiveSession", foreign_keys=[source_live_session_id], post_update=True)
     access_logs  = relationship("CapsuleAccessLog",   back_populates="capsule", cascade="all, delete-orphan")
 
 

@@ -32,6 +32,7 @@ import ArticleDetailPage      from '../shared/ArticleDetailPage';
 import CareerRoadmapPage      from '../shared/CareerRoadmapPage';
 import SuggestionBoxPage      from '../shared/SuggestionBoxPage';
 import HODClassPulsePage      from './HODClassPulsePage';
+import LiveSessionAnalyticsPage from './LiveSessionAnalyticsPage';
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -500,6 +501,7 @@ export default function HODDashboard() {
         <Route path="career"              element={<CareerRoadmapPage />} />
         <Route path="suggestions"         element={<SuggestionBoxPage />} />
         <Route path="classpulse"          element={<HODClassPulsePage />} />
+        <Route path="live-analytics"      element={<LiveSessionAnalyticsPage />} />
         <Route path="*"                 element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

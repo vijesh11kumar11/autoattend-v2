@@ -46,6 +46,7 @@ const NAV_ITEMS = {
     { to: '/hod/career',            icon: '🎯', label: 'Career Roadmap'     },
     { to: '/hod/suggestions',      icon: '💡', label: 'Suggestion Box'    },
     { to: '/hod/classpulse',       icon: '📚', label: 'ClassPulse'          },
+    { to: '/hod/live-analytics',   icon: '📺', label: 'Live Sessions'      },
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },

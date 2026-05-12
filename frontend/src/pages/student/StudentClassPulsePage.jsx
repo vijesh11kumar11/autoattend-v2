@@ -432,6 +432,17 @@ function CapsuleCard({ capsule, expanded, onToggleSummary, onOpen }) {
             <p className="text-[11px] text-slate-500 truncate">
               {capsule.teacher_name || 'Teacher'} · {fmtDate(capsule.created_at)}
             </p>
+            <div className="flex items-center gap-1 mt-1 flex-wrap">
+              {capsule.is_auto_generated && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">🤖 Auto</span>
+              )}
+              {capsule.has_recording && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">📹 Recording</span>
+              )}
+              {(capsule.chapters_count || 0) > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">📑 {capsule.chapters_count}</span>
+              )}
+            </div>
           </div>
         </div>
 

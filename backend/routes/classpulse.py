@@ -156,6 +156,7 @@ class WallPostRequest(BaseModel):
     content: str = Field(..., min_length=10, max_length=1000)
     capsule_id: Optional[int] = None
     page_number: Optional[int] = Field(default=None, ge=1)
+    live_session_id: Optional[int] = None  # PROMPT 8 — doubt posted from inside live session
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -978,6 +979,15 @@ def teacher_list_capsules(
                 "failed_comprehension_count": failed,
                 "not_opened_count": not_opened,
             },
+            # ── Live-session integration (PROMPT 8) ─────────────────
+            "is_auto_generated": bool(getattr(c, "is_auto_generated", False)),
+            "source_session_date": (
+                c.source_live_session.started_at.isoformat()
+                if getattr(c, "source_live_session", None) and c.source_live_session.started_at
+                else None
+            ),
+            "has_recording": bool(getattr(c, "recording_url", None)),
+            "chapters_count": len(c.chapters) if getattr(c, "chapters", None) else 0,
         })
     return {"subject_id": subject_id, "capsules": out, "total": len(out)}
 
@@ -1359,6 +1369,15 @@ def student_list_capsules(
             "my_interaction": my_interaction,
             "featured": bool(getattr(c, "featured", False)),
             "featured_at": c.featured_at.isoformat() if getattr(c, "featured_at", None) else None,
+            # ── Live-session integration (PROMPT 8) ───────────────
+            "is_auto_generated": bool(getattr(c, "is_auto_generated", False)),
+            "source_session_date": (
+                c.source_live_session.started_at.isoformat()
+                if getattr(c, "source_live_session", None) and c.source_live_session.started_at
+                else None
+            ),
+            "has_recording": bool(getattr(c, "recording_url", None)),
+            "chapters_count": len(c.chapters) if getattr(c, "chapters", None) else 0,
         })
     return {"subject_id": subject_id, "capsules": out, "total": len(out)}
 
@@ -1879,6 +1898,7 @@ def student_post_doubt(
         section_id=section_id,
         student_id=student.id,
         capsule_id=capsule_id,
+        live_session_id=body.live_session_id,
         page_number=body.page_number,
         content=body.content.strip(),
     )
@@ -2191,6 +2211,145 @@ def hod_subject_full_report(
         } for c in capsules],
         "per_student_matrix": matrix,
         "wall_summary": wall_summary,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SMART REPLAY  +  START-LIVE-FROM-CAPSULE  (PROMPT 6 + 8)
+# ═══════════════════════════════════════════════════════════════════════
+
+class SmartReplayReq(BaseModel):
+    query: str = Field(..., min_length=2, max_length=300)
+
+
+@router.post("/capsules/{capsule_id}/smart-replay")
+async def smart_replay(
+    capsule_id: int,
+    req: SmartReplayReq,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Given a natural-language query, find the best chapter timestamp inside an
+    auto-generated capsule.  Falls back to keyword scoring if AI fails.
+    """
+    cap = db.query(Capsule).filter(Capsule.id == capsule_id).first()
+    if not cap:
+        raise HTTPException(404, "Capsule not found")
+
+    # Reuse existing access checks
+    if current_user.get("role") == "student":
+        student = db.query(User).filter(User.id == current_user["id"]).first()
+        access_status, _ = _resolve_access_status(db, student, cap)
+        if access_status != "unlocked":
+            raise HTTPException(403, "You do not have access to this capsule")
+
+    chapters = cap.chapters or []
+    if not chapters:
+        raise HTTPException(400, "This capsule has no chapter data for smart replay")
+
+    # ---- 1. Try AI ranking ------------------------------------------------
+    best = None
+    try:
+        from utils.live_session_ai import _ai_json  # type: ignore
+        prompt = (
+            "You are matching a student's question to the most relevant chapter "
+            "from a recorded lecture.  Return ONLY JSON: "
+            '{"chapter_index": <int>, "reason": "<short>"} where chapter_index '
+            "is the 0-based index of the BEST chapter.\n\n"
+            f"QUERY: {req.query}\n\nCHAPTERS:\n"
+            + "\n".join(
+                f"[{i}] {c.get('title','')} — {c.get('description','')}"
+                for i, c in enumerate(chapters)
+            )
+        )
+        ai = await _ai_json(prompt, system="Return only valid JSON.")
+        if isinstance(ai, dict):
+            idx = int(ai.get("chapter_index", -1))
+            if 0 <= idx < len(chapters):
+                best = (idx, chapters[idx], ai.get("reason", ""))
+    except Exception as exc:  # pragma: no cover
+        logger.warning("smart-replay AI failed: %s", exc)
+
+    # ---- 2. Fallback: keyword overlap -------------------------------------
+    if best is None:
+        q_words = {w.lower() for w in req.query.split() if len(w) > 2}
+        scored = []
+        for i, c in enumerate(chapters):
+            text = f"{c.get('title','')} {c.get('description','')}".lower()
+            score = sum(1 for w in q_words if w in text)
+            scored.append((score, i, c))
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        i, c = scored[0][1], scored[0][2]
+        best = (i, c, "keyword match")
+
+    idx, ch, reason = best
+    start = int(ch.get("timestamp_seconds", 0))
+    # End = start of next chapter, else +5 minutes
+    if idx + 1 < len(chapters):
+        end = int(chapters[idx + 1].get("timestamp_seconds", start + 300))
+    else:
+        end = start + 300
+
+    return {
+        "chapter_index": idx,
+        "chapter_title": ch.get("title", ""),
+        "start_seconds": start,
+        "end_seconds": end,
+        "recording_url": cap.recording_url,
+        "clip_description": ch.get("description", ""),
+        "reason": reason,
+    }
+
+
+@router.post("/capsules/{capsule_id}/start-live-session")
+def start_live_from_capsule(
+    capsule_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Quick-launch a capsule_locked live session anchored to a capsule.
+    Only the owning teacher (or HOD/Principal) may start.
+    """
+    _require_role(current_user, "teacher", "hod", "principal")
+    cap = db.query(Capsule).filter(Capsule.id == capsule_id).first()
+    if not cap:
+        raise HTTPException(404, "Capsule not found")
+    if current_user.get("role") == "teacher" and cap.teacher_id != current_user["id"]:
+        raise HTTPException(403, "Only the capsule's teacher can launch a live session for it")
+
+    # Lazy imports to avoid circular deps
+    from database import LiveSession, LiveSessionType, LiveSessionStatus
+    import secrets, string
+
+    join_link = "-".join(
+        "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(3))
+        for _ in range(3)
+    )
+    new_sess = LiveSession(
+        session_type=LiveSessionType.capsule_locked,
+        title=f"Live: {cap.title[:180]}",
+        teacher_id=cap.teacher_id,
+        subject_id=cap.subject_id,
+        section_id=cap.section_id,
+        capsule_id=cap.id,
+        status=LiveSessionStatus.waiting,
+        join_link=join_link,
+        allow_guests=False,
+        allow_guest_interaction=False,
+        recording_enabled=True,
+    )
+    db.add(new_sess)
+    db.commit()
+    db.refresh(new_sess)
+
+    base = (settings.FRONTEND_URL or "").rstrip("/") if hasattr(settings, "FRONTEND_URL") else ""
+    join_url = f"{base}/live/{join_link}" if base else f"/live/{join_link}"
+    return {
+        "session_id": new_sess.id,
+        "join_link": join_link,
+        "join_url": join_url,
     }
 
 

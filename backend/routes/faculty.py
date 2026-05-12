@@ -35,6 +35,7 @@ from database import (
     AttendanceSession,
     AttendanceStatus,
     AuditResult,
+    Capsule,
     College,
     Course,
     Department,
@@ -43,9 +44,14 @@ from database import (
     FaceChangeLog,
     LeaveRequest,
     LeaveRequestStatus,
+    LiveParticipantType,
+    LiveSession,
+    LiveSessionParticipant,
+    LiveSessionStatus,
     MarkedBy,
     Section,
     SessionStatus,
+    StudentKnowledgeGraph,
     Subject,
     TWMSession,
     Timetable,
@@ -1090,6 +1096,17 @@ def get_hod_dashboard(
             "students_at_risk": 0,
         }
 
+    # ── Live Sessions this month (PROMPT 7) ────────────────────
+    try:
+        live_summary = _live_sessions_summary_for_dept(dept_id, db)
+    except Exception as e:
+        logger.warning("live sessions summary failed: %s", e)
+        live_summary = {
+            "total_sessions": 0, "average_health_score": 0.0,
+            "total_live_attendance_hours": 0.0, "teachers_using_live": 0,
+            "auto_capsules_generated": 0, "subjects_with_zero_live_sessions": [],
+        }
+
     return {
         "department_name":     dept.name,
         "department_code":     dept.code,
@@ -1107,6 +1124,243 @@ def get_hod_dashboard(
         },
         "pending_disputes_count": pending_disputes_count,
         "classpulse_summary":  classpulse_summary,
+        "live_sessions_this_month": live_summary,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Live Session Analytics helpers + endpoints (PROMPT 7)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _live_sessions_summary_for_dept(dept_id: int, db: Session) -> dict:
+    """Aggregate live-session stats for current calendar month for one department."""
+    from datetime import datetime, timedelta
+    course_ids  = _course_ids_for_depts([dept_id], db)
+    subject_ids = _subject_ids_for_courses(course_ids, db)
+    if not subject_ids:
+        return {
+            "total_sessions": 0, "average_health_score": 0.0,
+            "total_live_attendance_hours": 0.0, "teachers_using_live": 0,
+            "auto_capsules_generated": 0, "subjects_with_zero_live_sessions": [],
+        }
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+
+    sessions = db.query(LiveSession).filter(
+        LiveSession.subject_id.in_(subject_ids),
+        LiveSession.created_at >= month_start,
+    ).all()
+    total_sessions = len(sessions)
+    health_scores  = [s.session_health_score for s in sessions if s.session_health_score is not None]
+    avg_health     = round(sum(health_scores) / len(health_scores), 1) if health_scores else 0.0
+    teachers_using = len({s.teacher_id for s in sessions})
+    auto_caps      = sum(1 for s in sessions if s.auto_capsule_id)
+
+    # Total attendance hours (sum of attendance-counted participants' duration)
+    sess_ids = [s.id for s in sessions] or [0]
+    total_secs = db.query(func.coalesce(func.sum(LiveSessionParticipant.total_duration_seconds), 0)).filter(
+        LiveSessionParticipant.live_session_id.in_(sess_ids),
+        LiveSessionParticipant.is_attendance_counted.is_(True),
+    ).scalar() or 0
+    total_hours = round(float(total_secs) / 3600.0, 1)
+
+    used_subj_ids = {s.subject_id for s in sessions if s.subject_id}
+    zero_subjects = db.query(Subject.name).filter(
+        Subject.id.in_(subject_ids),
+        ~Subject.id.in_(used_subj_ids) if used_subj_ids else True,
+    ).all()
+    return {
+        "total_sessions":               total_sessions,
+        "average_health_score":         avg_health,
+        "total_live_attendance_hours":  total_hours,
+        "teachers_using_live":          teachers_using,
+        "auto_capsules_generated":      auto_caps,
+        "subjects_with_zero_live_sessions": [n[0] for n in zero_subjects],
+    }
+
+
+@router.get("/hod/live-sessions/overview")
+def hod_live_sessions_overview(
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
+):
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    course_ids  = _course_ids_for_depts([dept_id], db)
+    subject_ids = _subject_ids_for_courses(course_ids, db)
+    student_ids = _student_ids_for_courses(course_ids, db)
+
+    sessions = db.query(LiveSession).filter(
+        LiveSession.subject_id.in_(subject_ids) if subject_ids else False,
+    ).all()
+
+    # Group by teacher
+    by_teacher: dict[int, list] = {}
+    for s in sessions:
+        by_teacher.setdefault(s.teacher_id, []).append(s)
+    sessions_by_teacher = []
+    for tid, items in by_teacher.items():
+        t = db.query(User).filter(User.id == tid).first()
+        scores = [i.session_health_score for i in items if i.session_health_score is not None]
+        sessions_by_teacher.append({
+            "teacher_id": tid,
+            "teacher_name": t.name if t else f"Teacher {tid}",
+            "sessions_count": len(items),
+            "avg_health_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+            "auto_capsules_count": sum(1 for i in items if i.auto_capsule_id),
+        })
+    sessions_by_teacher.sort(key=lambda x: -x["sessions_count"])
+
+    # Group by subject
+    by_subject: dict[int, list] = {}
+    for s in sessions:
+        if s.subject_id:
+            by_subject.setdefault(s.subject_id, []).append(s)
+    sessions_by_subject = []
+    for sid, items in by_subject.items():
+        subj = db.query(Subject).filter(Subject.id == sid).first()
+        scores = [i.session_health_score for i in items if i.session_health_score is not None]
+        sessions_by_subject.append({
+            "subject_id": sid,
+            "subject_name": subj.name if subj else f"Subject {sid}",
+            "sessions_count": len(items),
+            "avg_health_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+        })
+    sessions_by_subject.sort(key=lambda x: -x["sessions_count"])
+
+    # Knowledge gaps: topics where confused students > understood
+    gap_rows = db.query(
+        StudentKnowledgeGraph.subject_id,
+        StudentKnowledgeGraph.topic_name,
+        func.sum(StudentKnowledgeGraph.times_confused).label("confused"),
+        func.sum(StudentKnowledgeGraph.times_understood).label("understood"),
+    ).filter(
+        StudentKnowledgeGraph.subject_id.in_(subject_ids) if subject_ids else False,
+    ).group_by(
+        StudentKnowledgeGraph.subject_id, StudentKnowledgeGraph.topic_name,
+    ).all()
+    gaps = []
+    for sid, topic, conf, und in gap_rows:
+        if (conf or 0) > (und or 0):
+            subj = db.query(Subject.name).filter(Subject.id == sid).scalar()
+            gaps.append({
+                "subject_name": subj or "?",
+                "topic_name": topic,
+                "confused_students": int(conf or 0),
+                "understood_students": int(und or 0),
+            })
+    gaps.sort(key=lambda x: -x["confused_students"])
+
+    # Top performing sessions (highest health score)
+    top = sorted(
+        [s for s in sessions if s.session_health_score is not None],
+        key=lambda s: -s.session_health_score,
+    )[:5]
+    top_performing_sessions = [{
+        "session_id": s.id,
+        "title": s.title,
+        "teacher_id": s.teacher_id,
+        "health_score": s.session_health_score,
+        "started_at": s.started_at.isoformat() if s.started_at else None,
+    } for s in top]
+
+    # Students needing attention: high times_confused
+    attn_rows = db.query(
+        StudentKnowledgeGraph.student_id,
+        func.sum(StudentKnowledgeGraph.times_confused).label("conf"),
+    ).filter(
+        StudentKnowledgeGraph.student_id.in_(student_ids) if student_ids else False,
+    ).group_by(StudentKnowledgeGraph.student_id).having(func.sum(StudentKnowledgeGraph.times_confused) >= 3).all()
+    students_needing_attention = []
+    for sid, conf in attn_rows[:25]:
+        u = db.query(User).filter(User.id == sid).first()
+        students_needing_attention.append({
+            "student_id": sid,
+            "student_name": u.name if u else f"Student {sid}",
+            "total_confusions": int(conf),
+        })
+
+    return {
+        "sessions_by_teacher": sessions_by_teacher,
+        "sessions_by_subject": sessions_by_subject,
+        "department_knowledge_gaps": gaps[:25],
+        "top_performing_sessions": top_performing_sessions,
+        "students_needing_attention": students_needing_attention,
+    }
+
+
+@router.get("/hod/live-sessions/teacher/{teacher_id}/details")
+def hod_live_sessions_teacher_details(
+    teacher_id: int,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
+):
+    dept_id = current_user.get("department_id")
+    if not dept_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "HOD not assigned to a department.")
+
+    teacher = db.query(User).filter(
+        User.id == teacher_id,
+        User.department_id == dept_id,
+        User.role == UserRole.teacher,
+    ).first()
+    if not teacher:
+        raise HTTPException(404, "Teacher not found in your department")
+
+    sessions = db.query(LiveSession).filter(
+        LiveSession.teacher_id == teacher_id,
+    ).order_by(LiveSession.created_at.desc()).limit(100).all()
+
+    history = [{
+        "session_id": s.id,
+        "title": s.title,
+        "subject_id": s.subject_id,
+        "started_at": s.started_at.isoformat() if s.started_at else None,
+        "duration_minutes": s.duration_minutes,
+        "health_score": s.session_health_score,
+        "auto_capsule_id": s.auto_capsule_id,
+        "status": s.status.value if hasattr(s.status, "value") else str(s.status),
+    } for s in sessions]
+
+    # 30-day trend: avg score by day
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    trend: dict[str, list] = {}
+    for s in sessions:
+        if s.created_at and s.created_at.replace(tzinfo=None) >= cutoff and s.session_health_score is not None:
+            key = s.created_at.date().isoformat()
+            trend.setdefault(key, []).append(s.session_health_score)
+    trend_graph = [{"date": d, "avg_health_score": round(sum(v) / len(v), 1)} for d, v in sorted(trend.items())]
+
+    # AI pattern observation (best-effort)
+    ai_observation = None
+    try:
+        from utils.live_session_ai import _ai_json
+        import asyncio
+        prompt = (
+            "Given a teacher's recent live-session health scores, write ONE short "
+            "actionable observation (max 25 words) about engagement patterns.\n"
+            "Return JSON: {\"observation\": \"...\"}.\n\n"
+            f"Scores: {[s.session_health_score for s in sessions[:20] if s.session_health_score]}"
+        )
+        loop = asyncio.new_event_loop()
+        try:
+            ai = loop.run_until_complete(_ai_json(prompt, system="Return only JSON."))
+        finally:
+            loop.close()
+        if isinstance(ai, dict):
+            ai_observation = ai.get("observation")
+    except Exception as e:  # pragma: no cover
+        logger.debug("ai pattern obs failed: %s", e)
+
+    return {
+        "teacher_id": teacher_id,
+        "teacher_name": teacher.name,
+        "history": history,
+        "trend_graph": trend_graph,
+        "ai_pattern_observation": ai_observation,
     }
 
 

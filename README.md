@@ -227,3 +227,78 @@ ClassPulse extends AutoAttend with a tightly access-controlled content layer: te
 ### Seed
 
 `python seed.py` now provisions 3 sample capsules (one per subject) with valid AI summary + quiz JSON. The first is marked **featured** to exercise the HOD spotlight UI.
+
+
+---
+
+## ClassPulse Live (Prompts 3-8)
+
+ClassPulse Live is the synchronous companion to ClassPulse. It adds live online
+classes with WebRTC audio/video, real-time pulse checks, AI session insights,
+auto-generated capsules from recordings, smart-replay search, and HOD analytics.
+
+### Features
+
+- **3 session types**: `standalone`, `capsule_locked`, `public` (guest-friendly)
+- WebRTC + WebSocket signalling at `ws://<host>/ws/live/{session_id}/{user_id}?token=JWT`
+- Heartbeat-based attendance (`LIVE_SESSION_MIN_ATTENDANCE_MINUTES`)
+- AI pulse-check generation, doubt-clustering, real-time observations
+- Auto-capsule generation on session end (chapters, key points, homework, per-student notes)
+- Smart Replay — natural-language → exact recording timestamp
+- Quick-launch live session from any capsule
+- HOD analytics dashboard: per-teacher / per-subject / knowledge gaps / 30-day trend
+- Parent + tutor WhatsApp/SMS notifications when a student misses ≥ 2 consecutive sessions
+- Pre-class warmup push (when scheduled_start_time provided)
+
+### Required env vars
+
+```
+LIVE_SESSION_HEARTBEAT_INTERVAL=30
+LIVE_SESSION_MIN_ATTENDANCE_MINUTES=30
+LIVE_SESSION_LIVENESS_CHECK_INTERVAL=600
+LIVE_SESSION_HOT_DOUBT_THRESHOLD=5
+LIVE_SESSION_CONFUSION_THRESHOLD=3
+LIVE_SESSION_AI_OBSERVATION_INTERVAL=120
+LIVE_SESSION_ALLOW_GUEST_DEFAULT=false
+LIVE_SESSION_MAX_GUESTS_DEFAULT=50
+
+# Optional — enables Agora-backed media (otherwise peer-to-peer)
+AGORA_APP_ID=
+AGORA_APP_CERTIFICATE=
+
+# AI fallback chain (Gemini → Groq → DeepSeek)
+GEMINI_API_KEY=
+GROQ_API_KEY=
+DEEPSEEK_API_KEY=
+```
+
+### Setup
+
+```bash
+cd backend
+venv\Scripts\activate     # or source venv/bin/activate
+alembic upgrade head      # runs live_session_001..003
+python seed_live.py       # demo sessions + knowledge graphs
+uvicorn main:app --reload
+```
+
+Demo join codes (after `seed_live.py`):
+
+| Type           | Code           | Notes                           |
+|----------------|----------------|---------------------------------|
+| standalone     | `DEM-ODS-001`  | ended, sample health report     |
+| capsule_locked | `CAP-SBT-001`  | waiting, anchored to capsule    |
+| public         | `OPE-NDS-001`  | password `DS2026`, guest-allowed |
+
+Join URL: `https://<your-frontend>/live/<JOIN-CODE>`
+
+### Migrations
+
+- `live_session_001` — live sessions / participants / events / pulse checks / breakouts
+- `live_session_002` — KnowledgeGraph + ClassWallPost.live_session_id + AttendanceSession.session_type=`live_online`
+- `live_session_003` — Capsule auto-generation columns (chapters, recording_url, …)
+
+### AI fallback chain
+
+`utils/live_session_ai.py::_ai_json` tries **Gemini → Groq → DeepSeek**, returning
+`{}` if all fail. Smart Replay falls back to keyword overlap when AI returns empty.

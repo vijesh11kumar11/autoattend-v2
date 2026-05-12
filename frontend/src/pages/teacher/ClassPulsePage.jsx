@@ -417,6 +417,17 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  cons
                   🤖 AI processing…
                 </span>
               )}
+              {capsule.is_auto_generated && (
+                <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700" title={capsule.source_session_date ? `From session on ${new Date(capsule.source_session_date).toLocaleDateString()}` : ''}>
+                  🤖 Auto-generated
+                </span>
+              )}
+              {capsule.has_recording && (
+                <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700">📹 Recording</span>
+              )}
+              {(capsule.chapters_count || 0) > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-md bg-slate-50 text-slate-600">📑 {capsule.chapters_count} chapters</span>
+              )}
             </div>
           </div>
         </div>
@@ -453,6 +464,22 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  cons
           className="flex-1 px-3 py-2 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg text-xs font-medium"
         >
           📊 Analytics
+        </button>
+        <button
+          onClick={async () => {
+            if (!confirm('Start a live session anchored to this capsule?')) return;
+            try {
+              const r = await api.post(`/api/classpulse/capsules/${capsule.id}/start-live-session`);
+              alert(`Live session created. Join code: ${r.data.join_link}`);
+              window.location.href = '/teacher/live';
+            } catch (e) {
+              alert(e?.response?.data?.detail || 'Failed to start live session');
+            }
+          }}
+          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-medium"
+          title="Quick-launch a capsule_locked live session"
+        >
+          🔴 Start Live
         </button>
         <button
           onClick={async () => {
