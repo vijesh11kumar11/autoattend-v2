@@ -1265,6 +1265,7 @@ class LiveSessionParticipant(Base):
     connection_quality      = Column(SAEnum(LiveConnectionQuality, name="liveconnectionquality"), default=LiveConnectionQuality.good, nullable=False)
     liveness_check_passed   = Column(Boolean, default=False, nullable=False)
     liveness_check_time     = Column(DateTime(timezone=True), nullable=True)
+    agora_uid               = Column(BigInteger, nullable=True)
 
     live_session = relationship("LiveSession", back_populates="participants")
     user         = relationship("User", foreign_keys=[user_id])

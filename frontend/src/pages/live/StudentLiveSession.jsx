@@ -12,18 +12,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { useAgoraRTC } from '../../hooks/useAgoraRTC';
+import { VideoGrid } from '../../components/live/VideoGrid';
+import { MermaidRenderer } from '../../components/live/MermaidRenderer';
 
 const VIOLET = 'from-violet-600 via-purple-600 to-fuchsia-600';
-
-// ─── lazy Agora SDK loader ─────────────────────────────────────────────
-async function loadAgora() {
-  try {
-    const mod = await import('agora-rtc-sdk-ng');
-    return mod.default || mod;
-  } catch {
-    return null;
-  }
-}
 
 export default function StudentLiveSession() {
   const { sessionId } = useParams();
@@ -44,11 +37,31 @@ export default function StudentLiveSession() {
   const [bandwidth, setBandwidth] = useState('good');     // good | poor
   const [secs, setSecs] = useState(0);
   const [error, setError] = useState('');
+  const [participantNames, setParticipantNames] = useState({});
+  const [sharedWhiteboard, setSharedWhiteboard] = useState(null);
 
   const wsRef = useRef(null);
-  const agoraClientRef = useRef(null);
-  const localTracksRef = useRef([]);
-  const remoteContainerRef = useRef(null);
+
+  // ─── Agora (subscribe-only by default; student is audience) ─────────
+  const agoraCfg = info?.webrtc_config?.agora || {};
+  const teacherAgoraUid = info?.teacher_agora_uid || null;
+  const {
+    isJoined: agoraJoined,
+    isLoading: agoraLoading,
+    error: agoraError,
+    localVideoEnabled, localAudioEnabled,
+    remoteUsers, networkQuality,
+    speakingUsers, activeSpeakerUid,
+    localVideoTrackRef,
+    initClient, leaveChannel,
+    toggleVideo, toggleAudio,
+  } = useAgoraRTC({
+    appId:   agoraCfg.app_id || '',
+    channel: agoraCfg.channel || '',
+    token:   agoraCfg.token   || '',
+    uid:     agoraCfg.uid     || 0,
+    role:    'audience',
+  });
 
   // ─── Step 1: fetch join info (use guest token if present) ───────────
   useEffect(() => {
@@ -78,39 +91,34 @@ export default function StudentLiveSession() {
   }, [sessionId, joinCode]);
 
   // ─── Step 2: Agora connect ──────────────────────────────────────────
+  // Auto-join the video channel as soon as we have credentials.
   useEffect(() => {
-    const agora = info?.webrtc_config?.agora;
-    if (!agora || !agora.app_id || !agora.token) return;
+    if (!agoraCfg.app_id || !agoraCfg.token || agoraJoined || agoraLoading) return;
+    initClient();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agoraCfg.app_id, agoraCfg.token]);
+
+  // Update bandwidth label from real-time network stats
+  useEffect(() => {
+    if (!networkQuality) return;
+    if (networkQuality.downlink >= 4)      setBandwidth('poor');
+    else if (networkQuality.downlink <= 2) setBandwidth('good');
+  }, [networkQuality]);
+
+  // ─── Step 2b: Resolve Agora UIDs → real names ───────────────────────
+  useEffect(() => {
+    if (!agoraJoined || !sessionId) return undefined;
     let cancelled = false;
-    (async () => {
-      const AgoraRTC = await loadAgora();
-      if (!AgoraRTC || cancelled) return;
+    const fetchNames = async () => {
       try {
-        const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-        agoraClientRef.current = client;
-        client.on('user-published', async (rUser, mediaType) => {
-          await client.subscribe(rUser, mediaType);
-          if (mediaType === 'video' && remoteContainerRef.current) {
-            rUser.videoTrack?.play(remoteContainerRef.current);
-          }
-          if (mediaType === 'audio') rUser.audioTrack?.play();
-        });
-        client.on('connection-state-change', (cur) => {
-          if (cur === 'CONNECTED') setBandwidth('good');
-          if (cur === 'RECONNECTING' || cur === 'DISCONNECTED') setBandwidth('poor');
-        });
-        await client.join(agora.app_id, agora.channel, agora.token, agora.uid);
-        // For students we typically don't publish unless they raise hand
-      } catch (e) {
-        console.warn('Agora join failed', e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      try { agoraClientRef.current?.leave(); } catch {}
-      localTracksRef.current.forEach(t => t.close && t.close());
+        const r = await api.get(`/live/sessions/${sessionId}/participant-names`);
+        if (!cancelled) setParticipantNames(r.data || {});
+      } catch (_) { /* tolerable */ }
     };
-  }, [info?.webrtc_config?.agora?.token]);
+    fetchNames();
+    const t = setInterval(fetchNames, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [agoraJoined, sessionId]);
 
   // ─── Step 3: WebSocket connect ──────────────────────────────────────
   useEffect(() => {
@@ -138,6 +146,8 @@ export default function StudentLiveSession() {
           setLivenessChallenge(msg); break;
         case 'micro_summary':
           setMicroSummary(msg); break;
+        case 'whiteboard_shared':
+          setSharedWhiteboard(msg.diagram_code || msg.code || null); break;
         case 'session_ended':
           alert('Session ended.'); navigate('/student/dashboard'); break;
         default: break;
@@ -201,12 +211,30 @@ export default function StudentLiveSession() {
     setLivenessChallenge(null);
   };
   const leave = async () => {
+    try { await leaveChannel(); } catch {}
     try { await api.post('/live/leave', { session_id: Number(sessionId) }); } catch {}
     sessionStorage.removeItem('aa_guest_token');
     navigate('/');
   };
 
   const conn = bandwidth === 'good' ? 'bg-emerald-500' : bandwidth === 'poor' ? 'bg-amber-500' : 'bg-red-500';
+
+  // Enrich remote users with real names + role flagging (teacher = the
+  // Agora UID stored on the join response).
+  const enrichedRemote = useMemo(() => remoteUsers.map(ru => {
+    const named = participantNames[String(ru.uid)];
+    const role  = teacherAgoraUid && Number(ru.uid) === Number(teacherAgoraUid)
+      ? 'teacher'
+      : (named?.role === 'guest' ? 'guest' : 'student');
+    return {
+      ...ru,
+      name: named?.name || `User ${ru.uid}`,
+      role,
+      aiObservation: null,
+      attentionLevel: null,
+      isHandRaised: false,
+    };
+  }), [remoteUsers, participantNames, teacherAgoraUid]);
 
   if (error) return <div className="p-10 text-center text-red-600">{error}</div>;
   if (!info) return <div className="p-10 text-center text-slate-400">Loading session…</div>;
@@ -251,19 +279,81 @@ export default function StudentLiveSession() {
               </div>
             </div>
           ) : (
-            <div ref={remoteContainerRef} className="aspect-video bg-black flex items-center justify-center">
-              {!info.webrtc_config?.agora?.token && (
-                <div className="text-slate-400 text-sm text-center px-6">
-                  📹 Video stream will appear here when the teacher publishes.<br/>
-                  <span className="text-xs">(Agora token not yet configured)</span>
+            <div className="relative aspect-video bg-black">
+              {agoraLoading && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                    <p className="text-slate-400 text-sm">Connecting to video…</p>
+                  </div>
+                </div>
+              )}
+
+              {agoraError && (
+                <div className="absolute inset-0 flex items-center justify-center p-6">
+                  <div className="bg-red-900/30 border border-red-500/40 rounded-xl p-4 max-w-sm text-center">
+                    <p className="text-red-400 text-sm">⚠️ {agoraError}</p>
+                    <button onClick={initClient}
+                      className="mt-3 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs rounded-lg">
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!agoraLoading && !agoraError && agoraJoined && (
+                <div className="absolute inset-0 p-2">
+                  <VideoGrid
+                    participants={enrichedRemote}
+                    localUid={agoraCfg.uid}
+                    localName={user?.name || info.session?.guest_name || 'You'}
+                    localVideoTrack={localVideoTrackRef.current}
+                    localVideoEnabled={localVideoEnabled}
+                    localAudioEnabled={localAudioEnabled}
+                    speakingUsers={speakingUsers}
+                    activeSpeakerUid={activeSpeakerUid}
+                    pinnedUid={null}
+                    isTeacher={false}
+                    viewMode="speaker"
+                  />
+                </div>
+              )}
+
+              {!agoraLoading && !agoraError && !agoraJoined && !agoraCfg.token && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-slate-400 text-sm text-center px-6">
+                    📹 Video stream will appear here when the teacher publishes.<br/>
+                    <span className="text-xs">(Agora token not yet configured)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* AI Whiteboard overlay — shown when teacher shares */}
+              {sharedWhiteboard && (
+                <div className="absolute top-3 right-3 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-20">
+                  <div className="flex items-center justify-between bg-violet-600 px-3 py-2">
+                    <span className="text-white text-xs font-medium">🖼️ AI Whiteboard</span>
+                    <button onClick={() => setSharedWhiteboard(null)} className="text-white/80 hover:text-white text-xs">✕</button>
+                  </div>
+                  <MermaidRenderer code={sharedWhiteboard} minHeight={140} />
                 </div>
               )}
             </div>
           )}
           <div className="flex items-center justify-center gap-2 p-3 bg-slate-900/60 border-t border-slate-700">
-            <button className="px-3 py-1.5 bg-slate-700 rounded text-xs">🎤 Mic</button>
-            <button className="px-3 py-1.5 bg-slate-700 rounded text-xs">📷 Camera</button>
-            <button className="px-3 py-1.5 bg-violet-600 rounded text-xs">✋ Raise Hand</button>
+            <button onClick={toggleAudio}
+              className={`px-3 py-1.5 rounded text-xs ${localAudioEnabled ? 'bg-slate-700 text-white' : 'bg-red-600 text-white'}`}>
+              {localAudioEnabled ? '🎤 Mic' : '🔇 Muted'}
+            </button>
+            <button onClick={toggleVideo}
+              className={`px-3 py-1.5 rounded text-xs ${localVideoEnabled ? 'bg-slate-700 text-white' : 'bg-red-600 text-white'}`}>
+              {localVideoEnabled ? '📷 Cam' : '📷 Off'}
+            </button>
+            <button
+              onClick={() => wsRef.current?.send(JSON.stringify({ type: 'hand_raised' }))}
+              className="px-3 py-1.5 bg-violet-600 rounded text-xs">
+              ✋ Raise Hand
+            </button>
           </div>
         </div>
 

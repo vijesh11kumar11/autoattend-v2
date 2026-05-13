@@ -17,6 +17,7 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { useAgoraRTC } from '../../hooks/useAgoraRTC';
 import { VideoGrid } from '../../components/live/VideoGrid';
+import { MermaidRenderer } from '../../components/live/MermaidRenderer';
 
 const VIOLET = 'from-violet-600 via-purple-600 to-fuchsia-600';
 
@@ -327,19 +328,29 @@ function JoinLinkCard({ session, onStart }) {
 // AI WHITEBOARD MODAL
 // ════════════════════════════════════════════════════════════════════════
 function WhiteboardModal({ open, sessionId, onClose }) {
-  const [prompt, setPrompt] = useState('');
-  const [diagram, setDiagram] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [prompt, setPrompt]   = useState('');
+  const [diagram, setDiagram] = useState('');     // raw mermaid / html
+  const [diagramType, setDiagramType] = useState('mermaid');
+  const [busy, setBusy]       = useState(false);
+  const [err, setErr]         = useState('');
 
   if (!open) return null;
   const generate = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !sessionId) return;
     setBusy(true);
+    setErr('');
+    setDiagram('');
     try {
-      const r = await api.post('/live/ai/generate-whiteboard', { session_id: sessionId, description: prompt });
-      setDiagram(r.data?.diagram || r.data?.mermaid || JSON.stringify(r.data, null, 2));
+      // Endpoint is /live/sessions/{id}/ai/generate-whiteboard and the
+      // backend's WhiteboardReq expects `{prompt, context}`.
+      const r = await api.post(`/live/sessions/${sessionId}/ai/generate-whiteboard`, {
+        prompt,
+        context: '',
+      });
+      setDiagram(r.data?.diagram_code || '');
+      setDiagramType(r.data?.diagram_type || 'mermaid');
     } catch (e) {
-      setDiagram(`// Error: ${e.response?.data?.detail || e.message}`);
+      setErr(e.response?.data?.detail || e.message || 'Generation failed.');
     } finally { setBusy(false); }
   };
 
@@ -358,14 +369,40 @@ function WhiteboardModal({ open, sessionId, onClose }) {
             className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
             {busy ? 'Generating…' : '✨ Generate'}
           </button>
-          {diagram && (
-            <pre className="bg-slate-900 text-emerald-300 text-xs p-4 rounded-lg overflow-x-auto whitespace-pre-wrap">
-{diagram}
-            </pre>
+
+          {err && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-red-600 text-sm">⚠️ {err}</p>
+              <p className="text-slate-500 text-xs mt-1">
+                Try: "binary tree with 5 nodes" or "linked list with 4 elements"
+              </p>
+            </div>
           )}
+
+          {diagram && diagramType === 'mermaid' && (
+            <div className="space-y-3">
+              <div className="bg-white border border-slate-200 rounded-lg p-2 min-h-[220px] flex items-center justify-center">
+                <MermaidRenderer code={diagram} />
+              </div>
+              <details className="text-xs">
+                <summary className="text-slate-500 cursor-pointer">Show Mermaid code</summary>
+                <pre className="bg-slate-950 text-emerald-300 p-3 rounded-lg mt-2 overflow-x-auto text-xs whitespace-pre-wrap">{diagram}</pre>
+              </details>
+            </div>
+          )}
+
+          {diagram && diagramType === 'html' && (
+            <div
+              className="bg-white border border-slate-200 rounded-lg p-3 overflow-x-auto"
+              // Trusted-source HTML returned by our own AI endpoint
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: diagram }}
+            />
+          )}
+
           {diagram && (
             <button className="w-full py-2 bg-emerald-100 text-emerald-800 rounded-lg font-semibold">
-              📡 Share with students
+              📡 Share with students (coming soon)
             </button>
           )}
         </div>
@@ -609,6 +646,8 @@ function LivePanel({ session, onEnd }) {
   const [rightPanel,    setRightPanel]    = useState('ai');      // ai | doubts | people
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [muteAllBusy,   setMuteAllBusy]   = useState(false);
+  // { "<agora_uid>": { name, role, user_id } }
+  const [participantNames, setParticipantNames] = useState({});
 
   const refresh = async () => {
     try {
@@ -678,25 +717,45 @@ function LivePanel({ session, onEnd }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agoraCfg.app_id, agoraCfg.token]);
 
-  // Enrich remote-user list with names from /details participant list
-  const participants = details?.participants || [];
+  // Refresh Agora-UID → name mapping (every 30s while joined)
+  useEffect(() => {
+    if (!isJoined || !session?.id) return undefined;
+    let cancelled = false;
+    const fetchNames = async () => {
+      try {
+        const r = await api.get(`/live/sessions/${session.id}/participant-names`);
+        if (!cancelled) setParticipantNames(r.data || {});
+      } catch (_) { /* tolerable — falls back to "User <uid>" */ }
+    };
+    fetchNames();
+    const t = setInterval(fetchNames, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [isJoined, session?.id]);
+
+  // Enrich remote-user list with names from /participant-names (preferred)
+  // then fall back to /details participant list.
   const enrichedRemote = useMemo(() => remoteUsers.map(ru => {
-    const ruUidNum = Number(ru.uid);
-    const match = participants.find(p =>
-      p.user_id === ruUidNum
-      || (p.id && -p.id === ruUidNum)        // guests use negative-id space
-      || String(p.user_id) === String(ru.uid),
-    );
+    const named = participantNames[String(ru.uid)];
+    if (named) {
+      return {
+        ...ru,
+        name: named.name,
+        role: named.role === 'teacher' ? 'teacher'
+              : named.role === 'guest' ? 'guest' : 'student',
+        aiObservation: null,
+        attentionLevel: null,
+        isHandRaised: false,
+      };
+    }
     return {
       ...ru,
-      name: match?.name || match?.guest_name || `User ${ru.uid}`,
-      role: match?.user_id === session.teacher_id ? 'teacher'
-            : match?.guest_name ? 'guest' : 'student',
+      name: `User ${ru.uid}`,
+      role: 'student',
       aiObservation: null,
       attentionLevel: null,
       isHandRaised: false,
     };
-  }), [remoteUsers, participants, session.teacher_id]);
+  }), [remoteUsers, participantNames]);
 
   // Effective list (dedupe by uid)
   const handleScreenShare = async () => {

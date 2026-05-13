@@ -1209,7 +1209,25 @@ def join_live_session(
         db.commit()
         db.refresh(new_part)
         guest_token = _create_guest_token(sess.id, new_part.id, body.guest_name)
+        webrtc_cfg = _build_webrtc_config(
+            sess.join_link, guest_token,
+            uid=-new_part.id,  # negative-id space for guests; agora helper masks to uint32
+            role="subscriber",
+        )
+        # Persist the (masked) Agora UID so the participant-names endpoint
+        # can resolve numeric Agora UIDs back to real names.
+        new_part.agora_uid = int(webrtc_cfg.get("agora", {}).get("uid") or 0) or None
+        db.commit()
+
         teacher = db.query(User).filter(User.id == sess.teacher_id).first()
+        teacher_part = (
+            db.query(LiveSessionParticipant)
+            .filter(
+                LiveSessionParticipant.live_session_id == sess.id,
+                LiveSessionParticipant.participant_type == LiveParticipantType.teacher,
+            )
+            .first()
+        )
         subj = db.query(Subject).filter(Subject.id == sess.subject_id).first() if sess.subject_id else None
         _log_event(db, sess.id, LiveEventType.student_joined, LiveEventTrigger.system,
                    metadata_json={"guest": True, "name": body.guest_name})
@@ -1225,11 +1243,8 @@ def join_live_session(
                 "recording_enabled": sess.recording_enabled,
                 "allow_guest_interaction": sess.allow_guest_interaction,
             },
-            "webrtc_config": _build_webrtc_config(
-                sess.join_link, guest_token,
-                uid=-new_part.id,  # negative-id space for guests; agora helper masks to uint32
-                role="subscriber",
-            ),
+            "webrtc_config": webrtc_cfg,
+            "teacher_agora_uid": teacher_part.agora_uid if teacher_part else None,
             "guest_token": guest_token,
             "low_bandwidth_mode": False,
             "attendance_will_be_counted": False,
@@ -1302,7 +1317,25 @@ def join_live_session(
                affected_student_ids=[user_id] if p_type == LiveParticipantType.student else None,
                metadata_json={"user_id": user_id, "role": role})
 
+    webrtc_cfg = _build_webrtc_config(
+        sess.join_link, str(uuid4()),
+        uid=user_id,
+        role="publisher" if p_type == LiveParticipantType.teacher else "subscriber",
+    )
+    # Persist Agora UID so the participant-names endpoint can map
+    # numeric Agora UIDs back to real users.
+    part.agora_uid = int(webrtc_cfg.get("agora", {}).get("uid") or 0) or None
+    db.commit()
+
     teacher = db.query(User).filter(User.id == sess.teacher_id).first()
+    teacher_part = (
+        db.query(LiveSessionParticipant)
+        .filter(
+            LiveSessionParticipant.live_session_id == sess.id,
+            LiveSessionParticipant.participant_type == LiveParticipantType.teacher,
+        )
+        .first()
+    )
     subj = db.query(Subject).filter(Subject.id == sess.subject_id).first() if sess.subject_id else None
     return {
         "allowed": True,
@@ -1316,11 +1349,8 @@ def join_live_session(
             "recording_enabled": sess.recording_enabled,
             "allow_guest_interaction": sess.allow_guest_interaction,
         },
-        "webrtc_config": _build_webrtc_config(
-            sess.join_link, str(uuid4()),
-            uid=user_id,
-            role="publisher" if p_type == LiveParticipantType.teacher else "subscriber",
-        ),
+        "webrtc_config": webrtc_cfg,
+        "teacher_agora_uid": teacher_part.agora_uid if teacher_part else None,
         "low_bandwidth_mode": part.connection_quality == LiveConnectionQuality.poor,
         "attendance_will_be_counted": p_type == LiveParticipantType.student,
     }
@@ -1635,6 +1665,73 @@ async def ai_whiteboard(
         "diagram_code": str(result["diagram_code"])[:5000],
         "title": str(result.get("title", body.prompt))[:200],
     }
+
+
+# ─── Participant-name resolution (Agora UID → real name) ────────────
+@router.get("/sessions/{session_id}/participant-names")
+def get_participant_names(
+    session_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns a mapping `{ "<agora_uid>": {name, role, user_id} }` for every
+    currently-active participant in the session.
+
+    The frontend uses this to label Agora video tiles (which only carry
+    integer UIDs) with real student / teacher / guest names. Called once
+    after joining and then refreshed on a timer + on WS `student_joined`
+    events.
+    """
+    sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+    if not sess:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found.")
+
+    # Authorisation: the teacher owning the session, or any active
+    # participant in it, may read the names. Anyone else → 403.
+    user_id = current_user.get("id")
+    is_owner = sess.teacher_id == user_id
+    is_participant = (
+        db.query(LiveSessionParticipant)
+        .filter(
+            LiveSessionParticipant.live_session_id == session_id,
+            LiveSessionParticipant.user_id == user_id,
+            LiveSessionParticipant.is_active.is_(True),
+        )
+        .first()
+        is not None
+    )
+    if not (is_owner or is_participant):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a participant in this session.")
+
+    parts = (
+        db.query(LiveSessionParticipant)
+        .filter(
+            LiveSessionParticipant.live_session_id == session_id,
+            LiveSessionParticipant.is_active.is_(True),
+        )
+        .all()
+    )
+
+    result: dict[str, dict] = {}
+    for p in parts:
+        if not p.agora_uid:
+            continue
+        key = str(p.agora_uid)
+        if p.participant_type == LiveParticipantType.guest:
+            result[key] = {
+                "name": p.guest_name or "Guest",
+                "role": "guest",
+                "user_id": None,
+            }
+        elif p.user_id:
+            u = db.query(User).filter(User.id == p.user_id).first()
+            result[key] = {
+                "name": u.name if u else f"User {p.agora_uid}",
+                "role": p.participant_type.value,
+                "user_id": p.user_id,
+            }
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════
