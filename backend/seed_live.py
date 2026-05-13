@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 from database import (
     Capsule,
+    Course,
     KnowledgeLevel,
     LiveParticipantType,
     LiveSession,
@@ -28,6 +29,7 @@ from database import (
     PulseCheck,
     PulseCheckAnswer,
     PulseCheckTrigger,
+    Section,
     SessionLocal,
     StudentKnowledgeGraph,
     Subject,
@@ -57,16 +59,27 @@ def main() -> None:
         if not subject:
             log.error("Teacher has no subject. Run seed.py first.")
             return
+
+        # Pick a section in same department as the subject's course
+        course = db.query(Course).filter(Course.id == subject.course_id).first()
+        section = (
+            db.query(Section)
+            .filter(Section.department_id == (course.department_id if course else None))
+            .first()
+        )
+        section_id = section.id if section else None
+
         students = (
             db.query(User)
             .filter(
                 User.role == UserRole.student,
                 User.is_active.is_(True),
-                User.section_id == subject.section_id if subject.section_id else True,
             )
-            .limit(10)
-            .all()
+            .filter(User.section_id == section_id) if section_id else db.query(User).filter(
+                User.role == UserRole.student, User.is_active.is_(True)
+            )
         )
+        students = students.limit(10).all()
         if len(students) < 3:
             log.error("Need at least 3 students. Run seed.py first.")
             return
@@ -85,7 +98,7 @@ def main() -> None:
             title="Demo: Decision Trees Walkthrough",
             teacher_id=teacher.id,
             subject_id=subject.id,
-            section_id=subject.section_id,
+            section_id=section_id,
             status=LiveSessionStatus.ended,
             join_link=DEMO_LINKS[0],
             allow_guests=False,
@@ -111,7 +124,7 @@ def main() -> None:
             title="Demo: Backtracking Live (capsule-locked)",
             teacher_id=teacher.id,
             subject_id=subject.id,
-            section_id=subject.section_id,
+            section_id=section_id,
             capsule_id=cap.id if cap else None,
             status=LiveSessionStatus.waiting,
             join_link=DEMO_LINKS[1],
@@ -126,7 +139,7 @@ def main() -> None:
             title="Demo: Open Lecture — Data Structures (DS2026)",
             teacher_id=teacher.id,
             subject_id=subject.id,
-            section_id=subject.section_id,
+            section_id=section_id,
             status=LiveSessionStatus.waiting,
             join_link=DEMO_LINKS[2],
             join_password="DS2026",
@@ -164,9 +177,9 @@ def main() -> None:
                 option_b="Information gain",
                 option_c="Variance reduction",
                 option_d="Chi-square",
-                correct_answer=PulseCheckAnswer.b,
+                correct_answer=PulseCheckAnswer.B,
                 explanation="ID3 uses information gain based on entropy.",
-                triggered_by=PulseCheckTrigger.manual,
+                triggered_by=PulseCheckTrigger.teacher,
                 triggered_at=now - timedelta(hours=2, minutes=40),
                 duration_seconds=30,
                 closed_at=now - timedelta(hours=2, minutes=39, seconds=30),
@@ -178,9 +191,9 @@ def main() -> None:
 
         # ── Knowledge graph entries: 3 students × 4 topics ────────────
         topics = [
-            ("Entropy", KnowledgeLevel.understood),
-            ("Information Gain", KnowledgeLevel.partial),
-            ("Pruning", KnowledgeLevel.confused),
+            ("Entropy", KnowledgeLevel.strong),
+            ("Information Gain", KnowledgeLevel.moderate),
+            ("Pruning", KnowledgeLevel.weak),
             ("Random Forest", KnowledgeLevel.not_covered),
         ]
         for stu in students[:3]:
@@ -205,8 +218,8 @@ def main() -> None:
                         understanding_level=level,
                         confidence_score=random.uniform(0.3, 0.9),
                         last_assessed_session_id=s1.id,
-                        times_confused=2 if level == KnowledgeLevel.confused else 0,
-                        times_understood=3 if level == KnowledgeLevel.understood else 1,
+                        times_confused=2 if level == KnowledgeLevel.weak else 0,
+                        times_understood=3 if level == KnowledgeLevel.strong else 1,
                     )
                 )
 

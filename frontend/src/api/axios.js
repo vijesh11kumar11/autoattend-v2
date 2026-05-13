@@ -100,14 +100,21 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
+    const url    = error.config?.url || '';
+    // Public live-session join / info endpoints must NEVER trigger a global
+    // logout-redirect — guests legitimately call them without a token, and
+    // a 401 there usually means "wrong meeting password", not "session expired".
+    const isPublicLiveCall =
+      url.startsWith('/live/join/') || url.startsWith('live/join/') ||
+      url.includes('/live/join/');
 
-    if (status === 401) {
+    if (status === 401 && !isPublicLiveCall) {
       // Token expired or invalid — force logout
       localStorage.removeItem('aa_token');
       localStorage.removeItem('aa_user');
       // Use replace to prevent back navigation to protected page
       window.location.replace('/login');
-    } else if (status === 403) {
+    } else if (status === 403 && !isPublicLiveCall) {
       const detail = error.response?.data?.detail || '';
       // Device mismatch or role-based access → unauthorized page
       // But NOT for face enrollment issues — let the page handle those

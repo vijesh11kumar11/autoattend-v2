@@ -25,15 +25,41 @@ function CreateSessionModal({ open, onClose, onCreated }) {
   const [title, setTitle] = useState('');
   const [type, setType]   = useState('standalone');
   const [capsuleId, setCapsuleId] = useState('');
-  const [allowGuests, setAllowGuests] = useState(false);
-  const [allowGuestInteraction, setAllowGuestInteraction] = useState(false);
+  const [subjectId, setSubjectId] = useState('');
+  const [sectionId, setSectionId] = useState('');
+  const [allowGuests, setAllowGuests] = useState(true);                  // default ON for public
+  const [allowGuestInteraction, setAllowGuestInteraction] = useState(true);
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [recording, setRecording] = useState(true);
   const [capsules, setCapsules] = useState([]);
+  const [subjects, setSubjects] = useState([]);                          // [{id,name,sections:[]}]
+  const [loadingOpts, setLoadingOpts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Reset everything whenever the modal closes / re-opens.
+  useEffect(() => {
+    if (!open) {
+      setTitle(''); setType('standalone'); setCapsuleId('');
+      setSubjectId(''); setSectionId('');
+      setAllowGuests(true); setAllowGuestInteraction(true);
+      setPassword(''); setShowPwd(false); setRecording(true);
+      setError(''); setSubmitting(false);
+    }
+  }, [open]);
+
+  // Load teacher's subjects + sections (used by Standalone)
+  useEffect(() => {
+    if (!open) return;
+    setLoadingOpts(true);
+    api.get('/live/teacher/options')
+      .then(r => setSubjects(r.data?.subjects || []))
+      .catch(() => setSubjects([]))
+      .finally(() => setLoadingOpts(false));
+  }, [open]);
+
+  // Load capsules (used by Capsule-Locked)
   useEffect(() => {
     if (!open || type !== 'capsule_locked') return;
     api.get('/classpulse/teacher/dashboard')
@@ -44,26 +70,53 @@ function CreateSessionModal({ open, onClose, onCreated }) {
       .catch(() => setCapsules([]));
   }, [open, type]);
 
+  // When capsule changes, auto-fill its subject/section silently
+  const handleCapsuleChange = (id) => {
+    setCapsuleId(id);
+    const c = capsules.find(x => String(x.id) === String(id));
+    if (c) {
+      if (c.subject_id) setSubjectId(String(c.subject_id));
+      if (c.section_id) setSectionId(String(c.section_id));
+    }
+  };
+
+  // When subject changes, reset section + recompute available sections
+  const handleSubjectChange = (id) => {
+    setSubjectId(id);
+    setSectionId('');
+  };
+
+  const currentSubject = subjects.find(s => String(s.id) === String(subjectId));
+  const sectionOptions = currentSubject?.sections || [];
+
   if (!open) return null;
 
   const submit = async () => {
+    setError('');
     if (!title.trim()) { setError('Title is required'); return; }
+    if (type === 'standalone') {
+      if (!subjectId) { setError('Pick a subject'); return; }
+      if (!sectionId) { setError('Pick a section'); return; }
+    }
     if (type === 'capsule_locked' && !capsuleId) { setError('Pick a capsule'); return; }
-    setSubmitting(true); setError('');
+    setSubmitting(true);
     try {
       const body = {
         title: title.trim(),
         session_type: type,
+        subject_id: type === 'standalone' ? Number(subjectId) : null,
+        section_id: type === 'standalone' ? Number(sectionId) : null,
         capsule_id: type === 'capsule_locked' ? Number(capsuleId) : null,
-        allow_guest: type === 'public' && allowGuests,
-        allow_guest_interaction: type === 'public' && allowGuestInteraction,
+        allow_guests: type === 'public' ? allowGuests : false,
+        allow_guest_interaction: type === 'public' ? allowGuestInteraction : false,
         join_password: password || null,
         recording_enabled: recording,
       };
       const r = await api.post('/live/sessions/create', body);
       onCreated(r.data);
     } catch (e) {
-      setError(e.response?.data?.detail || 'Failed to create session');
+      const detail = e.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : (detail?.message || 'Failed to create session'));
     } finally { setSubmitting(false); }
   };
 
@@ -97,22 +150,71 @@ function CreateSessionModal({ open, onClose, onCreated }) {
             </div>
           </div>
 
+          {type === 'standalone' && (
+            <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Subject</label>
+                <select value={subjectId} onChange={e => handleSubjectChange(e.target.value)}
+                  disabled={loadingOpts}
+                  className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white">
+                  <option value="">{loadingOpts ? 'Loading…' : '— pick a subject —'}</option>
+                  {subjects.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code} · Sem {s.semester})
+                    </option>
+                  ))}
+                </select>
+                {!loadingOpts && subjects.length === 0 && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    ⚠ No subjects assigned to you. Ask the HOD to assign at least one subject.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Section</label>
+                <select value={sectionId} onChange={e => setSectionId(e.target.value)}
+                  disabled={!subjectId || sectionOptions.length === 0}
+                  className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100">
+                  <option value="">
+                    {!subjectId
+                      ? '— pick a subject first —'
+                      : sectionOptions.length === 0
+                        ? 'No sections available'
+                        : '— pick a section —'}
+                  </option>
+                  {sectionOptions.map(sec => (
+                    <option key={sec.id} value={sec.id}>{sec.name}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-violet-700">🎓 Only students in the chosen section can join.</p>
+            </div>
+          )}
+
           {type === 'capsule_locked' && (
             <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
               <label className="text-xs font-semibold text-slate-700">Select Capsule</label>
-              <select value={capsuleId} onChange={e=>setCapsuleId(e.target.value)}
+              <select value={capsuleId} onChange={e=>handleCapsuleChange(e.target.value)}
                 className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white">
                 <option value="">— pick one —</option>
                 {capsules.map(c => (
                   <option key={c.id} value={c.id}>{c.title} ({c.subject_name || ''})</option>
                 ))}
               </select>
+              {capsules.length === 0 && (
+                <p className="text-xs text-amber-700 mt-1">⚠ No capsules found. Create one from ClassPulse first.</p>
+              )}
               <p className="text-xs text-violet-700 mt-2">🔒 Only students enrolled in this capsule's section can join.</p>
             </div>
           )}
 
           {type === 'public' && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+              <p className="text-sm font-semibold text-amber-800">🌐 Public Link Session</p>
+              <p className="text-xs text-amber-700">
+                Anyone with the share link can join — no subject or section required.
+                Use this for guest lectures, workshops, demo classes, etc.
+              </p>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={allowGuests} onChange={e=>setAllowGuests(e.target.checked)} />
                 Allow guests without an account
@@ -121,7 +223,7 @@ function CreateSessionModal({ open, onClose, onCreated }) {
                 <input type="checkbox" checked={allowGuestInteraction} onChange={e=>setAllowGuestInteraction(e.target.checked)} />
                 Guests can interact (post doubts, take pulse)
               </label>
-              <p className="text-xs text-amber-700">⚠️ Anyone with the link can join.</p>
+              <p className="text-xs text-amber-700">💡 Tip: set a password below to keep things safer.</p>
             </div>
           )}
 
@@ -162,12 +264,25 @@ function CreateSessionModal({ open, onClose, onCreated }) {
 function JoinLinkCard({ session, onStart }) {
   const [copied, setCopied] = useState(false);
   const link = session.join_url || `${window.location.origin}/live/${session.join_link}`;
-  const copy = () => {
-    navigator.clipboard.writeText(link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  const copy = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        // Fallback for non-secure contexts (HTTP / older browsers)
+        const ta = document.createElement('textarea');
+        ta.value = link; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt('Copy this link:', link);
+    }
   };
-  const wa = `https://wa.me/?text=${encodeURIComponent(`Join my live class: ${link}`)}`;
+  const wa = `https://wa.me/?text=${encodeURIComponent(`Join my live class "${session.title}": ${link}`)}`;
 
   return (
     <div className="bg-white rounded-2xl border-2 border-violet-200 shadow-lg p-6 max-w-lg mx-auto">
@@ -178,6 +293,12 @@ function JoinLinkCard({ session, onStart }) {
       <div className="my-4 bg-violet-50 border border-violet-200 rounded-xl p-4">
         <p className="text-xs text-slate-600 uppercase tracking-wide">Join Code</p>
         <p className="text-2xl font-bold tracking-widest text-violet-700">{session.join_link}</p>
+        <div className="mt-3 pt-3 border-t border-violet-200">
+          <p className="text-xs text-slate-600 uppercase tracking-wide mb-1">Share Link</p>
+          <a href={link} target="_blank" rel="noopener" className="text-sm text-violet-700 underline break-all">
+            {link}
+          </a>
+        </div>
       </div>
       <div className="flex gap-2">
         <button onClick={copy} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold">
@@ -187,10 +308,10 @@ function JoinLinkCard({ session, onStart }) {
           📤 WhatsApp
         </a>
       </div>
-      <div className="mt-4 text-xs text-slate-500">
-        {session.session_type === 'capsule_locked' && '🔒 Capsule-Locked · only enrolled students may join'}
-        {session.session_type === 'public' && '🌐 Public Link · anyone with the link may join'}
-        {session.session_type === 'standalone' && '🎓 Standalone · only students in your section may join'}
+      <div className="mt-4 text-xs text-slate-500 space-y-1">
+        {session.session_type === 'capsule_locked' && <p>🔒 Capsule-Locked · only enrolled students may join</p>}
+        {session.session_type === 'public' && <p>🌐 Public Link · anyone with the link may join</p>}
+        {session.session_type === 'standalone' && <p>🎓 Standalone · only students in your section may join</p>}
       </div>
       <button onClick={() => onStart(session.session_id)}
         className={`mt-5 w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET} shadow-lg`}>

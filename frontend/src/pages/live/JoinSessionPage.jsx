@@ -24,12 +24,31 @@ export default function JoinSessionPage() {
   const { isAuthenticated, user } = useAuth();
   const [state, setState] = useState('loading');     // loading | waiting | live | ended | denied
   const [info, setInfo] = useState(null);
+  const [meta, setMeta] = useState(null);            // public session metadata
   const [error, setError] = useState('');
   const [pwd, setPwd] = useState('');
   const [needPwd, setNeedPwd] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Pre-fetch public metadata so we can render a friendly screen before the
+  // user clicks "Join". Falls back gracefully if the endpoint isn't there.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await api.get(`/live/join/${joinCode}/info`);
+        if (alive) {
+          setMeta(r.data);
+          if (r.data?.requires_password) setNeedPwd(true);
+        }
+      } catch {
+        // ignore — probe() below will handle 404 / etc.
+      }
+    })();
+    return () => { alive = false; };
+  }, [joinCode]);
 
   // Initial probe — try join with current credentials (or none).
   const probe = async (extra = {}) => {
@@ -54,7 +73,7 @@ export default function JoinSessionPage() {
       }
     } catch (e) {
       const detail = e.response?.data?.detail;
-      if (e.response?.status === 401) { setNeedPwd(true); }
+      if (e.response?.status === 401) { setNeedPwd(true); setState('live'); }
       else if (e.response?.status === 403) {
         setError(typeof detail === 'object' ? detail.message : (detail || 'Access denied'));
         setInfo(typeof detail === 'object' ? detail : null);
@@ -66,6 +85,7 @@ export default function JoinSessionPage() {
         setState('denied');
       } else {
         setError(detail || 'Could not join. Please try again.');
+        setState('live');
       }
     } finally { setBusy(false); }
   };
@@ -114,7 +134,12 @@ export default function JoinSessionPage() {
       <Card>
         <div className="text-center">
           <span className="text-5xl">⏰</span>
-          <h2 className="text-xl font-bold text-slate-800 mt-3">{info?.title || 'Live Class'}</h2>
+          <h2 className="text-xl font-bold text-slate-800 mt-3">{info?.title || meta?.title || 'Live Class'}</h2>
+          {meta?.teacher_name && (
+            <p className="text-sm text-slate-500 mt-1">
+              👤 {meta.teacher_name}{meta.subject_name ? ` · ${meta.subject_name}` : ''}
+            </p>
+          )}
           <p className="text-sm text-slate-500 mt-1">Hasn't started yet — you'll be notified.</p>
         </div>
         {!isAuthenticated && (
@@ -138,13 +163,28 @@ export default function JoinSessionPage() {
   }
 
   // STATE 2: live, no auth → show join options
+  const headerTitle = info?.title || meta?.title || `Session ${joinCode}`;
+  const isLiveNow = (meta?.status || '').toLowerCase() === 'live';
   return (
     <Card>
       <div className="text-center">
-        <div className="inline-flex items-center gap-2 text-red-500 font-bold">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> LIVE NOW
+        <div className={`inline-flex items-center gap-2 font-bold ${isLiveNow ? 'text-red-500' : 'text-amber-600'}`}>
+          <span className={`w-2 h-2 rounded-full ${isLiveNow ? 'bg-red-500 animate-pulse' : 'bg-amber-500'}`} />
+          {isLiveNow ? 'LIVE NOW' : (meta?.status ? meta.status.toUpperCase() : 'JOIN SESSION')}
         </div>
-        <h2 className="text-xl font-bold text-slate-800 mt-2">{info?.title || `Session ${joinCode}`}</h2>
+        <h2 className="text-xl font-bold text-slate-800 mt-2">{headerTitle}</h2>
+        {meta?.teacher_name && (
+          <p className="text-sm text-slate-500 mt-1">
+            👤 {meta.teacher_name}{meta.subject_name ? ` · ${meta.subject_name}` : ''}
+          </p>
+        )}
+        {meta?.session_type && (
+          <span className="inline-block mt-2 text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
+            {meta.session_type === 'public' ? '🌐 Public Link'
+              : meta.session_type === 'capsule_locked' ? '🔒 Capsule-Locked'
+              : '🎓 Standalone'}
+          </span>
+        )}
       </div>
       {needPwd && (
         <div className="mt-4">
@@ -152,30 +192,41 @@ export default function JoinSessionPage() {
           <div className="flex gap-2 mt-1">
             <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)}
               className="flex-1 px-3 py-2 border border-slate-300 rounded-lg" />
-            <button onClick={()=>probe({password: pwd})}
+            <button onClick={()=>probe({password: pwd, guest_name: guestName || undefined, guest_email: guestEmail || undefined})}
               className={`px-4 py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET}`}>
               Enter
             </button>
           </div>
         </div>
       )}
-      {!needPwd && !isAuthenticated && (
+      {!isAuthenticated && (
         <>
           <button onClick={()=>navigate(`/login?next=/live/${joinCode}`)}
             className={`mt-5 w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET}`}>
             🚀 Login & Join
           </button>
-          <p className="text-center text-xs text-slate-400 my-3">— or —</p>
-          <input value={guestName} onChange={e=>setGuestName(e.target.value)} placeholder="Your name"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2" />
-          <input value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} placeholder="Email (optional)"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2" />
-          <button onClick={()=>probe({guest_name: guestName, guest_email: guestEmail})}
-            disabled={!guestName.trim() || busy}
-            className="w-full py-3 bg-slate-800 text-white rounded-xl font-semibold disabled:opacity-50">
-            Join as Guest
-          </button>
+          {(meta?.allow_guests !== false) && (
+            <>
+              <p className="text-center text-xs text-slate-400 my-3">— or —</p>
+              <input value={guestName} onChange={e=>setGuestName(e.target.value)} placeholder="Your name"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2" />
+              <input value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} placeholder="Email (optional)"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2" />
+              <button onClick={()=>probe({guest_name: guestName, guest_email: guestEmail, password: pwd || undefined})}
+                disabled={!guestName.trim() || busy}
+                className="w-full py-3 bg-slate-800 text-white rounded-xl font-semibold disabled:opacity-50">
+                {busy ? 'Joining…' : 'Join as Guest'}
+              </button>
+            </>
+          )}
         </>
+      )}
+      {isAuthenticated && !needPwd && (
+        <button onClick={()=>probe()}
+          disabled={busy}
+          className={`mt-5 w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
+          {busy ? 'Joining…' : `Join as ${user?.name || 'me'}`}
+        </button>
       )}
       {error && <p className="text-red-600 text-sm mt-3 text-center">{error}</p>}
     </Card>

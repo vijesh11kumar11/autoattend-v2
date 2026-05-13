@@ -698,6 +698,81 @@ def live_session_health():
 # SECTION A — Session creation & lifecycle
 # ═══════════════════════════════════════════════════════════════════════
 
+@router.get("/teacher/options")
+def get_teacher_session_options(
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the subjects this teacher owns plus all sections that belong to
+    each subject's course (department-scoped). Powers the Create-Live-Session
+    modal dropdowns for `standalone` sessions.
+    """
+    from database import Course  # local import (matches existing pattern)
+
+    teacher_id = current_user["id"]
+    subjects = db.query(Subject).filter(Subject.teacher_id == teacher_id).all()
+    if not subjects:
+        return {"subjects": []}
+
+    course_ids = {s.course_id for s in subjects if s.course_id}
+    courses = {c.id: c for c in db.query(Course).filter(Course.id.in_(course_ids)).all()} if course_ids else {}
+    dept_ids = {c.department_id for c in courses.values() if c.department_id}
+    sections_by_dept: dict[int, list[Section]] = {}
+    if dept_ids:
+        for sec in db.query(Section).filter(Section.department_id.in_(dept_ids)).all():
+            sections_by_dept.setdefault(sec.department_id, []).append(sec)
+
+    out = []
+    for s in subjects:
+        course = courses.get(s.course_id)
+        dept_id = course.department_id if course else None
+        sections = sections_by_dept.get(dept_id, []) if dept_id else []
+        out.append({
+            "id": s.id,
+            "name": s.name,
+            "code": s.code,
+            "semester": s.semester,
+            "course_id": s.course_id,
+            "sections": [
+                {"id": sec.id, "name": sec.name}
+                for sec in sections
+                # only sections whose course matches the subject's course (when course_id set on Section)
+                if (getattr(sec, "course_id", None) in (None, s.course_id))
+            ],
+        })
+    return {"subjects": out}
+
+
+@router.get("/join/{join_link}/info")
+def get_session_public_info(join_link: str, db: Session = Depends(get_db)):
+    """
+    PUBLIC (no-auth) endpoint that returns enough metadata for a guest /
+    student to see what session they're about to join, before submitting
+    a password / guest name. Used by the public /live/:joinCode page.
+    """
+    sess = db.query(LiveSession).filter(LiveSession.join_link == join_link.upper()).first()
+    if not sess:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found.")
+
+    teacher = db.query(User).filter(User.id == sess.teacher_id).first()
+    subj = db.query(Subject).filter(Subject.id == sess.subject_id).first() if sess.subject_id else None
+
+    return {
+        "session_id": sess.id,
+        "title": sess.title,
+        "status": sess.status.value if hasattr(sess.status, "value") else str(sess.status),
+        "session_type": sess.session_type.value if hasattr(sess.session_type, "value") else str(sess.session_type),
+        "teacher_name": teacher.name if teacher else None,
+        "subject_name": subj.name if subj else None,
+        "allow_guests": bool(sess.allow_guests),
+        "allow_guest_interaction": bool(sess.allow_guest_interaction),
+        "requires_password": bool(sess.join_password),
+        "started_at": sess.started_at.isoformat() if sess.started_at else None,
+        "recording_enabled": bool(sess.recording_enabled),
+    }
+
+
 @router.post("/sessions/create")
 def create_session(
     body: CreateSessionReq,
@@ -727,6 +802,18 @@ def create_session(
         if not subject_id or not section_id:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "subject_id and section_id required for standalone sessions.")
 
+    # For public sessions, subject/section are completely optional and the
+    # link is shareable with anyone — guests are allowed by default unless
+    # the teacher explicitly turned them off.
+    allow_guests_flag = body.allow_guests
+    allow_guest_interaction_flag = body.allow_guest_interaction
+    if body.session_type == "public":
+        # If the caller didn't pass allow_guests at all, default to True.
+        # (Pydantic gives False by default, so this is a UX safety net for
+        # public links so they actually accept guests out of the box.)
+        if not allow_guests_flag and not allow_guest_interaction_flag:
+            allow_guests_flag = True
+
     # Generate unique join link
     link = ""
     for _ in range(5):
@@ -748,8 +835,8 @@ def create_session(
         status=LiveSessionStatus.waiting,
         join_link=link,
         join_password=body.join_password,
-        allow_guests=body.allow_guests,
-        allow_guest_interaction=body.allow_guest_interaction,
+        allow_guests=allow_guests_flag,
+        allow_guest_interaction=allow_guest_interaction_flag,
         recording_enabled=body.recording_enabled,
     )
     db.add(sess)
