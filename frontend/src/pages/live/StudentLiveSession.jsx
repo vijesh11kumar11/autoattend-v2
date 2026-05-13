@@ -26,6 +26,7 @@ export default function StudentLiveSession() {
   const { user, token } = useAuth();
 
   const [info, setInfo] = useState(null);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const [tab, setTab] = useState('wall');
   const [doubts, setDoubts] = useState([]);
   const [doubtText, setDoubtText] = useState('');
@@ -69,16 +70,13 @@ export default function StudentLiveSession() {
     const guestSid = sessionStorage.getItem('aa_guest_session_id');
 
     if (guestToken && guestSid === String(sessionId)) {
-      // Build minimal info from session storage
-      setInfo({
-        guest_token: guestToken,
-        participant_id: Number(sessionStorage.getItem('aa_guest_participant_id') || 0),
-        guest: true,
-      });
-      // Still fetch details for title/teacher
-      api.get(`/live/sessions/${sessionId}/details`).then(r => {
-        setInfo(prev => ({ ...prev, session: r.data, ...r.data }));
-      }).catch(()=>{});
+      // Use full join data stored by JoinSessionPage (includes webrtc_config)
+      const stored = sessionStorage.getItem('aa_join_data');
+      const joinData = stored ? JSON.parse(stored) : null;
+      setInfo(joinData
+        ? { ...joinData, guest: true }
+        : { guest_token: guestToken, participant_id: Number(sessionStorage.getItem('aa_guest_participant_id') || 0), guest: true }
+      );
       return;
     }
     if (joinCode) {
@@ -148,8 +146,15 @@ export default function StudentLiveSession() {
           setMicroSummary(msg); break;
         case 'whiteboard_shared':
           setSharedWhiteboard(msg.diagram_code || msg.code || null); break;
-        case 'session_ended':
-          alert('Session ended.'); navigate('/student/dashboard'); break;
+        case 'session_ended': {
+          try { leaveChannel(); } catch (_) {}
+          setSessionEnded(true);
+          setTimeout(() => {
+            const isGuest = !!sessionStorage.getItem('aa_guest_token');
+            navigate(isGuest ? '/session-ended' : '/student/dashboard', { replace: true });
+          }, 3000);
+          break;
+        }
         default: break;
       }
     };
@@ -241,7 +246,17 @@ export default function StudentLiveSession() {
 
   // ──────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="relative min-h-screen bg-slate-900 text-white">
+      {/* Session-ended overlay */}
+      {sessionEnded && (
+        <div className="absolute inset-0 bg-black/90 z-50 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-6xl mb-4">✅</p>
+            <p className="text-white text-2xl font-bold mb-2">Session Ended</p>
+            <p className="text-gray-400 text-sm">Redirecting you now…</p>
+          </div>
+        </div>
+      )}
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
         <div className="flex items-center gap-3">

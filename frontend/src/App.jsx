@@ -99,11 +99,16 @@ function AppRoutes() {
         {/* Public live-session join (no auth required) */}
         <Route path="/live/:joinCode"  element={<JoinSessionPage />} />
 
-        {/* Authenticated full-screen live session */}
-        <Route path="/student/live/:sessionId" element={
-          <PrivateRoute minRole="student" skipFaceCheck>
-            <StudentLiveSession />
-          </PrivateRoute>
+        {/* Full-screen live session — public to support guest join */}
+        <Route path="/student/live/:sessionId" element={<StudentLiveSession />} />
+        <Route path="/session-ended" element={
+          <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+            <div className="text-center space-y-4">
+              <p className="text-6xl">✅</p>
+              <h1 className="text-3xl font-bold">Session Ended</h1>
+              <p className="text-slate-400">Thank you for attending. You may close this tab.</p>
+            </div>
+          </div>
         } />
 
         {/* Root — dispatch by role */}

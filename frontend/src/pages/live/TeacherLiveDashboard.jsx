@@ -641,6 +641,7 @@ function LivePanel({ session, onEnd }) {
   // ── Live-room UI state ───────────────────────────────────────────
   const [webrtc,        setWebrtc]        = useState(null); // {agora:{app_id,channel,token,uid}}
   const [webrtcError,   setWebrtcError]   = useState('');
+  const [credsFetching, setCredsFetching] = useState(false);
   const [viewMode,      setViewMode]      = useState('speaker'); // speaker | grid | focus
   const [pinnedUid,     setPinnedUid]     = useState(null);
   const [rightPanel,    setRightPanel]    = useState('ai');      // ai | doubts | people
@@ -671,6 +672,7 @@ function LivePanel({ session, onEnd }) {
   useEffect(() => {
     let cancelled = false;
     if (!session?.join_link) return;
+    setCredsFetching(true);
     (async () => {
       try {
         const r = await api.post(`/live/join/${session.join_link}`, {});
@@ -684,6 +686,8 @@ function LivePanel({ session, onEnd }) {
           const detail = e.response?.data?.detail;
           setWebrtcError(typeof detail === 'string' ? detail : 'Could not get video credentials.');
         }
+      } finally {
+        if (!cancelled) setCredsFetching(false);
       }
     })();
     return () => { cancelled = true; };
@@ -769,6 +773,7 @@ function LivePanel({ session, onEnd }) {
   };
 
   const handleEnd = async () => {
+    if (!window.confirm('End this session for all participants?')) return;
     try { await leaveChannel(); } catch (_) {}
     onEnd();
   };
@@ -847,11 +852,11 @@ function LivePanel({ session, onEnd }) {
             </div>
           )}
 
-          {agoraLoading && (
+          {(credsFetching || agoraLoading) && !webrtcError && !agoraError && (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className="text-gray-400">Connecting to video…</p>
+                <p className="text-gray-400">{credsFetching ? 'Getting session credentials…' : 'Connecting to video…'}</p>
               </div>
             </div>
           )}
@@ -1115,12 +1120,14 @@ export default function TeacherLiveDashboard() {
   };
   const endSession = async () => {
     if (!activeLive) return;
+    const sess = activeLive;
+    // Optimistically dismiss LivePanel immediately so it never stays stuck
+    setActiveLive(null);
+    setEndedSession(sess);
     try {
-      await api.post(`/live/sessions/${activeLive.id}/end`);
-      setEndedSession(activeLive);
-      setActiveLive(null);
+      await api.post(`/live/sessions/${sess.id}/end`);
       refresh();
-    } catch (e) { /* ignore */ }
+    } catch (e) { /* ignore — UI already updated */ }
   };
 
   return (
