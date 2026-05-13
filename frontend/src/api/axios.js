@@ -88,6 +88,16 @@ api.interceptors.request.use(
     const token = localStorage.getItem('aa_token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      // Guest fallback for live-session endpoints — use the guest token
+      // stored by JoinSessionPage so heartbeat/details/etc work.
+      const url = config.url || '';
+      if (url.includes('/live/')) {
+        const guestToken = sessionStorage.getItem('aa_guest_token');
+        if (guestToken) {
+          config.headers['Authorization'] = `Bearer ${guestToken}`;
+        }
+      }
     }
     config.headers['X-Device-ID'] = getDeviceId();
     return config;
@@ -101,12 +111,14 @@ api.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     const url    = error.config?.url || '';
-    // Public live-session join / info endpoints must NEVER trigger a global
-    // logout-redirect — guests legitimately call them without a token, and
-    // a 401 there usually means "wrong meeting password", not "session expired".
+    // Live-session endpoints must NEVER trigger a global logout-redirect.
+    // Guests legitimately hit these without an aa_token (they use a guest
+    // token in sessionStorage). The page handles its own error states.
     const isPublicLiveCall =
-      url.startsWith('/live/join/') || url.startsWith('live/join/') ||
-      url.includes('/live/join/');
+      url.includes('/live/join/') ||
+      url.includes('/live/sessions/') ||
+      url.includes('/live/doubts') ||
+      url.includes('/live/liveness');
 
     if (status === 401 && !isPublicLiveCall) {
       // Token expired or invalid — force logout
