@@ -1671,7 +1671,8 @@ async def ai_whiteboard(
 @router.get("/sessions/{session_id}/participant-names")
 def get_participant_names(
     session_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: Optional[dict] = Depends(_get_optional_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ):
     """
@@ -1687,21 +1688,41 @@ def get_participant_names(
     if not sess:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found.")
 
-    # Authorisation: the teacher owning the session, or any active
-    # participant in it, may read the names. Anyone else → 403.
-    user_id = current_user.get("id")
-    is_owner = sess.teacher_id == user_id
-    is_participant = (
-        db.query(LiveSessionParticipant)
-        .filter(
-            LiveSessionParticipant.live_session_id == session_id,
-            LiveSessionParticipant.user_id == user_id,
-            LiveSessionParticipant.is_active.is_(True),
-        )
-        .first()
-        is not None
-    )
-    if not (is_owner or is_participant):
+    # Authorisation — accept any of:
+    #   • teacher who owns the session
+    #   • authenticated student/teacher who is an active participant
+    #   • guest carrying a guest JWT issued for this session
+    authorised = False
+    if current_user:
+        user_id = current_user.get("id")
+        if sess.teacher_id == user_id:
+            authorised = True
+        elif (
+            db.query(LiveSessionParticipant)
+            .filter(
+                LiveSessionParticipant.live_session_id == session_id,
+                LiveSessionParticipant.user_id == user_id,
+                LiveSessionParticipant.is_active.is_(True),
+            )
+            .first()
+            is not None
+        ):
+            authorised = True
+
+    if not authorised and credentials and credentials.credentials:
+        # Try to validate as a guest token for this session
+        try:
+            payload = jwt.decode(
+                credentials.credentials,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM],
+            )
+            if payload.get("purpose") == "live_guest" and int(payload.get("session_id") or 0) == session_id:
+                authorised = True
+        except Exception:
+            pass
+
+    if not authorised:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a participant in this session.")
 
     parts = (

@@ -71,6 +71,7 @@ export default function JoinSessionPage() {
           sessionStorage.setItem('aa_guest_token', d.guest_token);
           sessionStorage.setItem('aa_guest_session_id', String(d.session.id));
           sessionStorage.setItem('aa_guest_participant_id', String(d.participant_id));
+          sessionStorage.setItem('aa_guest_name', extra.guest_name || guestName.trim() || 'Guest');
           sessionStorage.setItem('aa_join_data', JSON.stringify(d));
         }
         navigate(`/student/live/${d.session.id}?join=${joinCode}`);

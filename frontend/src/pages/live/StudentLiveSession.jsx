@@ -61,7 +61,9 @@ export default function StudentLiveSession() {
     channel: agoraCfg.channel || '',
     token:   agoraCfg.token   || '',
     uid:     agoraCfg.uid     || 0,
-    role:    'audience',
+    // 'host' so students/guests can publish their mic+cam (Zoom-like).
+    // mode='rtc' makes the role param informational only — publishing is allowed.
+    role:    'host',
   });
 
   // ─── Step 1: fetch join info (use guest token if present) ───────────
@@ -321,7 +323,7 @@ export default function StudentLiveSession() {
                   <VideoGrid
                     participants={enrichedRemote}
                     localUid={agoraCfg.uid}
-                    localName={user?.name || info.session?.guest_name || 'You'}
+                    localName={user?.name || sessionStorage.getItem('aa_guest_name') || info.session?.guest_name || 'You'}
                     localVideoTrack={localVideoTrackRef.current}
                     localVideoEnabled={localVideoEnabled}
                     localAudioEnabled={localAudioEnabled}
