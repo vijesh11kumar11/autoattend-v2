@@ -51,7 +51,10 @@ export default function JoinSessionPage() {
   }, [joinCode]);
 
   // Initial probe — try join with current credentials (or none).
-  const probe = async (extra = {}) => {
+  // `silent`: when true, suppress 422 "guest_name required" — expected for
+  // anonymous visitors on the first load before they type their name.
+  const probe = async (extra = {}, opts = {}) => {
+    const { silent = false } = opts;
     setBusy(true); setError('');
     try {
       const body = { password: extra.password || undefined,
@@ -74,14 +77,19 @@ export default function JoinSessionPage() {
       }
     } catch (e) {
       const detail = e.response?.data?.detail;
-      if (e.response?.status === 401) { setNeedPwd(true); setState('live'); }
-      else if (e.response?.status === 403) {
+      const status = e.response?.status;
+      if (status === 401) { setNeedPwd(true); setState('live'); }
+      else if (status === 422 && silent) {
+        // Expected on first load for guests — just show the join form
+        setState('live');
+      }
+      else if (status === 403) {
         setError(typeof detail === 'object' ? detail.message : (detail || 'Access denied'));
         setInfo(typeof detail === 'object' ? detail : null);
         setState('denied');
-      } else if (e.response?.status === 400 && /ended|cancelled/i.test(detail || '')) {
+      } else if (status === 400 && /ended|cancelled/i.test(detail || '')) {
         setState('ended');
-      } else if (e.response?.status === 404) {
+      } else if (status === 404) {
         setError('Session not found.');
         setState('denied');
       } else {
@@ -91,7 +99,7 @@ export default function JoinSessionPage() {
     } finally { setBusy(false); }
   };
 
-  useEffect(() => { probe(); /* eslint-disable-next-line */ }, [joinCode]);
+  useEffect(() => { probe({}, { silent: true }); /* eslint-disable-next-line */ }, [joinCode]);
 
   // ──────────────────────────────────────────────────────────────────────
   if (state === 'loading' || busy && !error) {
@@ -209,14 +217,14 @@ export default function JoinSessionPage() {
           {(meta?.allow_guests !== false) && (
             <>
               <p className="text-center text-xs text-slate-400 my-3">— or —</p>
-              <input value={guestName} onChange={e=>setGuestName(e.target.value)} placeholder="Your name"
+              <input value={guestName} onChange={e=>{setGuestName(e.target.value); setError('');}} placeholder="Your name"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2" />
-              <input value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} placeholder="Email (optional)"
+              <input value={guestEmail} onChange={e=>{setGuestEmail(e.target.value); setError('');}} placeholder="Email (optional)"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-2" />
-              <button onClick={()=>probe({guest_name: guestName, guest_email: guestEmail, password: pwd || undefined})}
+              <button onClick={()=>probe({guest_name: guestName.trim(), guest_email: guestEmail.trim(), password: pwd || undefined})}
                 disabled={!guestName.trim() || busy}
                 className="w-full py-3 bg-slate-800 text-white rounded-xl font-semibold disabled:opacity-50">
-                {busy ? 'Joining…' : 'Join as Guest'}
+                {busy ? 'Joining…' : (guestName.trim() ? `🚀 Join as ${guestName.trim()}` : 'Join as Guest')}
               </button>
             </>
           )}
