@@ -15,6 +15,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
+import { useAgoraRTC } from '../../hooks/useAgoraRTC';
+import { VideoGrid } from '../../components/live/VideoGrid';
 
 const VIOLET = 'from-violet-600 via-purple-600 to-fuchsia-600';
 
@@ -594,10 +596,19 @@ function DoubtWall({ sessionId }) {
 // LIVE PANEL — main 3-column layout while a session is live
 // ════════════════════════════════════════════════════════════════════════
 function LivePanel({ session, onEnd }) {
-  const [details, setDetails] = useState(null);
-  const [secs, setSecs] = useState(0);
-  const [showWB, setShowWB] = useState(false);
-  const [showPulse, setShowPulse] = useState(false);
+  const { user: currentUser } = useAuth();
+  const [details,    setDetails]    = useState(null);
+  const [secs,       setSecs]       = useState(0);
+  const [showWB,     setShowWB]     = useState(false);
+  const [showPulse,  setShowPulse]  = useState(false);
+  // ── Live-room UI state ───────────────────────────────────────────
+  const [webrtc,        setWebrtc]        = useState(null); // {agora:{app_id,channel,token,uid}}
+  const [webrtcError,   setWebrtcError]   = useState('');
+  const [viewMode,      setViewMode]      = useState('speaker'); // speaker | grid | focus
+  const [pinnedUid,     setPinnedUid]     = useState(null);
+  const [rightPanel,    setRightPanel]    = useState('ai');      // ai | doubts | people
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [muteAllBusy,   setMuteAllBusy]   = useState(false);
 
   const refresh = async () => {
     try {
@@ -614,54 +625,348 @@ function LivePanel({ session, onEnd }) {
     return () => { clearInterval(t1); clearInterval(t2); };
   }, [session.id]);
 
+  // ── Acquire Agora webrtc_config once the session is live ─────────
+  // The backend `/live/join/{join_link}` endpoint hands back the
+  // {app_id, channel, token, uid} bundle for whoever is calling it.
+  // For the host (teacher) this is what lets us publish video.
+  useEffect(() => {
+    let cancelled = false;
+    if (!session?.join_link) return;
+    (async () => {
+      try {
+        const r = await api.post(`/live/join/${session.join_link}`, {});
+        if (!cancelled && r.data?.webrtc_config) {
+          setWebrtc(r.data.webrtc_config);
+        } else if (!cancelled) {
+          setWebrtcError('Server did not return Agora credentials.');
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const detail = e.response?.data?.detail;
+          setWebrtcError(typeof detail === 'string' ? detail : 'Could not get video credentials.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [session?.join_link]);
+
   const fmt = (s) => `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
+  // ── Agora hook ───────────────────────────────────────────────────
+  const agoraCfg = webrtc?.agora || {};
+  const localUid = agoraCfg.uid ?? currentUser?.id ?? 0;
+  const {
+    isJoined, isLoading: agoraLoading, error: agoraError,
+    localVideoEnabled, localAudioEnabled,
+    remoteUsers, networkQuality, speakingUsers, activeSpeakerUid,
+    localVideoTrackRef,
+    initClient, leaveChannel,
+    toggleAudio, toggleVideo,
+    startScreenShare, stopScreenShare,
+  } = useAgoraRTC({
+    appId:   agoraCfg.app_id || '',
+    channel: agoraCfg.channel || '',
+    token:   agoraCfg.token   || '',
+    uid:     localUid,
+    role:    'host',
+  });
+
+  // Auto-join Agora as soon as we have credentials
+  useEffect(() => {
+    if (!agoraCfg.app_id || !agoraCfg.token || isJoined || agoraLoading) return;
+    initClient();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agoraCfg.app_id, agoraCfg.token]);
+
+  // Enrich remote-user list with names from /details participant list
   const participants = details?.participants || [];
+  const enrichedRemote = useMemo(() => remoteUsers.map(ru => {
+    const ruUidNum = Number(ru.uid);
+    const match = participants.find(p =>
+      p.user_id === ruUidNum
+      || (p.id && -p.id === ruUidNum)        // guests use negative-id space
+      || String(p.user_id) === String(ru.uid),
+    );
+    return {
+      ...ru,
+      name: match?.name || match?.guest_name || `User ${ru.uid}`,
+      role: match?.user_id === session.teacher_id ? 'teacher'
+            : match?.guest_name ? 'guest' : 'student',
+      aiObservation: null,
+      attentionLevel: null,
+      isHandRaised: false,
+    };
+  }), [remoteUsers, participants, session.teacher_id]);
+
+  // Effective list (dedupe by uid)
+  const handleScreenShare = async () => {
+    if (isScreenSharing) {
+      await stopScreenShare();
+      setIsScreenSharing(false);
+    } else {
+      const t = await startScreenShare();
+      if (t) setIsScreenSharing(true);
+    }
+  };
+
+  const handleEnd = async () => {
+    try { await leaveChannel(); } catch (_) {}
+    onEnd();
+  };
+
+  // Mute-all / mute-one are placeholders until the WS control channel
+  // lands in a future prompt. They flip local UI state immediately so
+  // the teacher gets visual feedback.
+  const handleMuteAll = async () => {
+    setMuteAllBusy(true);
+    setTimeout(() => setMuteAllBusy(false), 800);
+  };
+  const handleMuteOne = (_uid) => { /* TODO: WS broadcast in V3 */ };
+
+  // ── RENDER ───────────────────────────────────────────────────────
+  const totalCount = enrichedRemote.length + 1;
+  const netLabel = !networkQuality ? 'Connecting'
+    : networkQuality.uplink <= 2 ? 'Excellent'
+    : networkQuality.uplink <= 4 ? 'Fair' : 'Poor';
+  const netColor = !networkQuality ? 'text-gray-400'
+    : networkQuality.uplink <= 2 ? 'text-emerald-400'
+    : networkQuality.uplink <= 4 ? 'text-amber-400' : 'text-red-400';
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-10 gap-4">
-      {/* LEFT — Session control */}
-      <div className="lg:col-span-3 space-y-4">
-        <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-5">
-          <div className="flex items-center gap-2 text-red-500 font-bold">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> LIVE · {fmt(secs)}
+    <div className="fixed inset-0 z-40 flex flex-col bg-gray-950 text-white">
+      {/* TOP BAR */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-red-400 font-bold text-sm">LIVE</span>
+            <span className="text-gray-400 font-mono text-sm">{fmt(secs)}</span>
           </div>
-          <h3 className="text-lg font-bold text-slate-800 mt-1">{session.title}</h3>
-          <p className="text-sm text-slate-500">{participants.length} participants</p>
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            <button onClick={()=>setShowPulse(true)} className="py-2 bg-violet-100 text-violet-700 font-semibold rounded-lg text-sm">📊 Pulse Check</button>
-            <button className="py-2 bg-violet-100 text-violet-700 font-semibold rounded-lg text-sm">🤝 Breakouts</button>
-            <button onClick={()=>setShowWB(true)} className="py-2 bg-violet-100 text-violet-700 font-semibold rounded-lg text-sm">🖼️ AI Whiteboard</button>
-            <button onClick={onEnd} className="py-2 bg-red-500 text-white font-semibold rounded-lg text-sm">⏹ End Session</button>
-          </div>
+          <span className="text-white font-medium text-sm truncate max-w-[18rem]">{session.title}</span>
+          <span className={`text-xs ${netColor} hidden md:inline`}>📶 {netLabel}</span>
         </div>
-        <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-4">
-          <h4 className="font-bold text-sm text-slate-700 mb-2">👥 Participants</h4>
-          <ul className="space-y-1 max-h-64 overflow-y-auto">
-            {participants.length === 0 && <li className="text-xs text-slate-400">No one yet</li>}
-            {participants.map(p => {
-              const q = (p.connection_quality || 'good').toLowerCase();
-              const dot = q === 'good' ? 'bg-emerald-500' : q === 'poor' ? 'bg-amber-500' : 'bg-red-500';
-              return (
-                <li key={p.id} className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${dot}`} />
-                    {p.name || p.guest_name || `User ${p.user_id || ''}`}
-                  </span>
-                  <span className="text-slate-400">{p.duration_minutes || 0} min</span>
-                </li>
-              );
-            })}
-          </ul>
+
+        <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+          {[
+            { mode: 'speaker', icon: '👁️', label: 'Speaker' },
+            { mode: 'grid',    icon: '⊞',  label: 'Grid'    },
+            { mode: 'focus',   icon: '🎯', label: 'Focus'   },
+          ].map(v => (
+            <button
+              key={v.mode}
+              onClick={() => setViewMode(v.mode)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                viewMode === v.mode ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              {v.icon} <span className="hidden sm:inline">{v.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-gray-400 text-sm">👥 {totalCount}</span>
+          <button
+            onClick={handleEnd}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors"
+          >
+            ⏹ End
+          </button>
         </div>
       </div>
-      {/* CENTER — AI Brain */}
-      <div className="lg:col-span-4"><AIBrainPanel sessionId={session.id} /></div>
-      {/* RIGHT — Doubt wall */}
-      <div className="lg:col-span-3"><DoubtWall sessionId={session.id} /></div>
 
-      <WhiteboardModal open={showWB} sessionId={session.id} onClose={()=>setShowWB(false)} />
-      <PulseModal open={showPulse} sessionId={session.id} onClose={()=>setShowPulse(false)} />
+      {/* MAIN AREA */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Video area */}
+        <div className="flex-1 p-3 relative overflow-hidden">
+          {webrtcError && !agoraError && (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center bg-amber-900/20 border border-amber-500/40 rounded-xl p-6 max-w-md">
+                <p className="text-amber-300 text-lg mb-2">⚠️ Video unavailable</p>
+                <p className="text-gray-400 text-sm">{webrtcError}</p>
+              </div>
+            </div>
+          )}
+
+          {agoraLoading && (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-gray-400">Connecting to video…</p>
+              </div>
+            </div>
+          )}
+
+          {agoraError && (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center bg-red-900/20 border border-red-500/50 rounded-xl p-6 max-w-md">
+                <p className="text-red-400 text-lg mb-2">⚠️ Video Error</p>
+                <p className="text-gray-400 text-sm mb-4">{agoraError}</p>
+                <button
+                  onClick={initClient}
+                  className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!agoraLoading && !agoraError && webrtc && (
+            <VideoGrid
+              participants={enrichedRemote}
+              localUid={localUid}
+              localName={currentUser?.name}
+              localVideoTrack={localVideoTrackRef.current}
+              localVideoEnabled={localVideoEnabled}
+              localAudioEnabled={localAudioEnabled}
+              speakingUsers={speakingUsers}
+              activeSpeakerUid={activeSpeakerUid}
+              pinnedUid={pinnedUid}
+              onPin={(uid) => setPinnedUid(prev => prev === uid ? null : uid)}
+              onMute={handleMuteOne}
+              isTeacher
+              viewMode={viewMode}
+            />
+          )}
+
+          {isJoined && enrichedRemote.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="text-center bg-black/60 rounded-xl p-6 backdrop-blur-sm pointer-events-auto">
+                <p className="text-gray-200 text-lg mb-1">Waiting for students…</p>
+                <p className="text-gray-500 text-sm">Share the join link to invite participants</p>
+                <div className="mt-3 bg-gray-800 rounded-lg px-4 py-2">
+                  <p className="text-violet-300 font-mono text-sm break-all">
+                    {`${window.location.origin}/live/${session.join_link}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT PANEL */}
+        <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col shrink-0">
+          <div className="flex border-b border-gray-800 shrink-0">
+            {[
+              { id: 'ai',     label: '🤖 AI' },
+              { id: 'doubts', label: '🔥 Doubts' },
+              { id: 'people', label: `👥 ${totalCount}` },
+            ].map(t => (
+              <button
+                key={t.id}
+                onClick={() => setRightPanel(t.id)}
+                className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
+                  rightPanel === t.id
+                    ? 'text-white border-b-2 border-violet-500'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3 bg-slate-50 text-slate-800">
+            {rightPanel === 'ai'     && <AIBrainPanel sessionId={session.id} />}
+            {rightPanel === 'doubts' && <DoubtWall    sessionId={session.id} />}
+            {rightPanel === 'people' && (
+              <PeoplePanel
+                participants={enrichedRemote}
+                localName={currentUser?.name}
+                speakingUsers={speakingUsers}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* BOTTOM CONTROL BAR */}
+      <div className="flex items-center justify-center flex-wrap gap-2 px-4 py-3 bg-gray-900 border-t border-gray-800 shrink-0">
+        <CtrlBtn
+          on={localAudioEnabled}
+          onClick={toggleAudio}
+          icon={localAudioEnabled ? '🎤' : '🔇'}
+          label={localAudioEnabled ? 'Mute' : 'Unmute'}
+          danger={!localAudioEnabled}
+        />
+        <CtrlBtn
+          on={localVideoEnabled}
+          onClick={toggleVideo}
+          icon="📷"
+          label={localVideoEnabled ? 'Stop Cam' : 'Start Cam'}
+          danger={!localVideoEnabled}
+        />
+        <CtrlBtn
+          on={isScreenSharing}
+          onClick={handleScreenShare}
+          icon="🖥️"
+          label={isScreenSharing ? 'Stop Share' : 'Share'}
+          accent={isScreenSharing ? 'success' : null}
+        />
+
+        <div className="w-px h-8 bg-gray-700 mx-1" />
+
+        <CtrlBtn onClick={() => setShowPulse(true)} icon="⚡" label="Pulse" accent="violet" />
+        <CtrlBtn onClick={() => setShowWB(true)}    icon="🖼️" label="Whiteboard" accent="blue" />
+        <CtrlBtn onClick={() => alert('Breakout rooms — coming in next prompt')} icon="🤝" label="Breakout" accent="amber" />
+
+        <div className="w-px h-8 bg-gray-700 mx-1" />
+
+        <CtrlBtn
+          onClick={handleMuteAll}
+          icon={muteAllBusy ? '✅' : '🔇'}
+          label={muteAllBusy ? 'Muted!' : 'Mute All'}
+          accent="rose"
+        />
+      </div>
+
+      <WhiteboardModal open={showWB}    sessionId={session.id} onClose={() => setShowWB(false)} />
+      <PulseModal      open={showPulse} sessionId={session.id} onClose={() => setShowPulse(false)} />
+    </div>
+  );
+}
+
+// Bottom-bar button helper (kept inline — single use, simple props)
+function CtrlBtn({ on, onClick, icon, label, danger, accent }) {
+  let cls = 'bg-gray-800 hover:bg-gray-700 text-white';
+  if (danger) cls = 'bg-red-600 hover:bg-red-700 text-white';
+  else if (accent === 'success') cls = 'bg-emerald-600 hover:bg-emerald-700 text-white';
+  else if (accent === 'violet')  cls = 'bg-gray-800 hover:bg-violet-700 text-white';
+  else if (accent === 'blue')    cls = 'bg-gray-800 hover:bg-blue-700 text-white';
+  else if (accent === 'amber')   cls = 'bg-gray-800 hover:bg-amber-600 text-white';
+  else if (accent === 'rose')    cls = 'bg-gray-800 hover:bg-rose-700 text-white';
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-colors ${cls}`}
+    >
+      <span className="text-lg">{icon}</span>
+      <span className="text-[10px] font-medium">{label}</span>
+    </button>
+  );
+}
+
+// Right-panel "People" tab content
+function PeoplePanel({ participants, localName, speakingUsers }) {
+  return (
+    <div className="space-y-2">
+      <div className="bg-white border border-violet-100 rounded-lg p-2 flex items-center justify-between">
+        <span className="text-sm font-semibold text-slate-700">👤 {localName || 'You'} (You)</span>
+        <span className="text-xs text-violet-600">Host</span>
+      </div>
+      {participants.length === 0 && (
+        <p className="text-xs text-slate-400 text-center py-4">No remote participants yet.</p>
+      )}
+      {participants.map(p => (
+        <div key={p.uid} className="bg-white border border-slate-200 rounded-lg p-2 flex items-center justify-between">
+          <span className="text-sm text-slate-700 flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${speakingUsers.has(p.uid) ? 'bg-violet-500 animate-pulse' : 'bg-emerald-400'}`} />
+            {p.name}
+          </span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-wide">{p.role}</span>
+        </div>
+      ))}
     </div>
   );
 }
