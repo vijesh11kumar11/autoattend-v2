@@ -33,6 +33,13 @@ export default function StudentLiveSession() {
   const [pulse, setPulse] = useState(null);
   const [pulseAnswer, setPulseAnswer] = useState('');
   const [pulseResult, setPulseResult] = useState(null);
+  // F04 — Live Pulse Check overlay (parallel to legacy `pulse_check`)
+  const [livePulse, setLivePulse]               = useState(null);
+  const [livePulseChoice, setLivePulseChoice]   = useState('');
+  const [livePulseSubmitted, setLivePulseSubmitted] = useState(false);
+  const [livePulseResult, setLivePulseResult]   = useState(null);
+  const [livePulseTimer, setLivePulseTimer]     = useState(0);
+  const livePulseTimerRef = useRef(null);
   const [livenessChallenge, setLivenessChallenge] = useState(null);
   const [microSummary, setMicroSummary] = useState(null);
   const [bandwidth, setBandwidth] = useState('good');     // good | poor
@@ -138,6 +145,28 @@ export default function StudentLiveSession() {
           setPulse(msg); setPulseAnswer(''); setPulseResult(null); setTab('pulse'); break;
         case 'pulse_closed':
           setPulseResult(msg); setPulse(null); break;
+
+        // ── F04 — Live Pulse Check (new endpoint) ─────────────────────
+        case 'pulse_check_started':
+          setLivePulse(msg);
+          setLivePulseChoice('');
+          setLivePulseSubmitted(false);
+          setLivePulseResult(null);
+          setLivePulseTimer(msg.duration_secs || 30);
+          clearInterval(livePulseTimerRef.current);
+          livePulseTimerRef.current = setInterval(() => {
+            setLivePulseTimer(prev => {
+              if (prev <= 1) { clearInterval(livePulseTimerRef.current); return 0; }
+              return prev - 1;
+            });
+          }, 1000);
+          break;
+        case 'pulse_check_closed':
+          clearInterval(livePulseTimerRef.current);
+          setLivePulseResult(msg);
+          setTimeout(() => { setLivePulse(null); setLivePulseResult(null); }, 8000);
+          break;
+
         case 'new_doubt':
           setDoubts(d => [{ ...msg, id: msg.doubt_id, question: msg.question, resonance_count: msg.resonance_count }, ...d]); break;
         case 'doubt_answered':
@@ -210,6 +239,20 @@ export default function StudentLiveSession() {
       await api.post(`/live/pulse/${pulse.pulse_id}/respond`, { answer: pulseAnswer });
       wsRef.current?.send(JSON.stringify({ type: 'pulse_response', pulse_id: pulse.pulse_id, answer: pulseAnswer }));
     } catch {}
+  };
+  // F04 — submit answer for the new live pulse-check overlay
+  const submitLivePulse = async () => {
+    if (!livePulse || !livePulseChoice || livePulseSubmitted) return;
+    setLivePulseSubmitted(true);
+    try {
+      await api.post(`/live/sessions/${sessionId}/pulse-response`, {
+        pulse_id:       livePulse.pulse_id,
+        chosen_option:  livePulseChoice,
+        participant_id: info?.guest ? (info?.participant_id || null) : null,
+      });
+    } catch (_) {
+      setLivePulseSubmitted(false);
+    }
   };
   const completeLiveness = async () => {
     try {
@@ -468,6 +511,73 @@ export default function StudentLiveSession() {
           )}
         </div>
       </div>
+
+      {/* F04 — Live Pulse Check overlay */}
+      {livePulse && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md">
+          <div className="bg-gray-900/95 backdrop-blur border border-violet-500/40 rounded-2xl shadow-2xl text-white p-4">
+            {!livePulseResult && (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-violet-400 font-bold text-xs uppercase tracking-wider">⚡ Pulse Check</span>
+                  <span className="font-mono text-lg font-bold">{livePulseTimer}s</span>
+                </div>
+                <p className="font-medium text-sm mb-3">{livePulse.question}</p>
+                {!livePulseSubmitted && (
+                  <>
+                    <div className="space-y-2 mb-3">
+                      {['A','B','C','D'].map(opt => {
+                        const text = livePulse[`option_${opt.toLowerCase()}`];
+                        if (!text || text === 'N/A') return null;
+                        const selected = livePulseChoice === opt;
+                        return (
+                          <button key={opt}
+                            onClick={() => setLivePulseChoice(opt)}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm border transition
+                              ${selected
+                                ? 'bg-violet-600 border-violet-400 text-white'
+                                : 'bg-gray-800 border-gray-700 hover:border-violet-500/50'}`}>
+                            <span className="font-bold mr-2">{opt}.</span>{text}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button onClick={submitLivePulse} disabled={!livePulseChoice}
+                      className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-40
+                                 text-white font-bold py-2 rounded-lg text-sm">
+                      Submit Answer
+                    </button>
+                  </>
+                )}
+                {livePulseSubmitted && (
+                  <p className="text-emerald-400 text-sm text-center py-2">
+                    ✅ Submitted! Waiting for class…
+                  </p>
+                )}
+              </>
+            )}
+            {livePulseResult && (
+              <>
+                <p className="text-violet-400 font-bold text-xs uppercase tracking-wider mb-2">📊 Results</p>
+                <p className="text-sm mb-3">{livePulse.question}</p>
+                {livePulseResult.correct_option && (
+                  <p className="text-emerald-400 text-sm mb-1">
+                    Correct answer: <b>{livePulseResult.correct_option}</b>
+                    {livePulseChoice && (
+                      livePulseChoice === livePulseResult.correct_option
+                        ? <span className="ml-2 text-emerald-300">— You got it! 🎉</span>
+                        : <span className="ml-2 text-red-300">— You picked {livePulseChoice}</span>
+                    )}
+                  </p>
+                )}
+                {livePulseResult.ai_insight && (
+                  <p className="text-blue-300 text-xs mt-2">🤖 {livePulseResult.ai_insight}</p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Liveness overlay */}
       {livenessChallenge && (

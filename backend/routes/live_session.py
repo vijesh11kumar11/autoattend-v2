@@ -30,6 +30,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     HTTPException,
+    Query,
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -52,9 +53,12 @@ from database import (
     LiveEventTrigger,
     LiveEventType,
     LiveParticipantType,
+    LivePulseCheck,
+    LivePulseResponse,
     LiveSession,
     LiveSessionBreakoutRoom,
     LiveSessionEvent,
+    LiveSessionObservation,
     LiveSessionParticipant,
     LiveSessionStatus,
     LiveSessionType,
@@ -64,6 +68,7 @@ from database import (
     PulseCheckTrigger,
     Section,
     SessionStatus,
+    SessionLocal,
     StudentKnowledgeGraph,
     Subject,
     User,
@@ -79,7 +84,9 @@ from utils.auth_utils import (
 )
 from utils.classpulse_ai import auto_answer_doubt
 from utils.agora_token import generate_agora_token
+from utils.session_manager import manager as live_ws_manager
 from utils.live_session_ai import (
+    _ai_json,
     generate_ai_observation,
     generate_auto_capsule_from_session,
     generate_intervention_suggestion,
@@ -2560,3 +2567,581 @@ def analytics_hod_overview(
         "avg_department_comprehension": avg_comprehension,
         "at_risk_students": at_risk,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# F04 — Live Pulse Check (parallel to /pulse/create; supports guests,
+# WS broadcast, AI insight, auto-close).
+# ═══════════════════════════════════════════════════════════════════════
+
+class LivePulseCheckReq(BaseModel):
+    question:       str = Field(..., min_length=3, max_length=500)
+    option_a:       str = Field(..., min_length=1, max_length=200)
+    option_b:       str = Field(..., min_length=1, max_length=200)
+    option_c:       str = Field("N/A", min_length=1, max_length=200)
+    option_d:       str = Field("N/A", min_length=1, max_length=200)
+    correct_option: Optional[str] = Field(None, pattern=r"^[ABCD]$")
+    duration_secs:  int = Field(30, ge=10, le=120)
+
+
+class LivePulseResponseReq(BaseModel):
+    pulse_id:       int
+    chosen_option:  str = Field(..., pattern=r"^[ABCDabcd]$")
+    participant_id: Optional[int] = None
+
+
+def _pulse_counts(pulse_id: int, db: Session) -> dict:
+    rows = db.query(LivePulseResponse).filter(
+        LivePulseResponse.pulse_id == pulse_id
+    ).all()
+    counts = {"A": 0, "B": 0, "C": 0, "D": 0, "total": 0, "correct": 0}
+    for r in rows:
+        opt = (r.chosen_option or "").upper()
+        if opt in counts:
+            counts[opt] += 1
+        counts["total"] += 1
+        if r.is_correct:
+            counts["correct"] += 1
+    return counts
+
+
+def _update_live_pulse_counts(pulse_id: int, db: Session) -> dict:
+    counts = _pulse_counts(pulse_id, db)
+    db.query(LivePulseCheck).filter(LivePulseCheck.id == pulse_id).update({
+        "total_responses": counts["total"],
+        "correct_count":   counts["correct"],
+        "option_a_count":  counts["A"],
+        "option_b_count":  counts["B"],
+        "option_c_count":  counts["C"],
+        "option_d_count":  counts["D"],
+    })
+    db.commit()
+    return counts
+
+
+async def _generate_live_pulse_insight(pulse: LivePulseCheck, counts: dict) -> str:
+    if counts.get("total", 0) == 0:
+        return "No responses received."
+    pct = None
+    if pulse.correct_option and counts["total"]:
+        pct = round(counts["correct"] / counts["total"] * 100, 1)
+    wrong_option = None
+    if pulse.correct_option:
+        others = {k: v for k, v in counts.items()
+                  if k in ("A", "B", "C", "D") and k != pulse.correct_option}
+        if others and max(others.values()) > 0:
+            wrong_option = max(others, key=others.get)
+
+    prompt = f"""You are a classroom AI. A teacher sent this pulse check:
+Question: {pulse.question}
+Options: A={pulse.option_a} | B={pulse.option_b} | C={pulse.option_c} | D={pulse.option_d}
+Correct answer: {pulse.correct_option or 'not set'}
+Results: {counts['total']} responses, {counts['correct']} correct ({pct if pct is not None else 'N/A'}%)
+Most common wrong answer: {wrong_option or 'N/A'}
+
+In ONE sentence (max 25 words) give the teacher a specific, actionable insight
+about student understanding. Return ONLY a JSON object: {{"insight": "..."}}"""
+    try:
+        result = await _ai_json(prompt, system="You are a concise teaching coach. Return only valid JSON.")
+        if isinstance(result, dict) and result.get("insight"):
+            return str(result["insight"])[:300]
+    except Exception:
+        pass
+    if pct is not None:
+        return f"{counts['correct']}/{counts['total']} students got it right ({pct}%)."
+    return f"{counts['total']} responses received."
+
+
+async def _auto_close_live_pulse(pulse_id: int, delay_secs: int) -> None:
+    """Background: auto-close a live pulse after duration + buffer seconds."""
+    import asyncio
+    try:
+        await asyncio.sleep(max(1, int(delay_secs)))
+    except Exception:
+        return
+    db = SessionLocal()
+    try:
+        pulse = db.query(LivePulseCheck).filter(
+            LivePulseCheck.id == pulse_id,
+            LivePulseCheck.is_active.is_(True),
+        ).first()
+        if not pulse:
+            return
+        pulse.is_active = False
+        pulse.closed_at = datetime.now(timezone.utc)
+        db.commit()
+        counts = _update_live_pulse_counts(pulse_id, db)
+        try:
+            insight = await _generate_live_pulse_insight(pulse, counts)
+            pulse.ai_insight = insight
+            db.commit()
+        except Exception:
+            insight = None
+        try:
+            await live_ws_manager.broadcast_to_session(pulse.live_session_id, {
+                "type":           "pulse_check_closed",
+                "pulse_id":       pulse_id,
+                "question":       pulse.question,
+                "counts":         counts,
+                "ai_insight":     insight,
+                "correct_option": pulse.correct_option,
+                "auto_closed":    True,
+            })
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.error("auto_close_live_pulse failed for pulse %s: %s", pulse_id, exc)
+    finally:
+        db.close()
+
+
+@router.post("/sessions/{session_id}/pulse-check")
+async def send_live_pulse_check(
+    session_id: int,
+    body: LivePulseCheckReq,
+    background: BackgroundTasks,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """Teacher sends a quick MCQ pulse check to all participants."""
+    sess = _require_session_owner(session_id, current_user, db)
+    if sess.status != LiveSessionStatus.live:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Session is not live.")
+
+    # Close any existing active pulse for this session first
+    existing = db.query(LivePulseCheck).filter(
+        LivePulseCheck.live_session_id == session_id,
+        LivePulseCheck.is_active.is_(True),
+    ).first()
+    if existing:
+        existing.is_active = False
+        existing.closed_at = datetime.now(timezone.utc)
+        db.commit()
+
+    pulse = LivePulseCheck(
+        live_session_id = session_id,
+        question        = body.question.strip(),
+        option_a        = body.option_a.strip(),
+        option_b        = body.option_b.strip(),
+        option_c        = (body.option_c or "N/A").strip(),
+        option_d        = (body.option_d or "N/A").strip(),
+        correct_option  = body.correct_option.upper() if body.correct_option else None,
+        duration_secs   = body.duration_secs,
+    )
+    db.add(pulse)
+    db.commit()
+    db.refresh(pulse)
+
+    payload = {
+        "type":          "pulse_check_started",
+        "pulse_id":      pulse.id,
+        "question":      pulse.question,
+        "option_a":      pulse.option_a,
+        "option_b":      pulse.option_b,
+        "option_c":      pulse.option_c,
+        "option_d":      pulse.option_d,
+        "duration_secs": pulse.duration_secs,
+        "sent_at":       pulse.sent_at.isoformat() if pulse.sent_at else None,
+    }
+    try:
+        await live_ws_manager.broadcast_to_session(session_id, payload)
+    except Exception as exc:
+        logger.warning("pulse-check WS broadcast failed: %s", exc)
+
+    background.add_task(_auto_close_live_pulse, pulse.id, body.duration_secs + 5)
+    logger.info("⚡ Live pulse %d sent for session %d", pulse.id, session_id)
+    return {"ok": True, "pulse_id": pulse.id, "duration_secs": body.duration_secs}
+
+
+@router.post("/sessions/{session_id}/pulse-response")
+async def submit_live_pulse_response(
+    session_id: int,
+    body: LivePulseResponseReq,
+    current_user: Optional[dict] = Depends(_get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Student / guest submits an answer to the active pulse check."""
+    pulse = db.query(LivePulseCheck).filter(
+        LivePulseCheck.id == body.pulse_id,
+        LivePulseCheck.live_session_id == session_id,
+        LivePulseCheck.is_active.is_(True),
+    ).first()
+    if not pulse:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No active pulse check found.")
+
+    chosen = body.chosen_option.upper()
+    student_id = current_user["id"] if current_user else None
+    is_correct = None
+    if pulse.correct_option:
+        is_correct = chosen == pulse.correct_option.upper()
+
+    # Dedup by participant_id (guests) or student_id
+    dup_q = db.query(LivePulseResponse).filter(LivePulseResponse.pulse_id == body.pulse_id)
+    if body.participant_id is not None:
+        dup_q = dup_q.filter(LivePulseResponse.participant_id == body.participant_id)
+    elif student_id is not None:
+        dup_q = dup_q.filter(LivePulseResponse.student_id == student_id)
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "participant_id or login required.")
+    if dup_q.first():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Already responded to this pulse.")
+
+    guest_name = None
+    if not student_id and body.participant_id:
+        part = db.query(LiveSessionParticipant).filter(
+            LiveSessionParticipant.id == body.participant_id,
+            LiveSessionParticipant.live_session_id == session_id,
+        ).first()
+        if part:
+            guest_name = part.guest_name
+
+    resp = LivePulseResponse(
+        pulse_id        = body.pulse_id,
+        live_session_id = session_id,
+        participant_id  = body.participant_id,
+        student_id      = student_id,
+        guest_name      = guest_name,
+        chosen_option   = chosen,
+        is_correct      = is_correct,
+    )
+    db.add(resp)
+    db.commit()
+
+    counts = _update_live_pulse_counts(body.pulse_id, db)
+    try:
+        await live_ws_manager.send_to_teacher(session_id, {
+            "type":     "pulse_response_update",
+            "pulse_id": body.pulse_id,
+            "counts":   counts,
+        })
+    except Exception:
+        pass
+    return {"ok": True, "is_correct": is_correct}
+
+
+@router.post("/sessions/{session_id}/pulse-check/{pulse_id}/close")
+async def close_live_pulse_check(
+    session_id: int,
+    pulse_id:   int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """Teacher manually closes the pulse early; returns final results."""
+    _require_session_owner(session_id, current_user, db)
+    pulse = db.query(LivePulseCheck).filter(
+        LivePulseCheck.id == pulse_id,
+        LivePulseCheck.live_session_id == session_id,
+    ).first()
+    if not pulse:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pulse not found.")
+
+    if pulse.is_active:
+        pulse.is_active = False
+        pulse.closed_at = datetime.now(timezone.utc)
+        db.commit()
+
+    counts = _update_live_pulse_counts(pulse_id, db)
+    try:
+        insight = await _generate_live_pulse_insight(pulse, counts)
+        pulse.ai_insight = insight
+        db.commit()
+    except Exception:
+        insight = pulse.ai_insight
+
+    final = {
+        "type":           "pulse_check_closed",
+        "pulse_id":       pulse_id,
+        "question":       pulse.question,
+        "counts":         counts,
+        "ai_insight":     insight,
+        "correct_option": pulse.correct_option,
+    }
+    try:
+        await live_ws_manager.broadcast_to_session(session_id, final)
+    except Exception:
+        pass
+    return final
+
+
+@router.get("/sessions/{session_id}/pulse-results")
+def get_live_pulse_results(
+    session_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """All pulse-checks + counts for a session (used by post-session report)."""
+    pulses = db.query(LivePulseCheck).filter(
+        LivePulseCheck.live_session_id == session_id,
+    ).order_by(LivePulseCheck.sent_at.asc()).all()
+
+    out = []
+    for p in pulses:
+        counts = _pulse_counts(p.id, db)
+        comp_pct = None
+        if p.correct_option and counts["total"]:
+            comp_pct = round(counts["correct"] / counts["total"] * 100, 1)
+        out.append({
+            "id":              p.id,
+            "question":        p.question,
+            "correct_option":  p.correct_option,
+            "duration_secs":   p.duration_secs,
+            "sent_at":         p.sent_at.isoformat() if p.sent_at else None,
+            "is_active":       p.is_active,
+            "counts":          counts,
+            "ai_insight":      p.ai_insight,
+            "comprehension_pct": comp_pct,
+        })
+    return {"session_id": session_id, "pulse_checks": out, "total": len(out)}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# F05 — Capsule status (for PostSession polling)
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/sessions/{session_id}/capsule-status")
+def get_capsule_status(
+    session_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+    if not sess:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found.")
+    return {
+        "session_id": session_id,
+        "capsule_id": sess.auto_capsule_id,
+        "is_ready":   sess.auto_capsule_id is not None,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# F01 — AI Session Brain: observations + scheduler
+# ═══════════════════════════════════════════════════════════════════════
+
+async def _generate_observation_payload(session_id: int, db: Session) -> Optional[dict]:
+    """Gather context + ask AI for one observation. Returns dict or None."""
+    sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+    if not sess:
+        return None
+    subject = db.query(Subject).filter(Subject.id == sess.subject_id).first() if sess.subject_id else None
+    subject_name = subject.name if subject else "the class"
+
+    elapsed_mins = 0
+    if sess.started_at:
+        elapsed_mins = max(0, int((datetime.now(timezone.utc) - sess.started_at).total_seconds() / 60))
+
+    total_participants = db.query(func.count(LiveSessionParticipant.id)).filter(
+        LiveSessionParticipant.live_session_id == session_id,
+    ).scalar() or 0
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+    active_participants = db.query(func.count(LiveSessionParticipant.id)).filter(
+        LiveSessionParticipant.live_session_id == session_id,
+        LiveSessionParticipant.last_heartbeat.isnot(None),
+        LiveSessionParticipant.last_heartbeat >= cutoff,
+    ).scalar() or 0
+
+    doubt_count = 0
+    hot_doubt_count = 0
+    recent_doubts: list[str] = []
+    if sess.subject_id and sess.started_at:
+        doubt_rows = db.query(ClassWallPost).filter(
+            ClassWallPost.live_session_id == session_id,
+        ).order_by(ClassWallPost.created_at.desc()).limit(20).all()
+        doubt_count = len(doubt_rows)
+        hot_doubt_count = sum(1 for d in doubt_rows if d.is_hot)
+        recent_doubts = [d.content[:120] for d in doubt_rows[:3]]
+
+    pulses = db.query(LivePulseCheck).filter(
+        LivePulseCheck.live_session_id == session_id,
+        LivePulseCheck.is_active.is_(False),
+        LivePulseCheck.correct_option.isnot(None),
+        LivePulseCheck.total_responses > 0,
+    ).all()
+    pulse_avg: Optional[float] = None
+    if pulses:
+        comps = [round(p.correct_count / p.total_responses * 100, 1)
+                 for p in pulses if p.total_responses]
+        if comps:
+            pulse_avg = round(sum(comps) / len(comps), 1)
+
+    engagement_pct = round((active_participants / total_participants) * 100, 0) if total_participants else 0
+    doubts_text = "Recent doubts: " + " | ".join(recent_doubts) if recent_doubts else ""
+
+    schema = """{
+  "type": "confusion|pace|engagement|positive|topic_complete|energy",
+  "message": "string (1-2 sentences in natural language)",
+  "suggestion": "string (1 actionable sentence)",
+  "severity": "low|medium|high"
+}"""
+    prompt = f"""You are an AI teaching assistant watching a live class right now.
+
+Subject: {subject_name}
+Time elapsed: {elapsed_mins} minutes
+Students: {total_participants} total, {active_participants} active right now ({engagement_pct}% engagement)
+Doubts posted: {doubt_count} total, {hot_doubt_count} hot
+Comprehension from pulse checks: {f'{pulse_avg}%' if pulse_avg is not None else 'no pulse yet'}
+{doubts_text}
+
+Generate ONE observation for the teacher about the most important thing right now.
+Use natural language like a human TA. Be specific and actionable.
+
+Return ONLY valid JSON (no markdown):
+{schema}"""
+
+    try:
+        result = await _ai_json(prompt, system="You are an empathetic AI teaching assistant. Return only valid JSON.")
+    except Exception as exc:
+        logger.warning("observation _ai_json failed: %s", exc)
+        result = None
+
+    if not isinstance(result, dict):
+        return {
+            "type": "engagement",
+            "message": f"{active_participants}/{total_participants} students active ({engagement_pct}% engagement).",
+            "suggestion": "Check in with quiet students or run a quick pulse check.",
+            "severity": "low" if engagement_pct > 70 else "medium",
+        }
+
+    obs_type = str(result.get("type", "engagement")).lower()
+    if obs_type not in ("confusion", "pace", "engagement", "positive", "topic_complete", "energy"):
+        obs_type = "engagement"
+    severity = str(result.get("severity", "low")).lower()
+    if severity not in ("low", "medium", "high"):
+        severity = "low"
+    return {
+        "type":       obs_type,
+        "message":    str(result.get("message", ""))[:600],
+        "suggestion": str(result.get("suggestion", ""))[:400],
+        "severity":   severity,
+    }
+
+
+async def _create_observation(session_id: int, db: Session) -> Optional[LiveSessionObservation]:
+    payload = await _generate_observation_payload(session_id, db)
+    if not payload:
+        return None
+    obs = LiveSessionObservation(
+        live_session_id = session_id,
+        obs_type        = payload["type"],
+        message         = payload["message"],
+        suggestion      = payload["suggestion"],
+        severity        = payload["severity"],
+    )
+    db.add(obs)
+    db.commit()
+    db.refresh(obs)
+    try:
+        await live_ws_manager.send_to_teacher(session_id, {
+            "type": "ai_observation",
+            "observation": {
+                "id":         obs.id,
+                "obs_type":   obs.obs_type,
+                "type":       obs.obs_type,
+                "message":    obs.message,
+                "suggestion": obs.suggestion,
+                "severity":   obs.severity,
+                "created_at": obs.created_at.isoformat() if obs.created_at else None,
+            },
+        })
+    except Exception:
+        pass
+    return obs
+
+
+@router.get("/sessions/{session_id}/ai/observations")
+async def list_ai_observations(
+    session_id: int,
+    since_id: int = Query(0, ge=0),
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    sess = _require_session_owner(session_id, current_user, db)
+    # Lazily ensure the scheduler is running for live sessions
+    if sess.status == LiveSessionStatus.live:
+        try:
+            _ensure_observation_scheduler(session_id)
+        except Exception:
+            pass
+    q = db.query(LiveSessionObservation).filter(
+        LiveSessionObservation.live_session_id == session_id,
+    )
+    if since_id > 0:
+        q = q.filter(LiveSessionObservation.id > since_id)
+    rows = q.order_by(LiveSessionObservation.created_at.desc()).limit(20).all()
+    return {
+        "observations": [
+            {
+                "id":         o.id,
+                "type":       o.obs_type,
+                "obs_type":   o.obs_type,
+                "message":    o.message,
+                "suggestion": o.suggestion,
+                "severity":   o.severity,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+            }
+            for o in rows
+        ]
+    }
+
+
+@router.post("/sessions/{session_id}/ai/trigger-observation")
+async def trigger_ai_observation(
+    session_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    _require_session_owner(session_id, current_user, db)
+    obs = await _create_observation(session_id, db)
+    if not obs:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not generate observation.")
+    return {
+        "id":         obs.id,
+        "type":       obs.obs_type,
+        "obs_type":   obs.obs_type,
+        "message":    obs.message,
+        "suggestion": obs.suggestion,
+        "severity":   obs.severity,
+        "created_at": obs.created_at.isoformat() if obs.created_at else None,
+    }
+
+
+# ─── Auto observation scheduler (5-min ticks) ──────────────────────────
+_observation_tasks: dict[int, "asyncio.Task"] = {}
+
+
+async def _observation_scheduler(session_id: int) -> None:
+    """Generates an AI observation every 5 minutes while the session is live."""
+    import asyncio
+    try:
+        while True:
+            await asyncio.sleep(300)
+            db = SessionLocal()
+            try:
+                sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+                if not sess or sess.status != LiveSessionStatus.live:
+                    return
+                await _create_observation(session_id, db)
+            except Exception as exc:
+                logger.warning("observation scheduler tick failed for %s: %s", session_id, exc)
+            finally:
+                db.close()
+    except asyncio.CancelledError:
+        return
+    finally:
+        _observation_tasks.pop(session_id, None)
+
+
+def _ensure_observation_scheduler(session_id: int) -> None:
+    """Start the scheduler task if not already running. Safe to call repeatedly.
+
+    Must be called from an async/event-loop context (WS handler or async route).
+    """
+    import asyncio
+    task = _observation_tasks.get(session_id)
+    if task and not task.done():
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    _observation_tasks[session_id] = loop.create_task(_observation_scheduler(session_id))

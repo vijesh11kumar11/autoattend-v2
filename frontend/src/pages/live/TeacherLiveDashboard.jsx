@@ -412,161 +412,368 @@ function WhiteboardModal({ open, sessionId, onClose }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// PULSE CHECK MODAL
+// PULSE CHECK MODAL (F04 — state-machine: idle → active → results)
 // ════════════════════════════════════════════════════════════════════════
-function PulseModal({ open, sessionId, onClose, onSent }) {
-  const [mode, setMode] = useState('manual'); // manual | ai
-  const [question, setQuestion] = useState('');
-  const [opts, setOpts] = useState({ A: '', B: '', C: '', D: '' });
-  const [correct, setCorrect] = useState('A');
-  const [duration, setDuration] = useState(30);
-  const [busy, setBusy] = useState(false);
+function PulseModal({ open, sessionId, onClose }) {
+  const [stage, setStage] = useState('idle');         // idle | active | results
+  const [form, setForm]   = useState({
+    question: '', optionA: '', optionB: '', optionC: '', optionD: '',
+    correctOption: '', durationSecs: 30,
+  });
+  const [activePulse, setActivePulse] = useState(null);  // {pulse_id, duration_secs}
+  const [counts, setCounts]   = useState({ A:0, B:0, C:0, D:0, total:0, correct:0 });
+  const [timer, setTimer]     = useState(0);
+  const [insight, setInsight] = useState('');
+  const [busy, setBusy]       = useState(false);
+  const [err, setErr]         = useState('');
+  const timerRef = useRef(null);
+  const pollRef  = useRef(null);
+
+  // Reset everything on close
+  useEffect(() => {
+    if (!open) {
+      clearInterval(timerRef.current); clearInterval(pollRef.current);
+      setStage('idle');
+      setForm({ question:'', optionA:'', optionB:'', optionC:'', optionD:'',
+                correctOption:'', durationSecs:30 });
+      setActivePulse(null);
+      setCounts({ A:0, B:0, C:0, D:0, total:0, correct:0 });
+      setTimer(0); setInsight(''); setErr(''); setBusy(false);
+    }
+  }, [open]);
+
+  // Poll the live counts while a pulse is active (teacher has no WS yet).
+  useEffect(() => {
+    if (stage !== 'active' || !activePulse) return undefined;
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await api.get(`/live/sessions/${sessionId}/pulse-results`);
+        const me = (r.data?.pulse_checks || []).find(p => p.id === activePulse.pulse_id);
+        if (me) setCounts(me.counts || counts);
+      } catch (_) {}
+    }, 2000);
+    return () => clearInterval(pollRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, activePulse, sessionId]);
 
   if (!open) return null;
-  const generate = async () => {
+
+  const sendPulse = async () => {
+    setErr('');
+    if (!form.question.trim() || !form.optionA.trim() || !form.optionB.trim()) {
+      setErr('Question and at least options A & B are required.');
+      return;
+    }
     setBusy(true);
     try {
-      const r = await api.post('/live/ai/generate-whiteboard', { session_id: sessionId, description: 'pulse check question for current topic' });
-      // Use AI helper if backend exposes; otherwise fall back to plain prompt
-      const ai = r.data || {};
-      if (ai.question) setQuestion(ai.question);
-      if (ai.options) setOpts(ai.options);
-    } catch (e) { /* ignore */ } finally { setBusy(false); }
-  };
-  const send = async () => {
-    if (!question.trim()) return;
-    setBusy(true);
-    try {
-      await api.post('/live/pulse/create', {
-        session_id: sessionId,
-        question,
-        options: opts,
-        correct_answer: correct,
-        duration_seconds: duration,
+      const r = await api.post(`/live/sessions/${sessionId}/pulse-check`, {
+        question:       form.question.trim(),
+        option_a:       form.optionA.trim(),
+        option_b:       form.optionB.trim(),
+        option_c:       (form.optionC || 'N/A').trim(),
+        option_d:       (form.optionD || 'N/A').trim(),
+        correct_option: form.correctOption || null,
+        duration_secs:  form.durationSecs,
       });
-      onSent && onSent();
-      onClose();
-    } catch (e) { /* show inline */ } finally { setBusy(false); }
+      setActivePulse(r.data);
+      setCounts({ A:0, B:0, C:0, D:0, total:0, correct:0 });
+      setStage('active');
+      setTimer(form.durationSecs);
+      clearInterval(timerRef.current);
+      timerRef.current = setInterval(() => {
+        setTimer(prev => {
+          if (prev <= 1) { clearInterval(timerRef.current); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Could not send pulse check.');
+    } finally { setBusy(false); }
   };
 
+  const closeEarly = async () => {
+    if (!activePulse) return;
+    clearInterval(timerRef.current);
+    setBusy(true);
+    try {
+      const r = await api.post(
+        `/live/sessions/${sessionId}/pulse-check/${activePulse.pulse_id}/close`,
+      );
+      setCounts(r.data?.counts || counts);
+      setInsight(r.data?.ai_insight || '');
+      setStage('results');
+    } catch (e) { setErr('Could not close pulse.'); }
+    finally { setBusy(false); }
+  };
+
+  // Auto move to results when timer hits zero (poll once for the close payload)
+  useEffect(() => {
+    if (stage === 'active' && timer === 0 && activePulse) {
+      // Give backend a beat to auto-close, then fetch insight
+      const t = setTimeout(async () => {
+        try {
+          const r = await api.get(`/live/sessions/${sessionId}/pulse-results`);
+          const me = (r.data?.pulse_checks || []).find(p => p.id === activePulse.pulse_id);
+          if (me) {
+            setCounts(me.counts || counts);
+            setInsight(me.ai_insight || '');
+          }
+        } catch (_) {}
+        setStage('results');
+      }, 6500);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, timer]);
+
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-        <div className={`bg-gradient-to-r ${VIOLET} px-6 py-4 text-white flex justify-between items-center rounded-t-2xl`}>
-          <h2 className="font-bold text-lg">⚡ Pulse Check</h2>
-          <button onClick={onClose} className="text-2xl">×</button>
-        </div>
-        <div className="p-6 space-y-3">
-          <div className="flex gap-2">
-            {['manual','ai'].map(m => (
-              <button key={m} onClick={()=>setMode(m)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold ${mode===m?'bg-violet-600 text-white':'bg-slate-100 text-slate-700'}`}>
-                {m === 'manual' ? '✍️ Manual' : '🤖 AI Generate'}
-              </button>
-            ))}
-          </div>
-          {mode === 'ai' && (
-            <button onClick={generate} disabled={busy}
-              className="w-full py-2 bg-amber-100 text-amber-800 rounded-lg text-sm font-semibold">
-              {busy ? 'Asking AI…' : '✨ Generate from current topic'}
-            </button>
-          )}
-          <input value={question} onChange={e=>setQuestion(e.target.value)} placeholder="Question…"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
-          {['A','B','C','D'].map(k => (
-            <div key={k} className="flex items-center gap-2">
-              <input type="radio" name="correct" checked={correct===k} onChange={()=>setCorrect(k)} />
-              <span className="font-bold w-5">{k}.</span>
-              <input value={opts[k]} onChange={e=>setOpts({...opts,[k]:e.target.value})}
-                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg" />
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg p-6 text-white">
+        {/* IDLE */}
+        {stage === 'idle' && (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold text-lg">⚡ Send Pulse Check</h3>
+              <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">×</button>
             </div>
-          ))}
-          <div>
-            <label className="text-xs font-semibold text-slate-700">Duration: {duration}s</label>
-            <input type="range" min={15} max={60} step={15} value={duration}
-              onChange={e=>setDuration(Number(e.target.value))} className="w-full" />
-          </div>
-          <button onClick={send} disabled={busy}
-            className={`w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
-            🚀 Send Pulse Check
-          </button>
-        </div>
+            <div className="space-y-3">
+              <input className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-sm placeholder-gray-500"
+                placeholder="Question — e.g. What does a recursive function need?"
+                value={form.question}
+                onChange={e => setForm(p => ({...p, question: e.target.value}))} />
+              {['A','B','C','D'].map(opt => (
+                <div key={opt} className="flex items-center gap-2">
+                  <button type="button"
+                    onClick={() => setForm(p => ({...p, correctOption: p.correctOption === opt ? '' : opt}))}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center flex-shrink-0
+                      ${form.correctOption === opt ? 'bg-green-500 text-black' : 'bg-gray-700 text-gray-300'}`}>
+                    {opt}
+                  </button>
+                  <input className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-sm placeholder-gray-500"
+                    placeholder={`Option ${opt}${opt==='A'||opt==='B' ? ' (required)' : ' (optional)'}`}
+                    value={form[`option${opt}`]}
+                    onChange={e => setForm(p => ({...p, [`option${opt}`]: e.target.value}))} />
+                </div>
+              ))}
+              <p className="text-xs text-gray-500">Tap a letter to mark the correct answer (optional).</p>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-gray-300">Duration:</label>
+                {[15,30,60].map(s => (
+                  <button key={s} onClick={() => setForm(p => ({...p, durationSecs: s}))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold
+                      ${form.durationSecs === s ? 'bg-violet-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
+                    {s}s
+                  </button>
+                ))}
+              </div>
+              {err && <p className="text-red-400 text-xs">{err}</p>}
+              <button onClick={sendPulse} disabled={busy}
+                className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl">
+                {busy ? 'Sending…' : '⚡ Send to All Students'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ACTIVE */}
+        {stage === 'active' && (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-violet-400 font-bold text-sm">⚡ PULSE ACTIVE</span>
+              <span className="font-mono text-2xl font-bold">{timer}s</span>
+            </div>
+            <p className="font-medium mb-4 text-sm">{form.question}</p>
+            <div className="space-y-2 mb-4">
+              {['A','B','C','D'].map(opt => {
+                const c = counts[opt] || 0;
+                const total = counts.total || 1;
+                const pct = Math.round((c / total) * 100);
+                return (
+                  <div key={opt} className="relative bg-gray-800 rounded-lg p-2.5 overflow-hidden">
+                    <div className="absolute left-0 top-0 bottom-0 bg-violet-600/30 transition-all"
+                      style={{ width: `${pct}%` }} />
+                    <div className="relative flex items-center justify-between">
+                      <span className="text-xs">{opt}: {form[`option${opt}`]}</span>
+                      <span className="text-gray-400 text-xs font-mono">{c} ({pct}%)</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-gray-400 text-xs mb-3 text-center">{counts.total} responses</p>
+            <button onClick={closeEarly} disabled={busy}
+              className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm">
+              {busy ? 'Closing…' : 'Close Pulse Early'}
+            </button>
+          </>
+        )}
+
+        {/* RESULTS */}
+        {stage === 'results' && (
+          <>
+            <h3 className="font-bold text-lg mb-4">📊 Pulse Results</h3>
+            <p className="text-gray-300 text-sm mb-4">{form.question}</p>
+            <div className="space-y-2 mb-4">
+              {['A','B','C','D'].map(opt => {
+                const c = counts[opt] || 0;
+                const total = counts.total || 1;
+                const pct = Math.round((c / total) * 100);
+                const isCorrect = form.correctOption === opt;
+                return (
+                  <div key={opt}
+                    className={`relative rounded-lg p-2.5 overflow-hidden
+                      ${isCorrect ? 'bg-green-900/40 border border-green-500/40' : 'bg-gray-800'}`}>
+                    <div className={`absolute left-0 top-0 bottom-0 transition-all
+                      ${isCorrect ? 'bg-green-600/30' : 'bg-violet-600/20'}`}
+                      style={{ width: `${pct}%` }} />
+                    <div className="relative flex items-center justify-between">
+                      <span className={`text-xs ${isCorrect ? 'text-green-300' : ''}`}>
+                        {opt}: {form[`option${opt}`]} {isCorrect ? '✓' : ''}
+                      </span>
+                      <span className="text-gray-400 text-xs font-mono">{c} ({pct}%)</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {form.correctOption && (
+              <div className="bg-gray-800 rounded-lg p-3 mb-3 text-center">
+                <span className="text-green-400 font-bold text-lg">
+                  {counts.total > 0 ? `${Math.round((counts.correct / counts.total) * 100)}%` : '0%'}
+                </span>
+                <span className="text-gray-400 text-sm"> correct</span>
+              </div>
+            )}
+            {insight && (
+              <div className="bg-blue-900/30 border border-blue-500/30 rounded-xl p-3 mb-4">
+                <p className="text-blue-300 text-xs">🤖 {insight}</p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => {
+                  setStage('idle'); setActivePulse(null); setInsight('');
+                  setCounts({ A:0, B:0, C:0, D:0, total:0, correct:0 });
+                  setForm({ question:'', optionA:'', optionB:'', optionC:'', optionD:'',
+                            correctOption:'', durationSecs:30 });
+                }}
+                className="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-sm">
+                New Pulse
+              </button>
+              <button onClick={onClose}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-xl text-sm">
+                Close
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// AI BRAIN PANEL
+// AI BRAIN PANEL — F01: real LiveSessionObservation data
 // ════════════════════════════════════════════════════════════════════════
-function AIBrainPanel({ sessionId }) {
-  const [obs, setObs] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [busy, setBusy] = useState(false);
+const SEVERITY_BG = {
+  high:   'border-red-300 bg-red-50',
+  medium: 'border-amber-300 bg-amber-50',
+  low:    'border-emerald-300 bg-emerald-50',
+};
+const TYPE_ICON = {
+  confusion: '🤔', pace: '⚡', engagement: '📊',
+  positive: '⭐', topic_complete: '✅', energy: '🔋',
+};
 
-  const refresh = async () => {
-    setBusy(true);
+function AIBrainPanel({ sessionId }) {
+  const [obs, setObs]       = useState([]);
+  const [lastId, setLastId] = useState(0);
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState('');
+
+  const fetchObs = useCallback(async () => {
     try {
-      const r = await api.post('/live/ai/observation', { session_id: sessionId, transcript: '' });
-      setObs(r.data);
-      if (r.data) setHistory(h => [{ time: new Date(), ...r.data }, ...h].slice(0, 20));
-    } catch (e) { /* swallow */ } finally { setBusy(false); }
-  };
+      const r = await api.get(`/live/sessions/${sessionId}/ai/observations`,
+        { params: { since_id: lastId } });
+      const list = r.data?.observations || [];
+      if (list.length > 0) {
+        setObs(prev => {
+          // dedup by id, keep newest first
+          const merged = [...list, ...prev];
+          const seen = new Set();
+          const out = [];
+          for (const o of merged) {
+            if (seen.has(o.id)) continue;
+            seen.add(o.id); out.push(o);
+          }
+          return out.slice(0, 20);
+        });
+        setLastId(prev => Math.max(prev, ...list.map(o => o.id)));
+      }
+    } catch (_) { /* silent */ }
+  }, [sessionId, lastId]);
 
   useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 30000);
+    fetchObs();
+    const t = setInterval(fetchObs, 30000);
     return () => clearInterval(t);
-  }, [sessionId]);
+  }, [fetchObs]);
 
-  const acceptIntervention = async () => {
+  const triggerNow = async () => {
+    setBusy(true); setErr('');
     try {
-      await api.post('/live/ai/teacher-response', { session_id: sessionId, action: 'accepted', observation: obs });
-    } catch (e) { /* ignore */ }
+      const r = await api.post(`/live/sessions/${sessionId}/ai/trigger-observation`);
+      if (r.data) {
+        setObs(prev => {
+          if (prev.find(o => o.id === r.data.id)) return prev;
+          return [r.data, ...prev].slice(0, 20);
+        });
+        setLastId(prev => Math.max(prev, r.data.id));
+      }
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Could not generate observation.');
+    } finally { setBusy(false); }
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-violet-100 shadow-sm h-full flex flex-col">
-      <div className={`bg-gradient-to-r ${VIOLET} px-4 py-3 rounded-t-2xl text-white`}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold">🤖 AI Session Brain</h3>
-          <button onClick={refresh} className="text-xs underline">{busy?'Thinking…':'Refresh'}</button>
-        </div>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">AI Observations</span>
+        <button onClick={triggerNow} disabled={busy}
+          className="text-xs text-violet-600 hover:text-violet-800 disabled:opacity-50 font-semibold">
+          {busy ? 'Thinking…' : '🔄 Refresh'}
+        </button>
       </div>
-      <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-        <div className="text-xs text-slate-500 uppercase font-semibold">📍 Topic Detection</div>
-        <div className="bg-slate-50 px-3 py-2 rounded-lg text-sm">{obs?.topic || obs?.current_topic || '—'}</div>
 
-        <div className="text-xs text-slate-500 uppercase font-semibold">💡 Latest Observation</div>
-        <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-sm">
-          {obs?.observation || obs?.message || 'AI is listening to the class…'}
+      {err && <p className="text-xs text-red-500">{err}</p>}
+
+      {obs.length === 0 && (
+        <div className="text-center py-6 text-slate-400 text-xs">
+          <p className="text-2xl mb-2">🧠</p>
+          <p>AI is listening to the class…</p>
+          <p className="mt-1">First observation arrives in a few minutes</p>
         </div>
+      )}
 
-        {obs?.suggestion && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-            <p className="text-sm">💡 {obs.suggestion}</p>
-            <div className="flex gap-2">
-              <button onClick={acceptIntervention} className="flex-1 py-1.5 bg-emerald-500 text-white text-xs font-semibold rounded">
-                ✅ Yes, do it
-              </button>
-              <button className="flex-1 py-1.5 bg-slate-200 text-slate-700 text-xs font-semibold rounded">
-                ❌ Dismiss
-              </button>
+      {obs.map(o => (
+        <div key={o.id}
+          className={`border rounded-xl p-3 ${SEVERITY_BG[o.severity] || SEVERITY_BG.low}`}>
+          <div className="flex items-start gap-2">
+            <span className="text-base flex-shrink-0">{TYPE_ICON[o.type || o.obs_type] || '🤖'}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-slate-800 text-xs leading-relaxed">{o.message}</p>
+              {o.suggestion && (
+                <p className="text-slate-600 text-xs mt-1.5 italic">💡 {o.suggestion}</p>
+              )}
+              {o.created_at && (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {new Date(o.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
+                </p>
+              )}
             </div>
           </div>
-        )}
-
-        <div className="text-xs text-slate-500 uppercase font-semibold pt-2">Observation History</div>
-        <ul className="text-xs space-y-1 max-h-48 overflow-y-auto">
-          {history.length === 0 && <li className="text-slate-400">No observations yet</li>}
-          {history.map((h,i)=>(
-            <li key={i} className="text-slate-700">
-              <span className="text-slate-400 mr-2">{h.time.toLocaleTimeString()}</span>
-              {h.observation || h.message}
-            </li>
-          ))}
-        </ul>
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1041,9 +1248,37 @@ function PeoplePanel({ participants, localName, speakingUsers }) {
 function PostSessionView({ session, onClose }) {
   const navigate = useNavigate();
   const [report, setReport] = useState(null);
+  // F05 — auto-capsule status: 'generating' | 'ready' | 'failed'
+  const [capsuleStatus, setCapsuleStatus] = useState('generating');
+  const [capsuleId,     setCapsuleId]     = useState(null);
+
   useEffect(() => {
     api.get(`/live/sessions/${session.id}/health-report`).then(r=>setReport(r.data)).catch(()=>{});
   }, [session.id]);
+
+  // Poll for auto-capsule readiness (every 3s, 2-min cap)
+  useEffect(() => {
+    if (!session?.id) return undefined;
+    let stopped = false;
+    const poll = setInterval(async () => {
+      if (stopped) return;
+      try {
+        const r = await api.get(`/live/sessions/${session.id}/capsule-status`);
+        if (r.data?.is_ready && r.data?.capsule_id) {
+          setCapsuleId(r.data.capsule_id);
+          setCapsuleStatus('ready');
+          clearInterval(poll);
+        }
+      } catch (_) { /* silent */ }
+    }, 3000);
+    const timeout = setTimeout(() => {
+      stopped = true;
+      clearInterval(poll);
+      setCapsuleStatus(prev => prev === 'ready' ? prev : 'failed');
+    }, 120000);
+    return () => { stopped = true; clearInterval(poll); clearTimeout(timeout); };
+  }, [session?.id]);
+
   const score = report?.health_score || 0;
 
   return (
@@ -1073,6 +1308,38 @@ function PostSessionView({ session, onClose }) {
           <div><span className="text-slate-500">Pace:</span> <b>{report?.pace_score||0}%</b></div>
         </div>
       </div>
+
+      {/* F05 — Auto-capsule status */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+        {capsuleStatus === 'generating' && (
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+            <div>
+              <p className="text-slate-800 text-sm font-medium">Generating session capsule…</p>
+              <p className="text-slate-500 text-xs">AI is summarising your class</p>
+            </div>
+          </div>
+        )}
+        {capsuleStatus === 'ready' && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📦</span>
+              <div>
+                <p className="text-slate-800 text-sm font-medium">Capsule created!</p>
+                <p className="text-slate-500 text-xs">Students can access it in ClassPulse</p>
+              </div>
+            </div>
+            <button onClick={() => navigate(capsuleId ? `/teacher/classpulse?capsule=${capsuleId}` : '/teacher/classpulse')}
+              className="bg-violet-600 hover:bg-violet-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">
+              View →
+            </button>
+          </div>
+        )}
+        {capsuleStatus === 'failed' && (
+          <p className="text-amber-700 text-sm">⚠️ Capsule generation timed out. You can create one manually in ClassPulse.</p>
+        )}
+      </div>
+
       <button onClick={()=>navigate(`/teacher/live/${session.id}/report`)}
         className={`w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET}`}>
         📊 View Full Health Report

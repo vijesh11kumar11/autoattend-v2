@@ -1329,6 +1329,79 @@ class PulseCheck(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Live Pulse Check (F04) — lightweight teacher-sent MCQ poll
+# Independent of the older `pulse_checks` table; supports guests via
+# participant_id and is broadcast over the live WebSocket.
+# ═══════════════════════════════════════════════════════════════════════
+
+class LivePulseCheck(Base):
+    __tablename__ = "live_pulse_checks"
+    __table_args__ = (
+        Index("ix_live_pulse_checks_session_id", "live_session_id"),
+    )
+
+    id              = Column(Integer, primary_key=True, index=True)
+    live_session_id = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    question        = Column(String(500), nullable=False)
+    option_a        = Column(String(200), nullable=False)
+    option_b        = Column(String(200), nullable=False)
+    option_c        = Column(String(200), nullable=False)
+    option_d        = Column(String(200), nullable=False)
+    correct_option  = Column(String(1), nullable=True)        # "A"|"B"|"C"|"D" or NULL
+    duration_secs   = Column(Integer, default=30, nullable=False)
+    sent_at         = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    closed_at       = Column(DateTime(timezone=True), nullable=True)
+    is_active       = Column(Boolean, default=True, nullable=False)
+    ai_insight      = Column(Text, nullable=True)
+    # cached aggregates
+    total_responses = Column(Integer, default=0, nullable=False)
+    correct_count   = Column(Integer, default=0, nullable=False)
+    option_a_count  = Column(Integer, default=0, nullable=False)
+    option_b_count  = Column(Integer, default=0, nullable=False)
+    option_c_count  = Column(Integer, default=0, nullable=False)
+    option_d_count  = Column(Integer, default=0, nullable=False)
+
+
+class LivePulseResponse(Base):
+    __tablename__ = "live_pulse_responses"
+    __table_args__ = (
+        UniqueConstraint("pulse_id", "participant_id", name="uq_live_pulse_participant"),
+        Index("ix_live_pulse_responses_pulse_id", "pulse_id"),
+    )
+
+    id              = Column(Integer, primary_key=True, index=True)
+    pulse_id        = Column(Integer, ForeignKey("live_pulse_checks.id", ondelete="CASCADE"), nullable=False)
+    live_session_id = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    participant_id  = Column(Integer, ForeignKey("live_session_participants.id", ondelete="SET NULL"), nullable=True)
+    student_id      = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    guest_name      = Column(String(100), nullable=True)
+    chosen_option   = Column(String(1), nullable=False)        # "A"|"B"|"C"|"D"
+    is_correct      = Column(Boolean, nullable=True)
+    answered_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Live Session Observation (F01) — AI Brain panel observations
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveSessionObservation(Base):
+    __tablename__ = "live_session_observations"
+    __table_args__ = (
+        Index("ix_live_session_observations_session_id", "live_session_id"),
+        Index("ix_live_session_observations_created_at", "created_at"),
+    )
+
+    id              = Column(Integer, primary_key=True, index=True)
+    live_session_id = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    obs_type        = Column(String(50), nullable=True)   # confusion|pace|engagement|positive|...
+    message         = Column(Text, nullable=True)
+    suggestion      = Column(Text, nullable=True)
+    severity        = Column(String(20), nullable=True)   # low|medium|high
+    created_at      = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    is_read         = Column(Boolean, default=False, nullable=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ClassPulse Live — student_knowledge_graphs
 # ═══════════════════════════════════════════════════════════════════════
 

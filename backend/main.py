@@ -154,6 +154,14 @@ async def live_session_ws(
             "is_teacher": is_teacher,
         })
 
+        # F01 — start AI observation scheduler when the teacher connects
+        if is_teacher:
+            try:
+                from routes.live_session import _ensure_observation_scheduler
+                _ensure_observation_scheduler(session_id)
+            except Exception as exc:
+                logger.warning("observation scheduler start failed for %s: %s", session_id, exc)
+
         while True:
             data = await websocket.receive_json()
             event_type = (data or {}).get("type")
