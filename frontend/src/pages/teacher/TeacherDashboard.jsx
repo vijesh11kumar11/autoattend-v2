@@ -18,6 +18,7 @@ import ClassPulsePage from './ClassPulsePage';
 import TeacherLiveDashboard from '../live/TeacherLiveDashboard';
 import TeacherPreClassBrief from '../live/TeacherPreClassBrief';
 import SessionHealthReport from '../live/SessionHealthReport';
+import StudentKnowledgeGraphPage from '../live/StudentKnowledgeGraphPage';
 
 export default function TeacherDashboard() {
   return (
@@ -38,8 +39,10 @@ export default function TeacherDashboard() {
         <Route path="suggestions"        element={<SuggestionBoxPage />} />
         <Route path="classpulse"         element={<ClassPulsePage />} />
         <Route path="live"               element={<TeacherLiveDashboard />} />
+        <Route path="live/:sessionId"    element={<TeacherLiveDashboard />} />
         <Route path="live/:sessionId/brief"  element={<TeacherPreClassBrief />} />
         <Route path="live/:sessionId/report" element={<SessionHealthReport />} />
+        <Route path="student/:studentId/knowledge" element={<StudentKnowledgeGraphPage />} />
         <Route path="analytics/:subjectId" element={<SubjectAnalyticsPage />} />
         <Route path="*"              element={<Navigate to="dashboard" replace />} />
       </Routes>

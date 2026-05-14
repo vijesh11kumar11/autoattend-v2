@@ -172,7 +172,7 @@ async def live_session_ws(
                 if text:
                     db2 = SessionLocal()
                     try:
-                        obs = generate_ai_observation(db2, sess.id, text)
+                        obs = await generate_ai_observation(db2, sess.id, text)
                     except Exception as exc:
                         logger.warning("AI observation failed: %s", exc)
                         obs = None
