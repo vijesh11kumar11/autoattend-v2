@@ -2437,7 +2437,7 @@ def student_report(
 # ═══════════════════════════════════════════════════════════════════════
 
 @router.post("/sessions/{session_id}/breakout/create")
-def breakout_create(
+async def breakout_create(
     session_id: int,
     body: BreakoutCreateReq,
     current_user: dict = Depends(teacher_or_above),
@@ -2449,10 +2449,25 @@ def breakout_create(
     if not body.rooms:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "At least one room required.")
 
+    # Close any active rooms first (only one breakout cohort at a time)
+    db.query(LiveSessionBreakoutRoom).filter(
+        LiveSessionBreakoutRoom.live_session_id == session_id,
+        LiveSessionBreakoutRoom.ended_at.is_(None),
+    ).update({"ended_at": datetime.now(timezone.utc)})
+
     created = []
     for idx, r in enumerate(body.rooms, start=1):
         name = str(r.get("name", f"Room {idx}"))[:100]
+        # Accept either participant_ids (LiveSessionParticipant.id) or student_ids (User.id)
         pids = r.get("participant_ids") or []
+        if not pids and r.get("student_ids"):
+            student_ids = [int(x) for x in r.get("student_ids") if str(x).isdigit()]
+            if student_ids:
+                rows = db.query(LiveSessionParticipant.id).filter(
+                    LiveSessionParticipant.live_session_id == session_id,
+                    LiveSessionParticipant.user_id.in_(student_ids),
+                ).all()
+                pids = [int(row[0]) for row in rows]
         if not isinstance(pids, list):
             continue
         room = LiveSessionBreakoutRoom(
@@ -2461,6 +2476,10 @@ def breakout_create(
             room_number=idx,
             participant_ids=[int(x) for x in pids if isinstance(x, (int, str)) and str(x).isdigit()],
         )
+        # Persist topic in ai_monitoring_log so we don't need a schema change.
+        topic = r.get("topic")
+        if topic:
+            room.ai_monitoring_log = {"topic": str(topic)[:300]}
         db.add(room)
         db.flush()
         created.append(room)
@@ -2469,18 +2488,28 @@ def breakout_create(
     _log_event(db, session_id, LiveEventType.breakout_started, LiveEventTrigger.teacher,
                metadata_json={"rooms": [{"id": r.id, "name": r.room_name} for r in created]})
 
-    return {
-        "rooms": [
-            {
-                "id": r.id,
-                "name": r.room_name,
-                "room_number": r.room_number,
-                "participant_ids": r.participant_ids,
-                "room_join_token": str(uuid4()),
-            }
-            for r in created
-        ]
-    }
+    rooms_payload = [
+        {
+            "id": r.id,
+            "name": r.room_name,
+            "room_number": r.room_number,
+            "participant_ids": r.participant_ids,
+            "topic": (r.ai_monitoring_log or {}).get("topic"),
+            "room_join_token": str(uuid4()),
+        }
+        for r in created
+    ]
+
+    # F10 — broadcast assignments so students can see they were placed in a room.
+    try:
+        await live_ws_manager.broadcast_to_session(session_id, {
+            "type": "breakout_started",
+            "rooms": rooms_payload,
+        })
+    except Exception:
+        pass
+
+    return {"rooms": rooms_payload}
 
 
 @router.post("/sessions/{session_id}/breakout/{room_id}/ai-status")
@@ -2515,7 +2544,7 @@ def breakout_ai_status(
 
 
 @router.post("/sessions/{session_id}/breakout/end-all")
-def breakout_end_all(
+async def breakout_end_all(
     session_id: int,
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
@@ -2542,7 +2571,126 @@ def breakout_end_all(
     _log_event(db, session_id, LiveEventType.breakout_ended, LiveEventTrigger.teacher,
                metadata_json={"rooms_closed": len(rooms)})
 
+    try:
+        await live_ws_manager.broadcast_to_session(session_id, {"type": "breakout_ended"})
+    except Exception:
+        pass
+
     return {"rooms_closed": len(rooms), "peer_experts_identified": peer_experts}
+
+
+# Friendlier alias used by the F10 frontend
+@router.post("/sessions/{session_id}/breakout/end")
+async def breakout_end_alias(
+    session_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    return await breakout_end_all(session_id=session_id, current_user=current_user, db=db)
+
+
+@router.get("/sessions/{session_id}/breakout/status")
+def breakout_status_aggregate(
+    session_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """F10 — aggregated AI status of every active breakout room."""
+    _require_session_owner(session_id, current_user, db)
+    rooms = (
+        db.query(LiveSessionBreakoutRoom)
+        .filter(
+            LiveSessionBreakoutRoom.live_session_id == session_id,
+            LiveSessionBreakoutRoom.ended_at.is_(None),
+        )
+        .all()
+    )
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=4)
+    out: list[dict] = []
+
+    for r in rooms:
+        pids: list[int] = [int(x) for x in (r.participant_ids or []) if str(x).isdigit()]
+        if not pids:
+            out.append({
+                "room_id":        r.id,
+                "room_name":      r.room_name,
+                "topic":          (r.ai_monitoring_log or {}).get("topic"),
+                "students":       [],
+                "total":          0,
+                "active":         0,
+                "engagement_pct": 0,
+                "ai_label":       "empty",
+                "peer_badges":    1 if r.peer_expert_detected_user_id else 0,
+            })
+            continue
+
+        # Resolve participant -> user names
+        parts = (
+            db.query(LiveSessionParticipant)
+            .filter(LiveSessionParticipant.id.in_(pids))
+            .all()
+        )
+        user_ids = [p.user_id for p in parts if p.user_id]
+        users = db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+        umap = {u.id: u.name for u in users}
+        names: list[str] = []
+        for p in parts:
+            if p.user_id and p.user_id in umap:
+                names.append(umap[p.user_id])
+            elif getattr(p, "guest_name", None):
+                names.append(p.guest_name)
+
+        # Engagement — active in the last 4 minutes
+        active_count = (
+            db.query(LiveStudentEngagement)
+            .filter(
+                LiveStudentEngagement.session_id == session_id,
+                or_(
+                    LiveStudentEngagement.participant_id.in_(pids),
+                    LiveStudentEngagement.student_id.in_(user_ids) if user_ids else False,
+                ),
+                LiveStudentEngagement.last_active_at.isnot(None),
+                LiveStudentEngagement.last_active_at >= cutoff,
+            )
+            .count()
+        )
+        total = len(parts)
+        eng_pct = round((active_count / total) * 100) if total else 0
+
+        if eng_pct >= 80:
+            label = "productive"
+        elif eng_pct >= 50:
+            label = "moderate"
+        elif eng_pct < 30:
+            label = "stuck"
+        else:
+            label = "moderate"
+
+        # Persist last AI verdict on the room itself
+        log = dict(r.ai_monitoring_log or {})
+        log["ai_label"]            = label
+        log["engagement_pct"]      = eng_pct
+        log["productivity_score"]  = eng_pct
+        log["is_stuck"]            = label == "stuck"
+        r.ai_monitoring_log        = log
+        r.is_stuck                 = label == "stuck"
+        r.productivity_score       = eng_pct
+
+        out.append({
+            "room_id":        r.id,
+            "room_name":      r.room_name,
+            "topic":          log.get("topic"),
+            "students":       names,
+            "total":          total,
+            "active":         int(active_count),
+            "engagement_pct": eng_pct,
+            "ai_label":       label,
+            "peer_badges":    1 if r.peer_expert_detected_user_id else 0,
+        })
+
+    db.commit()
+    return {"session_id": session_id, "rooms": out}
 
 
 # ═══════════════════════════════════════════════════════════════════════

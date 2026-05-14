@@ -959,6 +959,9 @@ function LivePanel({ session, onEnd }) {
   const [secs,       setSecs]       = useState(0);
   const [showWB,     setShowWB]     = useState(false);
   const [showPulse,  setShowPulse]  = useState(false);
+  const [showBreakout,    setShowBreakout]    = useState(false);  // F10 modal
+  const [breakoutActive,  setBreakoutActive]  = useState(false);
+  const [breakoutRooms,   setBreakoutRooms]   = useState([]);     // status snapshots
   // ── Live-room UI state ───────────────────────────────────────────
   const [webrtc,        setWebrtc]        = useState(null); // {agora:{app_id,channel,token,uid}}
   const [webrtcError,   setWebrtcError]   = useState('');
@@ -1416,7 +1419,7 @@ function LivePanel({ session, onEnd }) {
 
         <CtrlBtn onClick={() => setShowPulse(true)} icon="⚡" label="Pulse" accent="violet" />
         <CtrlBtn onClick={() => setShowWB(true)}    icon="🖼️" label="Whiteboard" accent="blue" />
-        <CtrlBtn onClick={() => alert('Breakout rooms — coming in next prompt')} icon="🤝" label="Breakout" accent="amber" />
+        <CtrlBtn onClick={() => setShowBreakout(true)} icon="🤝" label={breakoutActive ? 'Breakouts' : 'Breakout'} accent={breakoutActive ? 'success' : 'amber'} />
         <CtrlBtn
           onClick={async () => {
             try {
@@ -1465,6 +1468,23 @@ function LivePanel({ session, onEnd }) {
 
       <WhiteboardModal open={showWB}    sessionId={session.id} onClose={() => setShowWB(false)} />
       <PulseModal      open={showPulse} sessionId={session.id} onClose={() => setShowPulse(false)} />
+      <BreakoutModal
+        open={showBreakout}
+        sessionId={session.id}
+        details={details}
+        breakoutActive={breakoutActive}
+        onActivated={() => setBreakoutActive(true)}
+        onEnded={() => { setBreakoutActive(false); setBreakoutRooms([]); }}
+        onClose={() => setShowBreakout(false)}
+      />
+      {breakoutActive && (
+        <BreakoutStatusPanel
+          sessionId={session.id}
+          rooms={breakoutRooms}
+          setRooms={setBreakoutRooms}
+          onEnded={() => { setBreakoutActive(false); setBreakoutRooms([]); }}
+        />
+      )}
     </div>
   );
 }
@@ -1615,6 +1635,171 @@ function PostSessionView({ session, onClose }) {
         className={`w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET}`}>
         📊 View Full Health Report
       </button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// F10 — BREAKOUT MODAL + STATUS PANEL
+// ════════════════════════════════════════════════════════════════════════
+function BreakoutModal({ open, sessionId, details, breakoutActive, onActivated, onEnded, onClose }) {
+  const [roomCount, setRoomCount] = useState(3);
+  const [topic,     setTopic]     = useState("Discuss today's concept");
+  const [busy,      setBusy]      = useState(false);
+  const [err,       setErr]       = useState('');
+
+  // Build student participant list from the session details payload
+  const students = useMemo(() => {
+    const list = details?.participants || details?.session?.participants || [];
+    return list
+      .filter(p => (p.participant_type || p.type || 'student') === 'student')
+      .map(p => ({
+        id:       p.id,
+        name:     p.name || p.guest_name || `Student ${p.id}`,
+        user_id:  p.user_id || null,
+      }));
+  }, [details]);
+
+  // Round-robin assign students to N rooms
+  const buildRooms = () => {
+    const cnt = Math.max(1, Math.min(10, Number(roomCount) || 3));
+    const buckets = Array.from({ length: cnt }, (_, i) => ({
+      name:  `Group ${String.fromCharCode(65 + i)}`,
+      topic: topic.trim() || null,
+      participant_ids: [],
+    }));
+    students.forEach((s, idx) => {
+      buckets[idx % cnt].participant_ids.push(s.id);
+    });
+    return buckets.filter(b => b.participant_ids.length > 0);
+  };
+
+  const start = async () => {
+    setBusy(true); setErr('');
+    try {
+      const rooms = buildRooms();
+      if (rooms.length === 0) throw new Error('No students to place in rooms.');
+      await api.post(`/live/sessions/${sessionId}/breakout/create`, { rooms });
+      onActivated?.();
+      onClose?.();
+    } catch (e) {
+      setErr(e.response?.data?.detail || e.message || 'Could not start breakouts.');
+    } finally { setBusy(false); }
+  };
+
+  const endNow = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.post(`/live/sessions/${sessionId}/breakout/end`);
+      onEnded?.();
+      onClose?.();
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Could not end breakouts.');
+    } finally { setBusy(false); }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg p-6 text-white">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold">🤝 Breakout Rooms</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200">✕</button>
+        </div>
+
+        {breakoutActive ? (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-300">Breakouts are currently active. End them to bring everyone back.</p>
+            <button onClick={endNow} disabled={busy}
+              className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-bold disabled:opacity-50">
+              {busy ? 'Ending…' : 'End all breakouts'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-400">{students.length} student(s) will be split round-robin.</p>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Number of rooms</label>
+              <input type="number" min={1} max={10} value={roomCount}
+                onChange={e => setRoomCount(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Discussion topic</label>
+              <input type="text" value={topic}
+                onChange={e => setTopic(e.target.value)}
+                placeholder="e.g. Trees vs. Graphs"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm" />
+            </div>
+            <button onClick={start} disabled={busy || students.length === 0}
+              className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-gray-900 rounded-lg text-sm font-bold disabled:opacity-50">
+              {busy ? 'Creating…' : `Start ${roomCount} breakout room${roomCount > 1 ? 's' : ''}`}
+            </button>
+          </div>
+        )}
+        {err && <p className="text-xs text-red-400 mt-3">{err}</p>}
+      </div>
+    </div>
+  );
+}
+
+function BreakoutStatusPanel({ sessionId, rooms, setRooms, onEnded }) {
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await api.get(`/live/sessions/${sessionId}/breakout/status`);
+        if (!cancelled) setRooms(r.data?.rooms || []);
+      } catch (_) { /* silent */ }
+    };
+    tick();
+    const t = setInterval(tick, 15000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [sessionId, setRooms]);
+
+  const endAll = async () => {
+    try {
+      await api.post(`/live/sessions/${sessionId}/breakout/end`);
+      onEnded?.();
+    } catch (_) { /* silent */ }
+  };
+
+  if (!rooms || rooms.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-24 right-4 z-30 w-80 bg-gray-900 border border-gray-700 rounded-2xl p-4 shadow-2xl">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-white font-bold text-sm">🤝 Breakout Rooms</p>
+        <button onClick={endAll}
+          className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">
+          End
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto">
+        {rooms.map(room => {
+          const labelColor = room.ai_label === 'productive' ? 'text-green-400'
+                           : room.ai_label === 'stuck'      ? 'text-red-400'
+                           : 'text-yellow-400';
+          return (
+            <div key={room.room_id}
+              className={`bg-gray-800 rounded-xl p-3 border ${
+                room.ai_label === 'stuck' ? 'border-red-500/40' : 'border-gray-700'
+              }`}>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-white text-xs font-bold truncate">{room.room_name}</p>
+                <span className={`text-[10px] font-bold ${labelColor}`}>{room.ai_label}</span>
+              </div>
+              <p className="text-gray-400 text-[11px]">{room.active}/{room.total} active · {room.engagement_pct}%</p>
+              {room.ai_label === 'stuck' && (
+                <p className="text-red-400 text-[11px] mt-1">⚠️ May need help</p>
+              )}
+              {room.peer_badges > 0 && (
+                <p className="text-green-400 text-[11px] mt-1">🏅 {room.peer_badges} peer expert</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -27,6 +27,7 @@ export default function StudentLiveSession() {
 
   const [info, setInfo] = useState(null);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [breakoutAssignment, setBreakoutAssignment] = useState(null);  // F10
   const [tab, setTab] = useState('wall');
   const [doubts, setDoubts] = useState([]);
   const [doubtText, setDoubtText] = useState('');
@@ -193,6 +194,23 @@ export default function StudentLiveSession() {
           setMicroSummary(msg); break;
         case 'whiteboard_shared':
           setSharedWhiteboard(msg.diagram || msg.diagram_code || msg.code || null); break;
+
+        // F10 — breakout rooms
+        case 'breakout_started': {
+          const myPid = info?.participant_id;
+          const myUid = user?.id;
+          let mine = null;
+          for (const room of (msg.rooms || [])) {
+            const pids = room.participant_ids || [];
+            if (myPid && pids.includes(myPid)) { mine = room; break; }
+            if (myUid && pids.includes(myUid)) { mine = room; break; }
+          }
+          setBreakoutAssignment(mine || { name: 'Main room', topic: 'Stay tuned' });
+          break;
+        }
+        case 'breakout_ended':
+          setBreakoutAssignment(null);
+          break;
         case 'session_ended': {
           try { leaveChannel(); } catch (_) {}
           setSessionEnded(true);
@@ -355,6 +373,19 @@ export default function StudentLiveSession() {
           <button onClick={leave} className="px-3 py-1 bg-red-600 rounded font-semibold">🚪 Leave</button>
         </div>
       </div>
+
+      {/* F10 — breakout assignment banner */}
+      {breakoutAssignment && (
+        <div className="mx-4 mt-3 bg-amber-900/30 border border-amber-500/40 rounded-xl p-3 flex items-center justify-between">
+          <div>
+            <p className="text-amber-200 text-sm font-bold">🤝 You're in {breakoutAssignment.name}</p>
+            {breakoutAssignment.topic && (
+              <p className="text-amber-100/70 text-xs mt-0.5">Topic: {breakoutAssignment.topic}</p>
+            )}
+          </div>
+          <span className="text-[11px] text-amber-200/70">Stay engaged — teacher is monitoring.</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 p-4">
         {/* MAIN VIDEO AREA */}
