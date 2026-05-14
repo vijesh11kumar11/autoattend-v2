@@ -328,11 +328,15 @@ function JoinLinkCard({ session, onStart }) {
 // AI WHITEBOARD MODAL
 // ════════════════════════════════════════════════════════════════════════
 function WhiteboardModal({ open, sessionId, onClose }) {
+  const [tab, setTab] = useState('text');               // 'text' | 'code'
   const [prompt, setPrompt]   = useState('');
   const [diagram, setDiagram] = useState('');     // raw mermaid / html
   const [diagramType, setDiagramType] = useState('mermaid');
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
+  // F14 — Code → Diagram
+  const [code, setCode] = useState('');
+  const [lang, setLang] = useState('python');
 
   if (!open) return null;
   const generate = async () => {
@@ -354,6 +358,20 @@ function WhiteboardModal({ open, sessionId, onClose }) {
     } finally { setBusy(false); }
   };
 
+  const generateFromCode = async () => {
+    if (!code.trim() || !sessionId) return;
+    setBusy(true); setErr(''); setDiagram('');
+    try {
+      const r = await api.post(`/live/sessions/${sessionId}/ai/diagram-from-code`, {
+        code, language: lang, diagram_type: 'auto',
+      });
+      setDiagram(r.data?.diagram || '');
+      setDiagramType('mermaid');
+    } catch (e) {
+      setErr(e.response?.data?.detail || e.message || 'Generation failed.');
+    } finally { setBusy(false); }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -362,13 +380,49 @@ function WhiteboardModal({ open, sessionId, onClose }) {
           <button onClick={onClose} className="text-2xl">×</button>
         </div>
         <div className="p-6 space-y-3">
-          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={3}
-            placeholder="e.g. binary tree with 7 nodes, in-order traversal arrows…"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
-          <button onClick={generate} disabled={busy}
-            className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
-            {busy ? 'Generating…' : '✨ Generate'}
-          </button>
+          {/* Tab switcher */}
+          <div className="flex gap-2">
+            {[['text','📝 Text Prompt'], ['code','💻 Code → Diagram']].map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold
+                  ${tab === k ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'text' && (
+            <>
+              <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={3}
+                placeholder="e.g. binary tree with 7 nodes, in-order traversal arrows…"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+              <button onClick={generate} disabled={busy}
+                className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
+                {busy ? 'Generating…' : '✨ Generate'}
+              </button>
+            </>
+          )}
+
+          {tab === 'code' && (
+            <>
+              <div className="flex gap-2 flex-wrap">
+                {['python','javascript','java','c++'].map(l => (
+                  <button key={l} onClick={() => setLang(l)}
+                    className={`px-2 py-1 rounded text-xs font-mono
+                      ${lang === l ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <textarea value={code} onChange={e=>setCode(e.target.value)} rows={8}
+                placeholder={`# Paste ${lang} code → AI will generate a Mermaid diagram`}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs bg-slate-950 text-emerald-300" />
+              <button onClick={generateFromCode} disabled={busy || !code.trim()}
+                className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
+                {busy ? 'Generating…' : '🎯 Generate Diagram from Code'}
+              </button>
+            </>
+          )}
 
           {err && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -1181,6 +1235,17 @@ function LivePanel({ session, onEnd }) {
         <CtrlBtn onClick={() => setShowPulse(true)} icon="⚡" label="Pulse" accent="violet" />
         <CtrlBtn onClick={() => setShowWB(true)}    icon="🖼️" label="Whiteboard" accent="blue" />
         <CtrlBtn onClick={() => alert('Breakout rooms — coming in next prompt')} icon="🤝" label="Breakout" accent="amber" />
+        <CtrlBtn
+          onClick={async () => {
+            try {
+              const r = await api.post(`/live/sessions/${session.id}/generate-warmups`);
+              alert(`✅ Sent ${r.data?.warmups_created || 0} warmup(s) to ${r.data?.total_students || 0} student(s).`);
+            } catch (e) {
+              alert(e.response?.data?.detail || 'Could not generate warmups.');
+            }
+          }}
+          icon="📨" label="Warmups" accent="emerald"
+        />
 
         <div className="w-px h-8 bg-gray-700 mx-1" />
 

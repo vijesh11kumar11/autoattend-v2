@@ -41,6 +41,12 @@ export default function StudentLiveSession() {
   const [livePulseTimer, setLivePulseTimer]     = useState(0);
   const livePulseTimerRef = useRef(null);
   const [livenessChallenge, setLivenessChallenge] = useState(null);
+  // F13 — Pre-class personalised warmup
+  const [warmup, setWarmup]         = useState(null);
+  const [showWarmup, setShowWarmup] = useState(true);
+  // F11 — Low-bandwidth live text summary
+  const [liveSummary, setLiveSummary]         = useState('');
+  const [summaryUpdating, setSummaryUpdating] = useState(false);
   const [microSummary, setMicroSummary] = useState(null);
   const [bandwidth, setBandwidth] = useState('good');     // good | poor
   const [secs, setSecs] = useState(0);
@@ -176,7 +182,7 @@ export default function StudentLiveSession() {
         case 'micro_summary':
           setMicroSummary(msg); break;
         case 'whiteboard_shared':
-          setSharedWhiteboard(msg.diagram_code || msg.code || null); break;
+          setSharedWhiteboard(msg.diagram || msg.diagram_code || msg.code || null); break;
         case 'session_ended': {
           try { leaveChannel(); } catch (_) {}
           setSessionEnded(true);
@@ -218,6 +224,30 @@ export default function StudentLiveSession() {
     } catch {}
   }, [sessionId]);
   useEffect(() => { refreshDoubts(); const t = setInterval(refreshDoubts, 15000); return () => clearInterval(t); }, [refreshDoubts]);
+
+  // ─── F13: fetch personalised warmup once on entry ───────────────────
+  useEffect(() => {
+    if (!sessionId) return;
+    api.get(`/live/sessions/${sessionId}/my-warmup`)
+      .then(r => { if (r.data?.warmup) setWarmup(r.data.warmup); })
+      .catch(() => {});
+  }, [sessionId]);
+
+  // ─── F11: poll live text summary while in low-bandwidth mode ───────
+  useEffect(() => {
+    if (!sessionId || bandwidth !== 'poor') return undefined;
+    const fetchSummary = async () => {
+      setSummaryUpdating(true);
+      try {
+        const r = await api.get(`/live/sessions/${sessionId}/live-text-summary`);
+        if (r.data?.summary) setLiveSummary(r.data.summary);
+      } catch (_) {}
+      finally { setSummaryUpdating(false); }
+    };
+    fetchSummary();
+    const t = setInterval(fetchSummary, 120000);
+    return () => clearInterval(t);
+  }, [sessionId, bandwidth]);
 
   // ─── Actions ────────────────────────────────────────────────────────
   const sendDoubt = async () => {
@@ -321,21 +351,27 @@ export default function StudentLiveSession() {
         <div className="lg:col-span-3 bg-slate-800 rounded-2xl overflow-hidden">
           {bandwidth === 'poor' ? (
             <div className="p-6 space-y-3">
-              <div className="bg-amber-900/30 border border-amber-500/40 rounded-xl p-4 flex items-center gap-3">
-                <span className="text-2xl">📶</span>
-                <div>
-                  <p className="font-bold text-amber-200">Low bandwidth detected</p>
-                  <p className="text-xs text-amber-300/80">Switched to text mode</p>
+              <div className="bg-amber-900/30 border border-amber-500/40 rounded-xl p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">📶</span>
+                  <div>
+                    <p className="font-bold text-amber-200">Low bandwidth detected</p>
+                    <p className="text-xs text-amber-300/80">Switched to text mode</p>
+                  </div>
                 </div>
+                {summaryUpdating && (
+                  <span className="text-amber-300/70 text-xs animate-pulse">Updating…</span>
+                )}
               </div>
               <div className="bg-slate-900 rounded-xl p-4">
                 <p className="text-xs text-slate-400 uppercase mb-2">📝 Live AI Summary</p>
                 <p className="text-sm text-slate-200 leading-relaxed">
-                  {microSummary?.text || 'Waiting for the AI summary…'}
+                  {liveSummary || microSummary?.text || 'Connecting to class summary…'}
                 </p>
                 {microSummary?.key_term && (
                   <p className="text-xs text-violet-300 mt-2">Key term: {microSummary.key_term}</p>
                 )}
+                <p className="text-xs text-slate-500 mt-3">Updates every 2 minutes · Doubt wall still works</p>
               </div>
             </div>
           ) : (
@@ -575,6 +611,35 @@ export default function StudentLiveSession() {
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* F13 — Pre-class personalised warmup overlay (shown before joining) */}
+      {warmup && showWarmup && (
+        <div className="fixed inset-0 bg-black/80 z-[55] flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-violet-500/40 rounded-2xl p-6 max-w-sm w-full">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">{warmup.type === 'refresher' ? '📚' : '🚀'}</span>
+              <span className="text-violet-400 font-bold text-sm uppercase tracking-wide">
+                {warmup.type === 'refresher' ? 'Quick Refresher' : 'Preview'}
+              </span>
+            </div>
+            {warmup.focus_topics?.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-3">
+                {warmup.focus_topics.map(t => (
+                  <span key={t} className="text-xs bg-violet-900/50 text-violet-300 px-2 py-0.5 rounded-full">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-gray-200 text-sm leading-relaxed mb-5">{warmup.content}</p>
+            <button
+              onClick={() => setShowWarmup(false)}
+              className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 rounded-xl text-sm">
+              ✅ Got it — Join Class
+            </button>
           </div>
         </div>
       )}

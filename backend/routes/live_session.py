@@ -22,7 +22,7 @@ import logging
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional
 from uuid import uuid4
 
 from fastapi import (
@@ -70,6 +70,8 @@ from database import (
     SessionStatus,
     SessionLocal,
     StudentKnowledgeGraph,
+    StudentPreclassWarmup,
+    StudentTopicMastery,
     Subject,
     User,
     UserRole,
@@ -87,13 +89,17 @@ from utils.agora_token import generate_agora_token
 from utils.session_manager import manager as live_ws_manager
 from utils.live_session_ai import (
     _ai_json,
+    _call_ai_text,
     generate_ai_observation,
     generate_auto_capsule_from_session,
+    generate_diagram_from_code,
     generate_intervention_suggestion,
     generate_pre_class_brief,
     generate_pulse_check_question,
     generate_session_health_report,
+    generate_session_narrative,
     update_student_knowledge_graph,
+    update_student_topic_mastery,
 )
 from utils.notification_utils import send_push_notification, send_push_to_many
 
@@ -451,6 +457,13 @@ async def _generate_session_capsule_async(session_id: int) -> None:
             "Auto-capsule %s generated for live session %s (%d students unlocked)",
             cap.id, session_id, len(attending_ids),
         )
+
+        # F06 — refresh per-student topic mastery now that capsule (and its
+        # topics_covered list) is in place.
+        try:
+            await update_student_topic_mastery(session_id, db)
+        except Exception as exc:
+            logger.warning("topic-mastery update after capsule failed: %s", exc)
 
         # Notify teacher
         try:
@@ -2068,21 +2081,203 @@ async def pre_class_brief(
 
 
 @router.get("/sessions/{session_id}/health-report")
-def health_report(
+async def health_report(
     session_id: int,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    F08 — Full session health report. Computed live from
+    pulses + observations + doubts + participants. Always returns the
+    rich shape (overall_score, metrics{}, pulse_results, ai_narrative)
+    plus backwards-compatible `health_score` / `attendance_percentage`
+    keys for the existing PostSessionView card.
+    """
     sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
     if not sess:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found.")
     if sess.teacher_id != current_user["id"] and current_user["role"] not in ("hod", "principal"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed.")
-    if sess.status != LiveSessionStatus.ended:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Health report available after the session ends.")
-    if not sess.health_report_json:
-        return {"status": "generating", "estimated_seconds": 30}
-    return {"status": "ready", "report": sess.health_report_json, "health_score": sess.session_health_score}
+
+    subj = db.query(Subject).filter(Subject.id == sess.subject_id).first() if sess.subject_id else None
+    subject_name = subj.name if subj else "Unknown"
+
+    # ─ 1. ATTENDANCE ────────────────────────────────────────────────
+    total_participants = (
+        db.query(LiveSessionParticipant)
+        .filter(LiveSessionParticipant.live_session_id == session_id)
+        .count()
+    )
+
+    duration_secs = 0
+    if sess.started_at and sess.ended_at:
+        duration_secs = max(1, int((sess.ended_at - sess.started_at).total_seconds()))
+
+    min_attend = duration_secs * 0.7 if duration_secs > 0 else 0
+    if duration_secs > 0:
+        attended = (
+            db.query(LiveSessionParticipant)
+            .filter(
+                LiveSessionParticipant.live_session_id == session_id,
+                LiveSessionParticipant.total_duration_seconds >= min_attend,
+            )
+            .count()
+        )
+    else:
+        attended = total_participants
+
+    attendance_pct = round(attended / total_participants * 100, 1) if total_participants else 0.0
+
+    # ─ 2. ENGAGEMENT (≥50% time present) ────────────────────────────
+    if duration_secs > 0:
+        engaged = (
+            db.query(LiveSessionParticipant)
+            .filter(
+                LiveSessionParticipant.live_session_id == session_id,
+                LiveSessionParticipant.total_duration_seconds >= duration_secs * 0.5,
+            )
+            .count()
+        )
+    else:
+        engaged = total_participants
+    engagement_pct = round(engaged / total_participants * 100, 1) if total_participants else 0.0
+
+    # ─ 3. COMPREHENSION from live pulse-checks ──────────────────────
+    pulses = (
+        db.query(LivePulseCheck)
+        .filter(
+            LivePulseCheck.live_session_id == session_id,
+            LivePulseCheck.is_active == False,                 # noqa: E712
+            LivePulseCheck.correct_option.isnot(None),
+            LivePulseCheck.total_responses > 0,
+        )
+        .all()
+    )
+    comprehension_pct: Optional[float] = None
+    if pulses:
+        comps = [
+            round(p.correct_count / p.total_responses * 100, 1)
+            for p in pulses if p.total_responses > 0
+        ]
+        comprehension_pct = round(sum(comps) / len(comps), 1) if comps else None
+
+    # ─ 4. CONFUSION POINTS ──────────────────────────────────────────
+    confusion_count = (
+        db.query(LiveSessionObservation)
+        .filter(
+            LiveSessionObservation.live_session_id == session_id,
+            LiveSessionObservation.obs_type == "confusion",
+            LiveSessionObservation.severity.in_(["medium", "high"]),
+        )
+        .count()
+    )
+
+    # ─ 5. DOUBTS (within session window) ────────────────────────────
+    if sess.started_at and sess.ended_at and sess.subject_id:
+        doubts = (
+            db.query(ClassWallPost)
+            .filter(
+                ClassWallPost.subject_id == sess.subject_id,
+                ClassWallPost.created_at >= sess.started_at,
+                ClassWallPost.created_at <= sess.ended_at,
+            )
+            .all()
+        )
+    else:
+        doubts = []
+    doubts_posted = len(doubts)
+    doubts_resolved = sum(
+        1 for d in doubts
+        if (d.status.value if hasattr(d.status, "value") else str(d.status)) == "answered"
+    )
+
+    # ─ 6. PACE SCORE ────────────────────────────────────────────────
+    duration_mins = max(1, duration_secs / 60) if duration_secs else 1
+    pulses_per_hour = (len(pulses) / duration_mins) * 60 if pulses else 0
+    if 2 <= pulses_per_hour <= 4:
+        pace_label, pace_score = "Good", 90
+    elif pulses_per_hour > 4:
+        pace_label, pace_score = "Fast", 70
+    elif pulses_per_hour >= 1:
+        pace_label, pace_score = "Slow", 65
+    else:
+        pace_label, pace_score = "Unknown", 60
+
+    # ─ 7. OVERALL HEALTH SCORE ──────────────────────────────────────
+    weights = {"attendance": 0.30, "engagement": 0.25, "comprehension": 0.25,
+               "doubts": 0.10, "pace": 0.10}
+    comp_score = comprehension_pct if comprehension_pct is not None else 60.0
+    doubts_score = (
+        min(100, doubts_resolved / max(1, doubts_posted) * 100)
+        if doubts_posted else 80.0
+    )
+    overall = round(
+        attendance_pct * weights["attendance"]
+        + engagement_pct * weights["engagement"]
+        + comp_score * weights["comprehension"]
+        + doubts_score * weights["doubts"]
+        + pace_score * weights["pace"]
+    )
+
+    # ─ 8. AI NARRATIVE ──────────────────────────────────────────────
+    try:
+        ai_narrative = await generate_session_narrative(
+            subject_name=subject_name,
+            overall_score=overall,
+            attendance_pct=attendance_pct,
+            engagement_pct=engagement_pct,
+            comprehension_pct=comprehension_pct,
+            confusion_count=confusion_count,
+            doubts_posted=doubts_posted,
+            doubts_resolved=doubts_resolved,
+            duration_mins=int(duration_mins),
+        )
+    except Exception as exc:
+        logger.warning("health-report narrative failed: %s", exc)
+        ai_narrative = f"Session completed with {attendance_pct}% attendance."
+
+    # Cache to DB column for legacy consumers
+    try:
+        sess.session_health_score = overall
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return {
+        "status":          "ready",
+        "session_id":      session_id,
+        "subject_name":    subject_name,
+        "overall_score":   overall,
+        "duration_mins":   int(duration_mins),
+        # ── new rich shape ──
+        "metrics": {
+            "attendance":       {"value": attendance_pct,    "label": f"{attended}/{total_participants} students"},
+            "engagement":       {"value": engagement_pct,    "label": "Active participation"},
+            "comprehension":    {"value": comprehension_pct, "label": f"{len(pulses)} pulse checks"},
+            "confusion_points": {"value": confusion_count,   "label": "Confusion events"},
+            "doubts_posted":    {"value": doubts_posted,     "label": "Student doubts"},
+            "doubts_resolved":  {"value": doubts_resolved,   "label": "Resolved"},
+            "pace":             {"value": pace_label,        "label": pace_label},
+        },
+        "pulse_results": [
+            {
+                "question":          p.question,
+                "comprehension_pct": (
+                    round(p.correct_count / p.total_responses * 100, 1)
+                    if p.total_responses else None
+                ),
+            }
+            for p in pulses
+        ],
+        "ai_narrative": ai_narrative,
+        # ── back-compat keys (PostSessionView, legacy /report card) ──
+        "health_score":          overall,
+        "attendance_percentage": attendance_pct,
+        "engagement_score":      engagement_pct,
+        "comprehension_score":   comp_score,
+        "pace_score":            pace_score,
+        "report":                None,   # old shape no longer used
+    }
 
 
 @router.get("/sessions/{session_id}/student-report/{student_id}")
@@ -3145,3 +3340,278 @@ def _ensure_observation_scheduler(session_id: int) -> None:
     except RuntimeError:
         return
     _observation_tasks[session_id] = loop.create_task(_observation_scheduler(session_id))
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F13 — Pre-class warmup generation (per-student)
+# ════════════════════════════════════════════════════════════════════════
+
+async def _generate_warmup_content(
+    student_name: str,
+    subject_name: str,
+    weak_topics: List[str],
+    warmup_type: str,
+) -> str:
+    weak_str = ", ".join(weak_topics) if weak_topics else "general concepts"
+    if warmup_type == "refresher":
+        prompt = (
+            f"Write a 3-4 sentence personalized warmup for {student_name} "
+            f"before their {subject_name} class. They struggle with: {weak_str}. "
+            "Give a quick, friendly refresher — not a lecture, just a warm reminder. "
+            "Max 80 words. Encouraging tone. Plain text, no markdown."
+        )
+    else:
+        prompt = (
+            f"Write a 2-3 sentence preview message for {student_name} "
+            f"before their {subject_name} class. They are doing well. "
+            "Give them a brief preview of what exciting concept they'll learn today. "
+            "Max 60 words. Enthusiastic tone. Plain text, no markdown."
+        )
+    text = (await _call_ai_text(prompt) or "").strip()
+    if not text:
+        text = (
+            f"Hey {student_name}! Quick heads-up before {subject_name}: stay focused, "
+            "ask questions when stuck, and you'll get the most out of today's class."
+        )
+    return text
+
+
+@router.post("/sessions/{session_id}/generate-warmups")
+async def generate_warmups(
+    session_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """
+    Teacher triggers warmup generation for all enrolled students before
+    a live session starts. Creates StudentPreclassWarmup rows.
+    """
+    sess = _require_session_owner(session_id, current_user, db)
+    subj = db.query(Subject).filter(Subject.id == sess.subject_id).first()
+    if not subj:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subject not found.")
+
+    # Enrolled students for this course+semester (matches typical schema)
+    students_query = db.query(User).filter(
+        User.role == UserRole.student,
+        User.is_active == True,                                        # noqa: E712
+        User.course_id == subj.course_id,
+        User.semester == subj.semester,
+    )
+    students = students_query.limit(50).all()                           # cap to avoid timeout
+
+    created = 0
+    for student in students:
+        existing = (
+            db.query(StudentPreclassWarmup)
+            .filter(
+                StudentPreclassWarmup.student_id == student.id,
+                StudentPreclassWarmup.session_id == session_id,
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        weak_rows = (
+            db.query(StudentTopicMastery)
+            .filter(
+                StudentTopicMastery.student_id == student.id,
+                StudentTopicMastery.subject_id == sess.subject_id,
+                StudentTopicMastery.mastery_pct < 60,
+            )
+            .order_by(StudentTopicMastery.mastery_pct.asc())
+            .limit(3)
+            .all()
+        )
+        weak_topic_names = [w.topic for w in weak_rows]
+        warmup_type = "refresher" if weak_rows else "preview"
+
+        try:
+            content = await _generate_warmup_content(
+                student_name=student.name or "Student",
+                subject_name=subj.name,
+                weak_topics=weak_topic_names,
+                warmup_type=warmup_type,
+            )
+        except Exception as exc:
+            logger.warning("warmup gen failed for student %s: %s", student.id, exc)
+            content = f"Welcome to {subj.name}! Stay engaged today."
+
+        db.add(StudentPreclassWarmup(
+            student_id=student.id,
+            session_id=session_id,
+            subject_id=sess.subject_id,
+            warmup_type=warmup_type,
+            content=content,
+            focus_topics=weak_topic_names,
+            is_sent=True,
+        ))
+        created += 1
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Could not save warmups: {exc}")
+
+    return {"ok": True, "warmups_created": created, "total_students": len(students)}
+
+
+@router.get("/sessions/{session_id}/my-warmup")
+def get_my_warmup(
+    session_id: int,
+    current_user: Optional[dict] = Depends(_get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Student fetches their personalised warmup for this session."""
+    if not current_user or not current_user.get("id"):
+        return {"warmup": None}
+
+    warmup = (
+        db.query(StudentPreclassWarmup)
+        .filter(
+            StudentPreclassWarmup.session_id == session_id,
+            StudentPreclassWarmup.student_id == current_user["id"],
+        )
+        .first()
+    )
+    if not warmup:
+        return {"warmup": None}
+    return {
+        "warmup": {
+            "type":         warmup.warmup_type,
+            "content":      warmup.content,
+            "focus_topics": warmup.focus_topics or [],
+        }
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F14 — AI Whiteboard: Code → Diagram
+# ════════════════════════════════════════════════════════════════════════
+
+class WhiteboardCodeReq(BaseModel):
+    code:         str = Field(..., min_length=10, max_length=2000)
+    language:     str = Field("python", max_length=20)
+    diagram_type: str = Field("auto", max_length=20)
+
+
+@router.post("/sessions/{session_id}/ai/diagram-from-code")
+async def diagram_from_code(
+    session_id: int,
+    body: WhiteboardCodeReq,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """Teacher submits code → AI generates Mermaid diagram → broadcast to all."""
+    _require_session_owner(session_id, current_user, db)
+
+    diagram = await generate_diagram_from_code(
+        code_snippet=body.code,
+        language=body.language,
+        diagram_type=body.diagram_type,
+    )
+
+    try:
+        await live_ws_manager.broadcast_to_session(session_id, {
+            "type":         "whiteboard_shared",
+            "diagram":      diagram,
+            "diagram_code": diagram,                    # back-compat key
+            "source":       "code",
+            "title":        f"Code → Diagram ({body.language})",
+        })
+    except Exception as exc:
+        logger.warning("diagram broadcast failed: %s", exc)
+
+    return {"ok": True, "diagram": diagram}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F11 — Low-bandwidth live text summary
+# ════════════════════════════════════════════════════════════════════════
+
+@router.get("/sessions/{session_id}/live-text-summary")
+async def live_text_summary(
+    session_id: int,
+    current_user: Optional[dict] = Depends(_get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Low-bandwidth students poll this to follow class via text only."""
+    sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+    if not sess:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found.")
+
+    recent_obs = (
+        db.query(LiveSessionObservation)
+        .filter(LiveSessionObservation.live_session_id == session_id)
+        .order_by(LiveSessionObservation.created_at.desc())
+        .limit(3)
+        .all()
+    )
+
+    doubt_texts: List[str] = []
+    if sess.started_at and sess.subject_id:
+        recent_doubts = (
+            db.query(ClassWallPost)
+            .filter(
+                ClassWallPost.subject_id == sess.subject_id,
+                ClassWallPost.created_at >= sess.started_at,
+            )
+            .order_by(ClassWallPost.created_at.desc())
+            .limit(3)
+            .all()
+        )
+        doubt_texts = [(d.content or "")[:100] for d in recent_doubts]
+
+    subj = db.query(Subject).filter(Subject.id == sess.subject_id).first() if sess.subject_id else None
+    subject_name = subj.name if subj else "Class"
+
+    obs_texts = [o.message for o in recent_obs if o.message]
+
+    prompt = f"""A student is following {subject_name} class via text only (low bandwidth).
+
+Recent AI observations from class: {' | '.join(obs_texts) or 'Session in progress'}
+Recent student doubts: {' | '.join(doubt_texts) or 'None'}
+
+Write a 2-3 sentence text update for this student so they can follow along.
+Tell them what's being discussed RIGHT NOW. Be specific and educational.
+Max 60 words. Plain text, no markdown."""
+
+    try:
+        summary = (await _call_ai_text(prompt) or "").strip()
+    except Exception as exc:
+        logger.warning("live-text-summary AI failed: %s", exc)
+        summary = ""
+    if not summary:
+        summary = (
+            f"{subject_name} class in progress. "
+            f"{(obs_texts[0] if obs_texts else 'Teacher is currently presenting.')}"
+        )
+
+    elapsed_mins = 0
+    if sess.started_at:
+        elapsed_mins = max(0, int((datetime.now(tz=timezone.utc) - sess.started_at).total_seconds() / 60))
+
+    return {
+        "subject":      subject_name,
+        "elapsed_mins": elapsed_mins,
+        "summary":      summary,
+        "updated_at":   datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F06 — Topic mastery refresh after a session (manual trigger / debug)
+# ════════════════════════════════════════════════════════════════════════
+
+@router.post("/sessions/{session_id}/refresh-topic-mastery")
+async def refresh_topic_mastery(
+    session_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    """Teacher can manually re-run mastery update (also runs auto post-session)."""
+    _require_session_owner(session_id, current_user, db)
+    touched = await update_student_topic_mastery(session_id, db)
+    return {"ok": True, "rows_updated": touched}

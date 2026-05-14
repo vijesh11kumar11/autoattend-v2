@@ -163,6 +163,24 @@ async def _ai_json(prompt: str, system: Optional[str] = None) -> Optional[dict |
     return parsed
 
 
+async def _call_ai_text(prompt: str, system: Optional[str] = None) -> str:
+    """
+    Plain-text variant of _ai_json. Returns the raw text from the first
+    provider that responds (Gemini → Groq → DeepSeek). Falls back to an
+    empty string when all providers fail. Used for narrative blurbs,
+    Mermaid diagrams, warmups, etc.
+    """
+    sys_txt = system or "You are an expert, concise teaching assistant. Plain text only — no markdown."
+    raw = await asyncio.to_thread(_call_gemini_sync, prompt, sys_txt)
+    if raw:
+        return raw
+    raw = await asyncio.to_thread(_call_groq_sync, prompt, sys_txt)
+    if raw:
+        return raw
+    raw = await asyncio.to_thread(_call_deepseek_sync, prompt, sys_txt)
+    return raw or ""
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 1. AI Observation (every ~2 min during a live session)
 # ═══════════════════════════════════════════════════════════════════════
@@ -854,3 +872,200 @@ def update_student_knowledge_graph(
         db.rollback()
         return 0
     return touched
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 9. Session Health Narrative (F08) — short paragraph for the report card
+# ═══════════════════════════════════════════════════════════════════════
+
+async def generate_session_narrative(
+    subject_name: str,
+    overall_score: int,
+    attendance_pct: float,
+    engagement_pct: float,
+    comprehension_pct: Optional[float],
+    confusion_count: int,
+    doubts_posted: int,
+    doubts_resolved: int,
+    duration_mins: int,
+) -> str:
+    """Generate the AI observation paragraph for Session Health Report."""
+    comp_str = f"{comprehension_pct}%" if comprehension_pct is not None else "not measured"
+    prompt = f"""You are a teaching analytics AI. Write a 2-3 sentence narrative
+for a teacher after their class. Be specific, warm, and actionable.
+
+Session data:
+- Subject: {subject_name}
+- Overall health: {overall_score}/100
+- Duration: {duration_mins} mins
+- Attendance: {attendance_pct}%
+- Engagement: {engagement_pct}%
+- Comprehension: {comp_str}
+- Confusion events: {confusion_count}
+- Doubts: {doubts_posted} posted, {doubts_resolved} resolved
+
+Mention the most important insight and one specific recommendation for next class.
+Max 60 words. Plain text, no markdown."""
+    text = await _call_ai_text(prompt)
+    text = (text or "").strip()
+    if not text:
+        text = (
+            f"Session completed with {attendance_pct}% attendance and {engagement_pct}% "
+            f"engagement. Consider reviewing topics where students raised doubts in the next class."
+        )
+    return text
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 10. Code → Mermaid Diagram (F14)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def generate_diagram_from_code(
+    code_snippet: str,
+    language: str = "python",
+    diagram_type: str = "auto",
+) -> str:
+    """Given a code snippet, return a Mermaid diagram that visualises it."""
+    diagram_hint = (
+        diagram_type if diagram_type and diagram_type != "auto" else "appropriate"
+    )
+    prompt = f"""You are an expert at creating Mermaid diagrams from code.
+
+Analyze this {language} code and generate a {diagram_hint} Mermaid diagram.
+
+CODE:
+```{language}
+{code_snippet[:1500]}
+```
+
+Rules:
+- For recursive functions → use flowchart showing recursive calls
+- For tree/linked-list operations → use graph diagram showing structure
+- For sorting algorithms → use sequence diagram showing steps
+- For class/OOP code → use classDiagram
+- Keep it simple and readable — max 15 nodes
+- Return ONLY the Mermaid diagram code, nothing else
+- Start with the diagram type keyword (flowchart TD / graph TD / sequenceDiagram / classDiagram)
+
+Mermaid diagram:"""
+    raw = await _call_ai_text(prompt)
+    text = (raw or "").strip()
+    if not text:
+        return "flowchart TD\n  A[Start] --> B[Could not generate diagram]"
+    # Strip markdown fences if any
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # drop first fence
+        lines = lines[1:]
+        # drop trailing fence if present
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 11. Update per-student topic mastery after a session (F06)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def update_student_topic_mastery(session_id: int, db: Session) -> int:
+    """
+    After a session ends: walk pulse responses + capsule topic list and
+    update StudentTopicMastery rows. Returns number of (student, topic)
+    pairs touched. Safe to call repeatedly (idempotent within a session).
+    """
+    from database import (
+        LiveSession, LiveSessionParticipant, LiveParticipantType,
+        LivePulseResponse, StudentTopicMastery, Capsule,
+    )
+
+    sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+    if not sess or not sess.subject_id:
+        return 0
+
+    # Discover topics covered (from auto-capsule's ai_summary JSON)
+    topics_covered: list[str] = []
+    if sess.auto_capsule_id:
+        cap = db.query(Capsule).filter(Capsule.id == sess.auto_capsule_id).first()
+        if cap and cap.ai_summary:
+            try:
+                summary = json.loads(cap.ai_summary)
+                tc = summary.get("topics_covered") or []
+                topics_covered = [str(t)[:200] for t in tc if t]
+            except Exception:
+                topics_covered = []
+    if not topics_covered:
+        logger.info("topic-mastery: no topics covered for session %s — skip", session_id)
+        return 0
+
+    participants = (
+        db.query(LiveSessionParticipant)
+        .filter(
+            LiveSessionParticipant.live_session_id == session_id,
+            LiveSessionParticipant.participant_type == LiveParticipantType.student,
+            LiveSessionParticipant.user_id.isnot(None),
+        )
+        .all()
+    )
+
+    pulse_rows = (
+        db.query(LivePulseResponse)
+        .filter(
+            LivePulseResponse.live_session_id == session_id,
+            LivePulseResponse.student_id.isnot(None),
+        )
+        .all()
+    )
+    student_pulse: dict[int, dict] = {}
+    for r in pulse_rows:
+        sid = r.student_id
+        bucket = student_pulse.setdefault(sid, {"correct": 0, "total": 0})
+        bucket["total"] += 1
+        if r.is_correct:
+            bucket["correct"] += 1
+
+    touched = 0
+    for p in participants:
+        sid = p.user_id
+        if not sid:
+            continue
+        ps = student_pulse.get(sid, {})
+        if ps.get("total", 0) > 0:
+            student_comp = round(ps["correct"] / ps["total"] * 100, 1)
+        else:
+            student_comp = 55.0  # neutral default
+
+        for topic in topics_covered:
+            row = (
+                db.query(StudentTopicMastery)
+                .filter(
+                    StudentTopicMastery.student_id == sid,
+                    StudentTopicMastery.subject_id == sess.subject_id,
+                    StudentTopicMastery.topic == topic,
+                )
+                .first()
+            )
+            if row:
+                row.mastery_pct = round(row.mastery_pct * 0.6 + student_comp * 0.4, 1)
+                row.sessions_seen = (row.sessions_seen or 0) + 1
+            else:
+                db.add(StudentTopicMastery(
+                    student_id=sid,
+                    subject_id=sess.subject_id,
+                    topic=topic,
+                    mastery_pct=student_comp,
+                    sessions_seen=1,
+                ))
+            touched += 1
+    try:
+        db.commit()
+    except Exception as exc:
+        logger.error("update_student_topic_mastery commit failed: %s", exc)
+        db.rollback()
+        return 0
+    logger.info(
+        "📊 Topic mastery updated for session %d — %d students, %d topics, %d rows",
+        session_id, len(participants), len(topics_covered), touched,
+    )
+    return touched
+

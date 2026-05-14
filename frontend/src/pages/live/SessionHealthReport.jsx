@@ -66,18 +66,51 @@ export default function SessionHealthReport() {
         <h1 className="text-2xl font-bold flex items-center gap-3">
           <span className="text-3xl">📊</span> Session Health Report
         </h1>
-        <p className="text-white/80 mt-1 text-sm">{report.title || `Session #${sessionId}`}</p>
+        <p className="text-white/80 mt-1 text-sm">{report.title || report.subject_name || `Session #${sessionId}`}{report.duration_mins ? ` · ${report.duration_mins} min` : ''}</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-6">
-        <HealthRing score={report.health_score || 0} />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-          <MetricCard label="Attendance"     value={report.attendance_percentage} />
-          <MetricCard label="Engagement"     value={report.engagement_score} />
-          <MetricCard label="Comprehension"  value={report.comprehension_score} />
-          <MetricCard label="Pace"           value={report.pace_score} />
+      {report.ai_narrative && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+          <p className="text-blue-700 text-xs font-bold uppercase tracking-wider mb-2">🤖 AI Analysis</p>
+          <p className="text-blue-900 text-sm leading-relaxed">{report.ai_narrative}</p>
         </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-6">
+        <HealthRing score={report.health_score || report.overall_score || 0} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+          <MetricCard label="Attendance"     value={report.attendance_percentage ?? report.metrics?.attendance?.value} />
+          <MetricCard label="Engagement"     value={report.engagement_score ?? report.metrics?.engagement?.value} />
+          <MetricCard label="Comprehension"  value={report.comprehension_score ?? report.metrics?.comprehension?.value} />
+          <MetricCard label="Pace"           value={report.pace_score ?? 0} />
+        </div>
+        {report.metrics && (
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            <MetricCard label="Confusion"      value={report.metrics.confusion_points?.value ?? 0} suffix="" />
+            <MetricCard label="Doubts Posted"  value={report.metrics.doubts_posted?.value ?? 0} suffix="" />
+            <MetricCard label="Doubts Resolved" value={report.metrics.doubts_resolved?.value ?? 0} suffix="" />
+          </div>
+        )}
       </div>
+
+      {report.pulse_results?.length > 0 && (
+        <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-5">
+          <h3 className="font-bold text-slate-800 mb-3">⚡ Pulse Check Results</h3>
+          <ul className="space-y-2">
+            {report.pulse_results.map((p, i) => (
+              <li key={i} className="flex items-center justify-between text-sm">
+                <span className="text-slate-700 flex-1 mr-3 line-clamp-1">{p.question}</span>
+                <span className={`font-bold text-xs ${
+                  (p.comprehension_pct || 0) >= 70 ? 'text-emerald-600' :
+                  (p.comprehension_pct || 0) >= 50 ? 'text-amber-600' : 'text-red-600'
+                }`}>
+                  {p.comprehension_pct != null ? `${p.comprehension_pct}%` : 'N/A'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-5">
         <h3 className="font-bold text-slate-800 mb-3">⏱️ AI Event Timeline</h3>

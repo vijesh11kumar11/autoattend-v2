@@ -1402,6 +1402,51 @@ class LiveSessionObservation(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Student Topic Mastery (F06) — per-student, per-topic mastery score.
+# Updated after each live session from pulse-check accuracy + capsule topics.
+# ═══════════════════════════════════════════════════════════════════════
+
+class StudentTopicMastery(Base):
+    __tablename__ = "student_topic_mastery"
+    __table_args__ = (
+        UniqueConstraint("student_id", "subject_id", "topic", name="uq_student_topic"),
+        Index("ix_student_topic_mastery_student_id", "student_id"),
+        Index("ix_student_topic_mastery_subject_id", "subject_id"),
+    )
+
+    id              = Column(Integer, primary_key=True, index=True)
+    student_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    subject_id      = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    topic           = Column(String(200), nullable=False)
+    mastery_pct     = Column(Float, default=50.0, nullable=False)   # 0-100
+    sessions_seen   = Column(Integer, default=0, nullable=False)
+    last_updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Student Pre-class Warmup (F13) — personalised warmup per student per session.
+# ═══════════════════════════════════════════════════════════════════════
+
+class StudentPreclassWarmup(Base):
+    __tablename__ = "student_preclass_warmups"
+    __table_args__ = (
+        UniqueConstraint("student_id", "session_id", name="uq_student_preclass_warmup"),
+        Index("ix_student_preclass_warmups_student_id", "student_id"),
+        Index("ix_student_preclass_warmups_session_id", "session_id"),
+    )
+
+    id           = Column(Integer, primary_key=True, index=True)
+    student_id   = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    session_id   = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    subject_id   = Column(Integer, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    warmup_type  = Column(String(50), nullable=True)         # "refresher" | "preview" | "catchup"
+    content      = Column(Text, nullable=True)
+    focus_topics = Column(JSONB, nullable=True)              # ["Recursion", "Pointers"]
+    is_sent      = Column(Boolean, default=False, nullable=False)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ClassPulse Live — student_knowledge_graphs
 # ═══════════════════════════════════════════════════════════════════════
 
