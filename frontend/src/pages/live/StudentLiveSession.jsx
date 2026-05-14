@@ -111,6 +111,16 @@ export default function StudentLiveSession() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agoraCfg.app_id, agoraCfg.token]);
 
+  // PS7-B — Once we are actually joined, persist our agora_uid to the
+  // backend participant row so the teacher's name-mapping resolves us.
+  useEffect(() => {
+    if (!agoraJoined || !agoraCfg.uid) return;
+    api.patch(`/live/sessions/${sessionId}/participant-uid`, {
+      participant_id: info?.participant_id || null,
+      agora_uid: Number(agoraCfg.uid),
+    }).catch(() => { /* non-fatal */ });
+  }, [agoraJoined, agoraCfg.uid, info?.participant_id, sessionId]);
+
   // Update bandwidth label from real-time network stats
   useEffect(() => {
     if (!networkQuality) return;

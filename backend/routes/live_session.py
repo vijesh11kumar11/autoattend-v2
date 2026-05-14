@@ -62,6 +62,10 @@ from database import (
     LiveSessionParticipant,
     LiveSessionStatus,
     LiveSessionType,
+    LiveAIIntervention,
+    LiveEngagementSnapshot,
+    LiveSessionBookmark,
+    LiveStudentEngagement,
     MarkedBy,
     PulseCheck,
     PulseCheckAnswer,
@@ -93,6 +97,7 @@ from utils.live_session_ai import (
     generate_ai_observation,
     generate_auto_capsule_from_session,
     generate_diagram_from_code,
+    generate_ai_intervention,
     generate_intervention_suggestion,
     generate_pre_class_brief,
     generate_pulse_check_question,
@@ -1404,6 +1409,36 @@ def heartbeat(
     part.connection_quality = LiveConnectionQuality(quality)
     db.commit()
 
+    # F02 — per-student engagement counter
+    try:
+        eng = (
+            db.query(LiveStudentEngagement)
+            .filter(LiveStudentEngagement.session_id == session_id)
+            .filter(
+                or_(
+                    LiveStudentEngagement.student_id == part.user_id if part.user_id else False,
+                    LiveStudentEngagement.participant_id == part.id,
+                )
+            )
+            .first()
+        )
+        if eng:
+            eng.heartbeat_count = (eng.heartbeat_count or 0) + 1
+            eng.last_active_at  = now
+        else:
+            eng = LiveStudentEngagement(
+                session_id      = session_id,
+                student_id      = part.user_id,
+                participant_id  = part.id,
+                heartbeat_count = 1,
+                last_active_at  = now,
+            )
+            db.add(eng)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.debug("engagement upsert failed: %s", exc)
+
     sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
     session_active = bool(sess and sess.status == LiveSessionStatus.live)
     low_bw = quality == "poor"
@@ -1754,24 +1789,63 @@ def get_participant_names(
         .all()
     )
 
+    # Pre-fetch user names in one query (PS7-B)
+    user_ids = [p.user_id for p in parts if p.user_id]
+    users_map: dict[int, User] = {}
+    if user_ids:
+        for u in db.query(User).filter(User.id.in_(user_ids)).all():
+            users_map[u.id] = u
+
     result: dict[str, dict] = {}
     for p in parts:
         if not p.agora_uid:
             continue
-        key = str(p.agora_uid)
         if p.participant_type == LiveParticipantType.guest:
-            result[key] = {
-                "name": p.guest_name or "Guest",
-                "role": "guest",
+            entry = {
+                "name":    p.guest_name or "Guest",
+                "role":    "guest",
                 "user_id": None,
             }
         elif p.user_id:
-            u = db.query(User).filter(User.id == p.user_id).first()
-            result[key] = {
-                "name": u.name if u else f"User {p.agora_uid}",
-                "role": p.participant_type.value,
+            u = users_map.get(p.user_id)
+            display = (u.name if u else "") or p.guest_name or f"User {p.agora_uid}"
+            if p.participant_type == LiveParticipantType.teacher:
+                display = f"👩‍🏫 {display}"
+            entry = {
+                "name":    display,
+                "role":    p.participant_type.value,
                 "user_id": p.user_id,
             }
+        else:
+            continue
+        # JSON keys are always strings; normalising to str(uid) is sufficient.
+        # Frontend always looks up via String(uid).
+        result[str(int(p.agora_uid))] = entry
+
+    # Make sure the teacher (who may not have an active participant row yet)
+    # still resolves to a friendly name when the frontend sees that UID.
+    teacher_part = next(
+        (p for p in parts if p.participant_type == LiveParticipantType.teacher and p.agora_uid),
+        None,
+    )
+    if not teacher_part:
+        teacher_user = db.query(User).filter(User.id == sess.teacher_id).first()
+        if teacher_user:
+            tp = (
+                db.query(LiveSessionParticipant)
+                .filter(
+                    LiveSessionParticipant.live_session_id == session_id,
+                    LiveSessionParticipant.participant_type == LiveParticipantType.teacher,
+                )
+                .first()
+            )
+            if tp and tp.agora_uid:
+                result[str(int(tp.agora_uid))] = {
+                    "name":    f"👩‍🏫 {teacher_user.name}",
+                    "role":    "teacher",
+                    "user_id": teacher_user.id,
+                }
+
     return result
 
 
@@ -3225,6 +3299,34 @@ async def _create_observation(session_id: int, db: Session) -> Optional[LiveSess
     db.add(obs)
     db.commit()
     db.refresh(obs)
+
+    # F09 — auto-bookmark from notable observations
+    try:
+        bookmark_map = {
+            "confusion":      ("confusion",   f"⚠️ Confusion — {(payload.get('message') or '')[:80]}"),
+            "positive":       ("clarity",     "✅ Clarity moment"),
+            "topic_complete": ("topic_start", "📍 Topic completed"),
+        }
+        if payload.get("type") in bookmark_map:
+            btype, btitle = bookmark_map[payload["type"]]
+            sess_row = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+            elapsed_secs = 0
+            elapsed_mins = 0
+            if sess_row and sess_row.started_at:
+                elapsed_secs = int((datetime.now(timezone.utc) - sess_row.started_at).total_seconds())
+                elapsed_mins = elapsed_secs // 60
+            db.add(LiveSessionBookmark(
+                session_id    = session_id,
+                elapsed_secs  = elapsed_secs,
+                elapsed_mins  = elapsed_mins,
+                bookmark_type = btype,
+                title         = btitle[:200],
+                added_by      = "ai",
+            ))
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.debug("auto-bookmark failed: %s", exc)
     try:
         await live_ws_manager.send_to_teacher(session_id, {
             "type": "ai_observation",
@@ -3316,6 +3418,10 @@ async def _observation_scheduler(session_id: int) -> None:
                 if not sess or sess.status != LiveSessionStatus.live:
                     return
                 await _create_observation(session_id, db)
+                try:
+                    await _record_engagement_snapshot(session_id, db)
+                except Exception as exc:
+                    logger.debug("engagement snapshot failed: %s", exc)
             except Exception as exc:
                 logger.warning("observation scheduler tick failed for %s: %s", session_id, exc)
             finally:
@@ -3615,3 +3721,491 @@ async def refresh_topic_mastery(
     _require_session_owner(session_id, current_user, db)
     touched = await update_student_topic_mastery(session_id, db)
     return {"ok": True, "rows_updated": touched}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PS7-C — Student/guest patches their Agora UID after joining channel
+# ════════════════════════════════════════════════════════════════════════
+
+class UpdateParticipantUidRequest(BaseModel):
+    participant_id: Optional[int] = None
+    agora_uid:      int
+
+
+@router.patch("/sessions/{session_id}/participant-uid")
+def update_participant_uid(
+    session_id: int,
+    body: UpdateParticipantUidRequest,
+    current_user: Optional[dict] = Depends(_get_optional_user),
+    db: Session = Depends(get_db),
+):
+    """Student/guest updates their agora_uid after joining the Agora channel.
+
+    Defensive endpoint — the join endpoint already pre-stores the masked uid,
+    but if the SDK assigns a different one (rare reconnect / numeric overflow)
+    this lets the client correct the record so name resolution still works.
+    """
+    q = db.query(LiveSessionParticipant).filter(
+        LiveSessionParticipant.live_session_id == session_id,
+    )
+    if body.participant_id:
+        q = q.filter(LiveSessionParticipant.id == body.participant_id)
+    elif current_user:
+        q = q.filter(LiveSessionParticipant.user_id == current_user["id"])
+    else:
+        return {"ok": False, "reason": "cannot identify participant"}
+
+    participant = q.order_by(LiveSessionParticipant.id.desc()).first()
+    if not participant:
+        return {"ok": False, "reason": "participant not found"}
+
+    participant.agora_uid = int(body.agora_uid)
+    db.commit()
+    return {"ok": True, "agora_uid": int(body.agora_uid)}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F02 — Engagement snapshot helper (called by observation scheduler)
+# ════════════════════════════════════════════════════════════════════════
+
+async def _record_engagement_snapshot(session_id: int, db: Session) -> None:
+    sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
+    if not sess or not sess.started_at:
+        return
+
+    now = datetime.now(timezone.utc)
+    elapsed_mins = int((now - sess.started_at).total_seconds() / 60)
+    cutoff_active = now - timedelta(minutes=4)
+
+    total = (
+        db.query(LiveSessionParticipant)
+        .filter(
+            LiveSessionParticipant.live_session_id == session_id,
+            LiveSessionParticipant.participant_type == LiveParticipantType.student,
+        )
+        .count()
+    )
+    active = (
+        db.query(LiveStudentEngagement)
+        .filter(
+            LiveStudentEngagement.session_id == session_id,
+            LiveStudentEngagement.last_active_at >= cutoff_active,
+        )
+        .count()
+    )
+
+    eng_pct = round((active / total) * 100.0, 1) if total else 0.0
+    if eng_pct >= 80:
+        label = "HIGH ENGAGEMENT"
+    elif eng_pct >= 60:
+        label = "MODERATE"
+    elif eng_pct >= 40:
+        label = "LOW ENGAGEMENT"
+    else:
+        label = "VERY LOW — check on students"
+
+    db.add(LiveEngagementSnapshot(
+        session_id      = session_id,
+        elapsed_mins    = elapsed_mins,
+        total_students  = total,
+        active_students = active,
+        engagement_pct  = eng_pct,
+        event_label     = label,
+    ))
+    db.commit()
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F02 — Engagement timeline + per-student attention
+# ════════════════════════════════════════════════════════════════════════
+
+@router.get("/sessions/{session_id}/engagement-timeline")
+def get_engagement_timeline(
+    session_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_session_owner(session_id, current_user, db)
+    snapshots = (
+        db.query(LiveEngagementSnapshot)
+        .filter(LiveEngagementSnapshot.session_id == session_id)
+        .order_by(LiveEngagementSnapshot.elapsed_mins)
+        .all()
+    )
+    return {
+        "session_id": session_id,
+        "timeline": [
+            {
+                "elapsed_mins":   s.elapsed_mins,
+                "engagement_pct": s.engagement_pct,
+                "active":         s.active_students,
+                "total":          s.total_students,
+                "event_label":    s.event_label,
+                "recorded_at":    s.recorded_at.isoformat() if s.recorded_at else None,
+            }
+            for s in snapshots
+        ],
+    }
+
+
+@router.get("/sessions/{session_id}/student-attention")
+def get_student_attention(
+    session_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_session_owner(session_id, current_user, db)
+
+    engagements = (
+        db.query(LiveStudentEngagement)
+        .filter(LiveStudentEngagement.session_id == session_id)
+        .all()
+    )
+
+    student_ids = [e.student_id for e in engagements if e.student_id]
+    students_map: dict[int, User] = {}
+    if student_ids:
+        for u in db.query(User).filter(User.id.in_(student_ids)).all():
+            students_map[u.id] = u
+
+    # Resolve guest names from participant records
+    part_ids = [e.participant_id for e in engagements if e.participant_id]
+    parts_map: dict[int, LiveSessionParticipant] = {}
+    if part_ids:
+        for p in db.query(LiveSessionParticipant).filter(LiveSessionParticipant.id.in_(part_ids)).all():
+            parts_map[p.id] = p
+
+    now = datetime.now(timezone.utc)
+    out: list[dict] = []
+    for eng in engagements:
+        name = "Unknown"
+        if eng.student_id and eng.student_id in students_map:
+            name = students_map[eng.student_id].name or name
+        elif eng.participant_id and eng.participant_id in parts_map:
+            name = parts_map[eng.participant_id].guest_name or name
+
+        if eng.last_active_at:
+            mins_since_active = (now - eng.last_active_at).total_seconds() / 60.0
+        else:
+            mins_since_active = 999.0
+
+        if mins_since_active < 3:
+            label, color = "highly_engaged", "green"
+        elif mins_since_active < 8:
+            label, color = "moderate", "yellow"
+        elif mins_since_active < 15:
+            label, color = "silent", "orange"
+        else:
+            label, color = "dropped_off", "red"
+
+        eng.engagement_label = label
+
+        signal = None
+        if label == "silent" and (eng.heartbeat_count or 0) > 3:
+            signal = f"{name} went quiet — may have lost focus or connection"
+        elif label == "dropped_off":
+            signal = f"{name} appears to have dropped off ({int(mins_since_active)} min inactive)"
+        elif label == "highly_engaged" and (eng.response_count or 0) > 0:
+            signal = f"{name} actively responding — {eng.response_count} pulse answers"
+        elif label == "highly_engaged" and (eng.doubt_count or 0) > 0:
+            signal = f"{name} posted {eng.doubt_count} doubt(s) — engaged and asking questions"
+
+        out.append({
+            "student_id":        eng.student_id,
+            "participant_id":    eng.participant_id,
+            "name":              name,
+            "label":             label,
+            "color":             color,
+            "signal":            signal,
+            "heartbeats":        eng.heartbeat_count or 0,
+            "responses":         eng.response_count or 0,
+            "doubts":            eng.doubt_count or 0,
+            "mins_since_active": round(mins_since_active, 1),
+        })
+
+    db.commit()
+
+    priority = {"dropped_off": 0, "silent": 1, "moderate": 2, "highly_engaged": 3}
+    out.sort(key=lambda x: priority.get(x["label"], 4))
+
+    return {"session_id": session_id, "students": out}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F03 — AI raises hand: check / dismiss intervention
+# ════════════════════════════════════════════════════════════════════════
+
+class DismissInterventionRequest(BaseModel):
+    intervention_id: Optional[int] = None
+    action:          Optional[str] = None
+
+
+@router.post("/sessions/{session_id}/ai/check-intervention")
+async def check_ai_intervention(
+    session_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    sess = _require_session_owner(session_id, current_user, db)
+    now = datetime.now(timezone.utc)
+
+    elapsed_mins = 0
+    if sess.started_at:
+        elapsed_mins = int((now - sess.started_at).total_seconds() / 60)
+
+    cutoff_active = now - timedelta(minutes=4)
+
+    total_students = (
+        db.query(LiveStudentEngagement)
+        .filter(LiveStudentEngagement.session_id == session_id)
+        .count()
+    )
+    silent_count = 0
+    if total_students:
+        silent_count = (
+            db.query(LiveStudentEngagement)
+            .filter(
+                LiveStudentEngagement.session_id == session_id,
+                or_(
+                    LiveStudentEngagement.last_active_at < cutoff_active,
+                    LiveStudentEngagement.last_active_at.is_(None),
+                ),
+            )
+            .count()
+        )
+
+    last_pulse = (
+        db.query(LivePulseCheck)
+        .filter(LivePulseCheck.live_session_id == session_id)
+        .order_by(LivePulseCheck.sent_at.desc())
+        .first()
+    )
+    mins_since_pulse = 999
+    if last_pulse and last_pulse.sent_at:
+        mins_since_pulse = int((now - last_pulse.sent_at).total_seconds() / 60)
+
+    pulses = (
+        db.query(LivePulseCheck)
+        .filter(
+            LivePulseCheck.live_session_id == session_id,
+            LivePulseCheck.is_active.is_(False),
+            LivePulseCheck.correct_option.isnot(None),
+            LivePulseCheck.total_responses > 0,
+        )
+        .all()
+    )
+    pulse_comp_avg = None
+    if pulses:
+        comps = [
+            (p.correct_count or 0) / p.total_responses * 100.0
+            for p in pulses if p.total_responses
+        ]
+        if comps:
+            pulse_comp_avg = round(sum(comps) / len(comps), 1)
+
+    hot_doubts = 0
+    if sess.subject_id and sess.started_at:
+        hot_doubts = (
+            db.query(ClassWallPost)
+            .filter(
+                ClassWallPost.subject_id == sess.subject_id,
+                ClassWallPost.is_hot.is_(True),
+                ClassWallPost.created_at >= sess.started_at,
+                ClassWallPost.status != WallPostStatus.answered,
+            )
+            .count()
+        )
+
+    last_int = (
+        db.query(LiveAIIntervention)
+        .filter(LiveAIIntervention.session_id == session_id)
+        .order_by(LiveAIIntervention.created_at.desc())
+        .first()
+    )
+    last_int_mins = 0
+    if last_int and last_int.elapsed_mins is not None:
+        last_int_mins = int(last_int.elapsed_mins)
+
+    session_data = {
+        "elapsed_mins":           elapsed_mins,
+        "engagement_pct":         round(((total_students - silent_count) / total_students * 100.0), 1) if total_students else 100.0,
+        "silent_count":           silent_count,
+        "total_students":         total_students,
+        "hot_doubts":             hot_doubts,
+        "pulse_comp_avg":         pulse_comp_avg,
+        "mins_since_pulse":       mins_since_pulse,
+        "last_intervention_mins": last_int_mins,
+    }
+
+    intervention = await generate_ai_intervention(session_id, db, session_data)
+    if not intervention:
+        return {"intervention": None}
+
+    row = LiveAIIntervention(
+        session_id   = session_id,
+        int_type     = intervention["type"],
+        message      = intervention["message"],
+        suggestion   = intervention["suggestion"],
+        severity     = intervention.get("severity", "medium"),
+        elapsed_mins = elapsed_mins,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    payload = dict(intervention)
+    payload["id"] = row.id
+
+    try:
+        await live_ws_manager.send_to_teacher(session_id, {
+            "type":         "ai_intervention",
+            "intervention": payload,
+        })
+    except Exception:
+        pass
+
+    return {"intervention": payload}
+
+
+@router.post("/sessions/{session_id}/ai/dismiss-intervention")
+def dismiss_intervention(
+    session_id: int,
+    body: DismissInterventionRequest,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    _require_session_owner(session_id, current_user, db)
+    if body.intervention_id:
+        row = (
+            db.query(LiveAIIntervention)
+            .filter(
+                LiveAIIntervention.id == body.intervention_id,
+                LiveAIIntervention.session_id == session_id,
+            )
+            .first()
+        )
+        if row:
+            row.action_taken = (body.action or "dismissed")[:80]
+            db.commit()
+    return {"ok": True}
+
+
+# ════════════════════════════════════════════════════════════════════════
+# F09 — Smart recording bookmarks + chapters
+# ════════════════════════════════════════════════════════════════════════
+
+class AddBookmarkRequest(BaseModel):
+    bookmark_type: str = Field(..., pattern=r"^(topic_start|confusion|clarity|live_demo|qa_start|break|other)$")
+    title:         str = Field(..., min_length=2, max_length=200)
+    description:   Optional[str] = None
+
+
+class SaveRecordingUrlRequest(BaseModel):
+    url: str = Field(..., min_length=4, max_length=500)
+
+
+_BOOKMARK_ICONS = {
+    "topic_start": "📍",
+    "confusion":   "⚠️",
+    "clarity":     "✅",
+    "live_demo":   "💻",
+    "qa_start":    "❓",
+    "break":       "☕",
+    "other":       "📌",
+}
+
+
+@router.post("/sessions/{session_id}/bookmarks")
+async def add_bookmark(
+    session_id: int,
+    body: AddBookmarkRequest,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    sess = _require_session_owner(session_id, current_user, db)
+
+    elapsed_secs = 0
+    elapsed_mins = 0
+    if sess.started_at:
+        elapsed_secs = int((datetime.now(timezone.utc) - sess.started_at).total_seconds())
+        elapsed_mins = elapsed_secs // 60
+
+    bm = LiveSessionBookmark(
+        session_id    = session_id,
+        elapsed_secs  = elapsed_secs,
+        elapsed_mins  = elapsed_mins,
+        bookmark_type = body.bookmark_type,
+        title         = body.title.strip()[:200],
+        description   = (body.description or "").strip() or None,
+        added_by      = "teacher",
+    )
+    db.add(bm)
+    db.commit()
+    db.refresh(bm)
+
+    try:
+        await live_ws_manager.broadcast_to_session(session_id, {
+            "type": "bookmark_added",
+            "bookmark": {
+                "id":            bm.id,
+                "elapsed_mins":  elapsed_mins,
+                "bookmark_type": bm.bookmark_type,
+                "title":         bm.title,
+            },
+        })
+    except Exception:
+        pass
+
+    return {"ok": True, "bookmark_id": bm.id, "elapsed_mins": elapsed_mins}
+
+
+@router.get("/sessions/{session_id}/bookmarks")
+def get_bookmarks(
+    session_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Both teacher (any role) and any authenticated viewer of the report can see
+    bookmarks = (
+        db.query(LiveSessionBookmark)
+        .filter(LiveSessionBookmark.session_id == session_id)
+        .order_by(LiveSessionBookmark.elapsed_secs)
+        .all()
+    )
+    return {
+        "session_id": session_id,
+        "bookmarks": [
+            {
+                "id":            b.id,
+                "elapsed_mins":  b.elapsed_mins,
+                "elapsed_secs":  b.elapsed_secs,
+                "type":          b.bookmark_type,
+                "icon":          _BOOKMARK_ICONS.get(b.bookmark_type or "", "📌"),
+                "title":         b.title,
+                "description":   b.description,
+                "added_by":      b.added_by,
+                "recording_url": b.recording_url,
+            }
+            for b in bookmarks
+        ],
+    }
+
+
+@router.post("/sessions/{session_id}/recording-url")
+def save_recording_url(
+    session_id: int,
+    body: SaveRecordingUrlRequest,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
+):
+    sess = _require_session_owner(session_id, current_user, db)
+    url = body.url.strip()
+    if not url:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "URL required")
+
+    sess.recording_url = url[:500]
+    db.query(LiveSessionBookmark).filter(
+        LiveSessionBookmark.session_id == session_id,
+    ).update({"recording_url": url[:500]})
+    db.commit()
+    return {"ok": True, "recording_url": url}

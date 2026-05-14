@@ -739,6 +739,66 @@ const TYPE_ICON = {
   positive: '⭐', topic_complete: '✅', energy: '🔋',
 };
 
+// F02 — Engagement timeline (sparkline)
+function AttentionTimelinePanel({ timeline }) {
+  if (!timeline || timeline.length === 0) return null;
+  const max = 100;
+  const w = 240, h = 48;
+  const step = timeline.length > 1 ? w / (timeline.length - 1) : 0;
+  const points = timeline.map((p, i) => {
+    const x = i * step;
+    const y = h - (Math.max(0, Math.min(max, p.engagement_pct || 0)) / max) * h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const last = timeline[timeline.length - 1];
+  const colour = (last.engagement_pct || 0) >= 70 ? '#10b981'
+               : (last.engagement_pct || 0) >= 40 ? '#f59e0b' : '#ef4444';
+  return (
+    <div className="mt-4 bg-white border border-violet-100 rounded-xl p-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Engagement timeline</span>
+        <span className="text-xs font-bold" style={{ color: colour }}>
+          {Math.round(last.engagement_pct || 0)}%
+        </span>
+      </div>
+      <svg width={w} height={h} className="block">
+        <polyline fill="none" stroke={colour} strokeWidth="2" points={points} />
+      </svg>
+      <p className="text-[11px] text-slate-500 mt-1 truncate">{last.event_label}</p>
+    </div>
+  );
+}
+
+// F02 — Per-student attention signals
+function AttentionSignalsPanel({ students }) {
+  if (!students || students.length === 0) return null;
+  // Only surface non-green signals
+  const flagged = students.filter(s => s.label !== 'highly_engaged');
+  if (flagged.length === 0) {
+    return (
+      <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700">
+        ✅ All students engaged.
+      </div>
+    );
+  }
+  const COLOURS = {
+    moderate:       'bg-yellow-50  border-yellow-200  text-yellow-800',
+    silent:         'bg-orange-50  border-orange-200  text-orange-800',
+    dropped_off:    'bg-red-50     border-red-200     text-red-800',
+  };
+  return (
+    <div className="mt-4 space-y-2">
+      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Attention signals</span>
+      {flagged.slice(0, 8).map((s, i) => (
+        <div key={s.student_id || i}
+          className={`text-xs p-2 rounded-lg border ${COLOURS[s.label] || 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+          {s.signal || `${s.name} — ${s.label}`}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AIBrainPanel({ sessionId }) {
   const [obs, setObs]       = useState([]);
   const [lastId, setLastId] = useState(0);
@@ -911,6 +971,12 @@ function LivePanel({ session, onEnd }) {
   // { "<agora_uid>": { name, role, user_id } }
   const [participantNames, setParticipantNames] = useState({});
 
+  // F02 — engagement timeline + per-student attention
+  const [timeline,         setTimeline]         = useState([]);
+  const [studentAttention, setStudentAttention] = useState([]);
+  // F03 — AI raises hand
+  const [activeIntervention, setActiveIntervention] = useState(null);
+
   const refresh = async () => {
     try {
       const r = await api.get(`/live/sessions/${session.id}/details`);
@@ -997,10 +1063,84 @@ function LivePanel({ session, onEnd }) {
     return () => { cancelled = true; clearInterval(t); };
   }, [isJoined, session?.id]);
 
+  // F02 — engagement timeline + per-student attention (every 30s)
+  useEffect(() => {
+    if (!session?.id) return undefined;
+    let cancelled = false;
+    const fetchAttention = async () => {
+      try {
+        const [tl, sa] = await Promise.all([
+          api.get(`/live/sessions/${session.id}/engagement-timeline`),
+          api.get(`/live/sessions/${session.id}/student-attention`),
+        ]);
+        if (cancelled) return;
+        setTimeline(tl.data?.timeline || []);
+        setStudentAttention(sa.data?.students || []);
+      } catch (_) { /* silent */ }
+    };
+    fetchAttention();
+    const t = setInterval(fetchAttention, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [session?.id]);
+
+  // F03 — AI raises hand (poll every 5 min as backup; WS pushes faster)
+  useEffect(() => {
+    if (!session?.id) return undefined;
+    let cancelled = false;
+    const checkIntervention = async () => {
+      try {
+        const r = await api.post(`/live/sessions/${session.id}/ai/check-intervention`);
+        if (!cancelled && r.data?.intervention) {
+          setActiveIntervention(r.data.intervention);
+        }
+      } catch (_) { /* silent */ }
+    };
+    const t = setInterval(checkIntervention, 300000); // 5 min
+    return () => { cancelled = true; clearInterval(t); };
+  }, [session?.id]);
+
+  const handleInterventionAction = async (action) => {
+    if (!activeIntervention) return;
+    if (action === 'Send pulse check' || action === 'Take pulse check') {
+      setShowPulse(true);
+    } else if (action === 'View doubt' || action === 'Address now') {
+      setRightPanel('doubts');
+    }
+    const id = activeIntervention.id;
+    setActiveIntervention(null);
+    try {
+      await api.post(`/live/sessions/${session.id}/ai/dismiss-intervention`, {
+        intervention_id: id, action,
+      });
+    } catch (_) { /* non-fatal */ }
+  };
+
+  // Build agora_uid → attention label map (so VideoTile shows colour ring)
+  const attentionLevelsByUid = useMemo(() => {
+    const userIdToUid = {};
+    Object.entries(participantNames).forEach(([uid, info]) => {
+      if (info?.user_id) userIdToUid[info.user_id] = uid;
+    });
+    const map = {};
+    studentAttention.forEach(s => {
+      const uid = s.student_id ? userIdToUid[s.student_id] : null;
+      if (!uid) return;
+      // VideoTile expects 'high'|'medium'|'low' for the ring colour
+      const ring = s.label === 'highly_engaged' ? 'high'
+                 : s.label === 'moderate'       ? 'medium'
+                 : s.label === 'silent' || s.label === 'dropped_off' ? 'low'
+                 : null;
+      if (ring) map[uid] = ring;
+    });
+    return map;
+  }, [studentAttention, participantNames]);
+
   // Enrich remote-user list with names from /participant-names (preferred)
   // then fall back to /details participant list.
   const enrichedRemote = useMemo(() => remoteUsers.map(ru => {
-    const named = participantNames[String(ru.uid)];
+    const uidStr = String(ru.uid);
+    const named = participantNames[uidStr] || participantNames[Number(ru.uid)];
+    const attentionLevel = attentionLevelsByUid[uidStr] || null;
     if (named) {
       return {
         ...ru,
@@ -1008,19 +1148,19 @@ function LivePanel({ session, onEnd }) {
         role: named.role === 'teacher' ? 'teacher'
               : named.role === 'guest' ? 'guest' : 'student',
         aiObservation: null,
-        attentionLevel: null,
+        attentionLevel,
         isHandRaised: false,
       };
     }
     return {
       ...ru,
-      name: `User ${ru.uid}`,
+      name: `User ${uidStr.slice(-4)}`,
       role: 'student',
       aiObservation: null,
-      attentionLevel: null,
+      attentionLevel,
       isHandRaised: false,
     };
-  }), [remoteUsers, participantNames]);
+  }), [remoteUsers, participantNames, attentionLevelsByUid]);
 
   // Effective list (dedupe by uid)
   const handleScreenShare = async () => {
@@ -1193,7 +1333,13 @@ function LivePanel({ session, onEnd }) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 bg-slate-50 text-slate-800">
-            {rightPanel === 'ai'     && <AIBrainPanel sessionId={session.id} />}
+            {rightPanel === 'ai'     && (
+              <>
+                <AIBrainPanel sessionId={session.id} />
+                <AttentionTimelinePanel timeline={timeline} />
+                <AttentionSignalsPanel students={studentAttention} />
+              </>
+            )}
             {rightPanel === 'doubts' && <DoubtWall    sessionId={session.id} />}
             {rightPanel === 'people' && (
               <PeoplePanel
@@ -1205,6 +1351,42 @@ function LivePanel({ session, onEnd }) {
           </div>
         </div>
       </div>
+
+      {/* F03 — AI raises hand toast (just above the bottom control bar) */}
+      {activeIntervention && (
+        <div className={`mx-4 mt-2 mb-2 rounded-2xl border p-4 shrink-0 ${
+          activeIntervention.severity === 'high'
+            ? 'bg-red-900/30 border-red-500/40'
+            : activeIntervention.severity === 'medium'
+            ? 'bg-yellow-900/30 border-yellow-500/40'
+            : 'bg-blue-900/30 border-blue-500/40'
+        }`}>
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <p className="text-white text-sm font-bold">{activeIntervention.title}</p>
+              <p className="text-gray-300 text-xs mt-0.5">{activeIntervention.message}</p>
+              <p className="text-gray-400 text-xs mt-1 italic">💡 {activeIntervention.suggestion}</p>
+            </div>
+            <button
+              onClick={() => setActiveIntervention(null)}
+              className="text-gray-400 hover:text-gray-200 text-lg leading-none flex-shrink-0"
+            >✕</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(activeIntervention.actions || []).map(a => (
+              <button
+                key={a}
+                onClick={() => handleInterventionAction(a)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                  a === 'Dismiss'
+                    ? 'bg-gray-700 text-gray-300'
+                    : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                }`}
+              >{a}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* BOTTOM CONTROL BAR */}
       <div className="flex items-center justify-center flex-wrap gap-2 px-4 py-3 bg-gray-900 border-t border-gray-800 shrink-0">
@@ -1246,6 +1428,30 @@ function LivePanel({ session, onEnd }) {
           }}
           icon="📨" label="Warmups" accent="emerald"
         />
+
+        {/* F09 — Quick AI/teacher bookmarks */}
+        <div className="w-px h-8 bg-gray-700 mx-1" />
+        {[
+          { type: 'topic_start', label: '📍 Topic' },
+          { type: 'live_demo',   label: '💻 Demo' },
+          { type: 'qa_start',    label: '❓ Q&A' },
+        ].map(b => (
+          <button
+            key={b.type}
+            onClick={async () => {
+              try {
+                await api.post(`/live/sessions/${session.id}/bookmarks`, {
+                  bookmark_type: b.type,
+                  title: b.label.replace(/^[^\s]+\s/, ''),
+                });
+              } catch (_) { /* silent */ }
+            }}
+            className="px-2 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-lg"
+            title="Add session bookmark"
+          >
+            {b.label}
+          </button>
+        ))}
 
         <div className="w-px h-8 bg-gray-700 mx-1" />
 
@@ -1459,6 +1665,8 @@ export default function TeacherLiveDashboard() {
     try {
       await api.post(`/live/sessions/${sess.id}/end`);
       refresh();
+      // PS7-A — navigate teacher to the rich health-report page
+      navigate(`/teacher/live/${sess.id}/report`);
     } catch (e) { /* ignore — UI already updated */ }
   };
 

@@ -44,13 +44,32 @@ export default function SessionHealthReport() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [sortKey, setSortKey] = useState('attendance');
+  // F09 — bookmarks / chapters + recording URL
+  const [bookmarks, setBookmarks]     = useState([]);
+  const [recordingUrl, setRecordingUrl] = useState('');
+  const [savingUrl, setSavingUrl]     = useState(false);
+  const [urlSaved, setUrlSaved]       = useState(false);
 
   useEffect(() => {
     api.get(`/live/sessions/${sessionId}/health-report`)
       .then(r => setReport(r.data))
       .catch(e => setErr(e.response?.data?.detail || 'Failed to load report'))
       .finally(()=>setLoading(false));
+    api.get(`/live/sessions/${sessionId}/bookmarks`)
+      .then(r => setBookmarks(r.data?.bookmarks || []))
+      .catch(() => {});
   }, [sessionId]);
+
+  const saveRecordingUrl = async () => {
+    if (!recordingUrl.trim()) return;
+    setSavingUrl(true);
+    setUrlSaved(false);
+    try {
+      await api.post(`/live/sessions/${sessionId}/recording-url`, { url: recordingUrl.trim() });
+      setUrlSaved(true);
+    } catch (_) {/* surface via urlSaved=false */}
+    finally { setSavingUrl(false); }
+  };
 
   if (loading) return <div className="p-10 text-center text-slate-400">Loading health report…</div>;
   if (err) return <div className="bg-red-50 text-red-700 p-4 rounded-lg">{err}</div>;
@@ -109,6 +128,62 @@ export default function SessionHealthReport() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* F09 — Smart recording chapters */}
+      {bookmarks.length > 0 && (
+        <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-slate-800">🎬 Session Chapters</h3>
+            <span className="text-xs text-slate-500">{bookmarks.length} bookmarks</span>
+          </div>
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {bookmarks.map(bm => {
+              const link = bm.recording_url
+                ? `${bm.recording_url}${bm.recording_url.includes('#') ? '&' : '#'}t=${bm.elapsed_secs || 0}`
+                : null;
+              const Inner = (
+                <>
+                  <span className="font-mono text-slate-500 text-xs w-10 flex-shrink-0">{bm.elapsed_mins ?? 0}m</span>
+                  <span className="text-base flex-shrink-0">{bm.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-slate-800 text-sm font-medium truncate">{bm.title}</p>
+                    {bm.description && <p className="text-slate-500 text-xs">{bm.description}</p>}
+                  </div>
+                  <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+                    bm.added_by === 'ai' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {bm.added_by === 'ai' ? '🤖 AI' : '👩‍🏫 You'}
+                  </span>
+                </>
+              );
+              return link ? (
+                <a key={bm.id} href={link} target="_blank" rel="noopener noreferrer"
+                   className="flex items-start gap-3 p-2 rounded-lg hover:bg-violet-50 transition">{Inner}</a>
+              ) : (
+                <div key={bm.id} className="flex items-start gap-3 p-2 rounded-lg">{Inner}</div>
+              );
+            })}
+          </div>
+
+          {/* Recording URL save */}
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <p className="text-xs text-slate-600 mb-2">Attach recording URL to enable deep-link chapters:</p>
+            <div className="flex gap-2">
+              <input
+                value={recordingUrl}
+                onChange={e => setRecordingUrl(e.target.value)}
+                placeholder="https://… (Zoom / Meet / Agora)"
+                className="flex-1 text-xs px-3 py-1.5 border border-slate-300 rounded-lg"
+              />
+              <button onClick={saveRecordingUrl} disabled={savingUrl || !recordingUrl.trim()}
+                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs rounded-lg disabled:opacity-50">
+                {savingUrl ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {urlSaved && <p className="text-xs text-emerald-600 mt-1">✅ Saved — refresh to see deep links.</p>}
+          </div>
         </div>
       )}
 

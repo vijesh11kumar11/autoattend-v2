@@ -1447,6 +1447,98 @@ class StudentPreclassWarmup(Base):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# F02 — live engagement snapshots + per-student engagement
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveEngagementSnapshot(Base):
+    """Recorded every ~5 minutes during a live session.
+
+    Tracks the engagement level of the whole class at that moment so the
+    teacher dashboard can render a timeline bar chart (F02).
+    """
+    __tablename__ = "live_engagement_snapshots"
+    __table_args__ = (
+        Index("ix_les_session_id",  "session_id"),
+        Index("ix_les_recorded_at", "recorded_at"),
+    )
+
+    id              = Column(Integer, primary_key=True, index=True)
+    session_id      = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    recorded_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    elapsed_mins    = Column(Integer, nullable=True)
+    total_students  = Column(Integer, nullable=True)
+    active_students = Column(Integer, nullable=True)
+    engagement_pct  = Column(Float, nullable=True)
+    event_label     = Column(String(120), nullable=True)
+
+
+class LiveStudentEngagement(Base):
+    """Per-student engagement counters during a live session (F02)."""
+    __tablename__ = "live_student_engagement"
+    __table_args__ = (
+        UniqueConstraint("session_id", "student_id",     name="uq_session_student_engagement"),
+        UniqueConstraint("session_id", "participant_id", name="uq_session_participant_engagement"),
+        Index("ix_lse_session_id", "session_id"),
+        Index("ix_lse_student_id", "student_id"),
+    )
+
+    id               = Column(Integer, primary_key=True, index=True)
+    session_id       = Column(Integer, ForeignKey("live_sessions.id",             ondelete="CASCADE"), nullable=False)
+    student_id       = Column(Integer, ForeignKey("users.id",                     ondelete="SET NULL"), nullable=True)
+    participant_id   = Column(Integer, ForeignKey("live_session_participants.id", ondelete="SET NULL"), nullable=True)
+    heartbeat_count  = Column(Integer, default=0, nullable=False)
+    last_active_at   = Column(DateTime(timezone=True), nullable=True)
+    response_count   = Column(Integer, default=0, nullable=False)
+    doubt_count      = Column(Integer, default=0, nullable=False)
+    engagement_label = Column(String(50), nullable=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# F03 — AI raises hand (interventions)
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveAIIntervention(Base):
+    __tablename__ = "live_ai_interventions"
+    __table_args__ = (
+        Index("ix_lai_session_id",   "session_id"),
+        Index("ix_lai_created_at",   "created_at"),
+    )
+
+    id           = Column(Integer, primary_key=True, index=True)
+    session_id   = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    int_type     = Column(String(50), nullable=True)
+    message      = Column(Text, nullable=True)
+    suggestion   = Column(Text, nullable=True)
+    severity     = Column(String(20), nullable=True)
+    action_taken = Column(String(80), nullable=True)
+    elapsed_mins = Column(Integer, nullable=True)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# F09 — smart recording bookmarks / chapters
+# ═══════════════════════════════════════════════════════════════════════
+
+class LiveSessionBookmark(Base):
+    __tablename__ = "live_session_bookmarks"
+    __table_args__ = (
+        Index("ix_lsb_session_id",   "session_id"),
+        Index("ix_lsb_elapsed_secs", "elapsed_secs"),
+    )
+
+    id            = Column(Integer, primary_key=True, index=True)
+    session_id    = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    elapsed_secs  = Column(Integer, nullable=True)
+    elapsed_mins  = Column(Integer, nullable=True)
+    bookmark_type = Column(String(50), nullable=True)
+    title         = Column(String(200), nullable=True)
+    description   = Column(Text, nullable=True)
+    added_by      = Column(String(20), default="ai", nullable=False)
+    recording_url = Column(String(500), nullable=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # ClassPulse Live — student_knowledge_graphs
 # ═══════════════════════════════════════════════════════════════════════
 

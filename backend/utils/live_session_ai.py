@@ -1069,3 +1069,96 @@ async def update_student_topic_mastery(session_id: int, db: Session) -> int:
     )
     return touched
 
+
+# ════════════════════════════════════════════════════════════════════════
+# F03 — AI raises hand: decides whether to interrupt the teacher
+# ════════════════════════════════════════════════════════════════════════
+
+async def generate_ai_intervention(
+    session_id: int,
+    db,
+    session_data: dict,
+) -> Optional[dict]:
+    """Decide whether the AI should interrupt the teacher right now.
+
+    Returns ``None`` if no intervention is needed, or a dict containing
+    ``type``, ``title``, ``message``, ``suggestion``, ``actions``,
+    ``action_type`` and ``severity``.
+
+    Pure rule-based — no LLM call required so it is cheap and stable.
+    """
+    elapsed_mins      = int(session_data.get("elapsed_mins", 0) or 0)
+    silent_count      = int(session_data.get("silent_count", 0) or 0)
+    total_students    = int(session_data.get("total_students", 1) or 1) or 1
+    hot_doubts        = int(session_data.get("hot_doubts", 0) or 0)
+    pulse_comp_avg    = session_data.get("pulse_comp_avg")
+    mins_since_pulse  = int(session_data.get("mins_since_pulse", 999) or 999)
+    last_intervention = int(session_data.get("last_intervention_mins", 0) or 0)
+
+    # 7-minute cooldown between interventions
+    if elapsed_mins - last_intervention < 7 and last_intervention > 0:
+        return None
+
+    # TYPE 1 — Confusion alert (reactive)
+    if silent_count >= 4 and (silent_count / total_students) > 0.25:
+        return {
+            "type":        "confusion_alert",
+            "title":       "⚠️ Confusion Detected",
+            "message":     f"{silent_count} students have gone quiet after the last explanation.",
+            "suggestion":  "Consider a quick recap or ask if anyone needs help.",
+            "actions":     ["Send recap", "Take pulse check", "Dismiss"],
+            "action_type": "confusion",
+            "severity":    "high",
+        }
+
+    # TYPE 5 — Low comprehension (act early when present)
+    if pulse_comp_avg is not None and float(pulse_comp_avg) < 55:
+        return {
+            "type":        "low_comprehension",
+            "title":       "📉 Low Comprehension",
+            "message":     f"Average pulse score is {pulse_comp_avg}% — less than half the class understands.",
+            "suggestion":  "Slow down and revisit the last concept with a different explanation.",
+            "actions":     ["Revisit concept", "Try analogy", "Dismiss"],
+            "action_type": "revisit",
+            "severity":    "high",
+        }
+
+    # TYPE 3 — Hot doubt
+    if hot_doubts > 0:
+        return {
+            "type":        "hot_doubt",
+            "title":       "🔥 Hot Doubt Detected",
+            "message":     f"{hot_doubts} doubt(s) have multiple students resonating — many share this confusion.",
+            "suggestion":  "Address the most resonated doubt on the wall now.",
+            "actions":     ["View doubt", "Address now", "Dismiss"],
+            "action_type": "doubt",
+            "severity":    "high",
+        }
+
+    # TYPE 2 — Pace alert
+    if mins_since_pulse > 20 and elapsed_mins > 25:
+        return {
+            "type":        "pace_alert",
+            "title":       "⚡ Pace Check",
+            "message":     f"You're {elapsed_mins} minutes in with no comprehension check.",
+            "suggestion":  "A quick pulse check helps ensure students are following.",
+            "actions":     ["Send pulse check", "Continue", "Dismiss"],
+            "action_type": "pulse",
+            "severity":    "medium",
+        }
+
+    # TYPE 4 — Energy check (every ~45 min, narrow window)
+    if elapsed_mins > 45 and (elapsed_mins % 45) < 6:
+        return {
+            "type":        "energy_check",
+            "title":       "🔋 Energy Check",
+            "message":     f"{elapsed_mins} minutes into the session. Student focus naturally dips after 45 mins.",
+            "suggestion":  "A 3-minute stretch break can improve retention for the second half.",
+            "actions":     ["Take a break", "Continue", "Dismiss"],
+            "action_type": "break",
+            "severity":    "low",
+        }
+
+    return None
+
+
