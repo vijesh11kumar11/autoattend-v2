@@ -13,12 +13,15 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-staging-api.example.com"
+        "EXPO_PUBLIC_API_URL": "https://traceln.onrender.com"
       }
     },
     "production": {
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-prod-api.example.com"
+        "EXPO_PUBLIC_API_URL": "https://traceln.onrender.com"
       }
     }
   },
