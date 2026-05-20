@@ -77,7 +77,11 @@ function getDeviceId() {
 // ── Axios instance ────────────────────────────────────────────────────
 
 const api = axios.create({
-  baseURL: '/api',
+  // In dev, Vite proxies /api → localhost:8000.
+  // In production, set VITE_API_BASE_URL=https://your-api.example.com
+  // and requests become https://your-api.example.com/api.
+  // Leave unset when frontend + backend share the same origin (nginx reverse-proxy).
+  baseURL: import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
