@@ -36,7 +36,7 @@ export default function PrincipalAlertsScreen() {
     try {
       const { data } = await client.get('/principal/audit');
       setAudits(data?.logs ?? data ?? []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[PrincipalAlertsScreen] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchAudits().finally(() => setLoading(false)); }, [fetchAudits]);

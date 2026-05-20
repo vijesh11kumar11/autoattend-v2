@@ -25,7 +25,7 @@ export default function TimetableScreen() {
     try {
       const { data } = await client.get(`/attendance/student/${user?.id}/summary`);
       setSubjects(data?.subjects ?? []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[TimetableScreen] fetch error:", err?.message); }
   }, [user?.id]);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

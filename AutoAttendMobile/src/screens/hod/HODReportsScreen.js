@@ -10,10 +10,9 @@ import {
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { API_BASE_URL } from '../../config';
+import { downloadAndShare } from '../../utils/secureDownload';
 
 const PRIMARY = '#1a237e';
 
@@ -28,19 +27,29 @@ export default function HODReportsScreen() {
     try {
       const { data } = await client.get('/alerts/hod/defaulters/count');
       setDefaulterCount(data?.count ?? 0);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.warn('[HODReportsScreen] defaulters count error:', err?.message);
+    }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
   const onRefresh = useCallback(async () => { setRefreshing(true); await fetchData(); setRefreshing(false); }, [fetchData]);
 
   const downloadDefaulters = async () => {
+    if (!user?.department_id) {
+      Alert.alert('Error', 'Your department is not set on your account.');
+      return;
+    }
     setDlLoading(true);
     try {
-      const url = `${API_BASE_URL}/api/reports/defaulters-pdf?department_id=${user?.department_id}`;
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('Error', 'Could not download defaulters report.');
+      await downloadAndShare({
+        path:        `/api/reports/defaulters-pdf?department_id=${user.department_id}`,
+        fileName:    `defaulters-dept-${user.department_id}`,
+        fallbackExt: 'pdf',
+        title:       'Save defaulters report',
+      });
+    } catch (err) {
+      console.warn('[HODReportsScreen] download error:', err?.message);
     } finally { setDlLoading(false); }
   };
 

@@ -33,7 +33,7 @@ export default function CollegeOverviewScreen() {
     try {
       const res = await client.get('/principal/stats');
       setData(res.data);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[CollegeOverviewScreen] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

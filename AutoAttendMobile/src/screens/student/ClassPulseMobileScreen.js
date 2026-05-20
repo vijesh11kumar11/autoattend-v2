@@ -66,7 +66,7 @@ export function ClassPulseHomeScreen({ navigation }) {
     try {
       const r = await client.get('/students/dashboard');
       setSubjects(r.data?.subjects || []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[ClassPulseMobileScreen] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
@@ -139,7 +139,7 @@ export function ClassPulseSubjectScreen({ route, navigation }) {
     try {
       const r = await client.get(`/classpulse/student/subject/${subjectId}/capsules`);
       setCapsules(r.data?.capsules || []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[ClassPulseMobileScreen] fetch error:", err?.message); }
   }, [subjectId]);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
@@ -516,7 +516,7 @@ export function ClassWallMobileScreen({ route, navigation }) {
     try {
       const r = await client.get(`/classpulse/student/subject/${subjectId}/wall`);
       setPosts(r.data?.posts || []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[ClassPulseMobileScreen] fetch error:", err?.message); }
   }, [subjectId]);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);

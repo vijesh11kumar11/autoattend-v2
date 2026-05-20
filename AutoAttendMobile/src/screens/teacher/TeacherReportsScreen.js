@@ -10,10 +10,9 @@ import {
   SafeAreaView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { API_BASE_URL } from '../../config';
+import { downloadAndShare } from '../../utils/secureDownload';
 
 const PRIMARY = '#1a237e';
 
@@ -28,7 +27,9 @@ export default function TeacherReportsScreen() {
     try {
       const { data } = await client.get(`/faculty/${user?.id}/classes`);
       setClasses(Array.isArray(data) ? data : []);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.warn('[TeacherReportsScreen] classes fetch error:', err?.message);
+    }
   }, [user?.id]);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -37,10 +38,15 @@ export default function TeacherReportsScreen() {
   const handleDownload = async (subjectId, name) => {
     setDownloading(subjectId);
     try {
-      const url = `${API_BASE_URL}/api/reports/class-session-pdf?subject_id=${subjectId}`;
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('Error', `Could not download report for ${name}.`);
+      await downloadAndShare({
+        path:        `/api/reports/class-session-pdf?subject_id=${subjectId}`,
+        fileName:    `attendance-${name}-${subjectId}`,
+        fallbackExt: 'pdf',
+        title:       `Save ${name} report`,
+      });
+    } catch (err) {
+      // downloadAndShare already shows an alert; just log
+      console.warn('[TeacherReportsScreen] download error:', err?.message);
     } finally { setDownloading(null); }
   };
 

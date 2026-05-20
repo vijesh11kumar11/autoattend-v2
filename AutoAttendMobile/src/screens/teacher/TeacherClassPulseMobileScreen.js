@@ -95,7 +95,7 @@ function CapsulesTab({ subject, navigation }) {
     try {
       const r = await client.get(`/classpulse/teacher/subject/${subject.id}/capsules`);
       setCapsules(r.data?.capsules || []);
-    } catch {/* silent */}
+    } catch (err) { console.warn("[TeacherClassPulseMobileScreen] fetch error:", err?.message); }
   }, [subject]);
 
   useEffect(() => { setLoading(true); load().finally(() => setLoading(false)); }, [load]);
@@ -138,7 +138,7 @@ function WallTab({ subject, navigation }) {
     try {
       const r = await client.get(`/classpulse/teacher/subject/${subject.id}/wall`);
       setPosts(r.data?.posts || []);
-    } catch {/* silent */}
+    } catch (err) { console.warn("[TeacherClassPulseMobileScreen] fetch error:", err?.message); }
   }, [subject]);
 
   useEffect(() => { setLoading(true); load().finally(() => setLoading(false)); }, [load]);

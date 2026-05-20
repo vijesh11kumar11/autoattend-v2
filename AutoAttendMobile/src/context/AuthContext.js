@@ -6,9 +6,10 @@
  * Roles:    student < teacher < hod < principal
  */
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { Alert, AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { setUnauthorizedCallback } from '../api/client';
+import { setUnauthorizedCallback, resetExpiryAlert } from '../api/client';
 
 const TOKEN_KEY = 'aa_auth_token';
 const ROLE_ORDER = { student: 0, teacher: 1, hod: 2, principal: 3 };
@@ -60,11 +61,40 @@ export function AuthProvider({ children }) {
     try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch {}
     setToken(null);
     setUser(null);
+    resetExpiryAlert();
   }, []);
 
   // Register logout as 401 handler for the axios interceptor
   useEffect(() => {
     setUnauthorizedCallback(logout);
+  }, [logout]);
+
+  // ── Re-check token expiry whenever the app returns to foreground ──
+  // Phones can sleep for hours; the token may have expired in the meantime.
+  const lastStateRef = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (next) => {
+      const prev = lastStateRef.current;
+      lastStateRef.current = next;
+      if (next !== 'active' || prev === 'active') return;
+
+      try {
+        const stored = await SecureStore.getItemAsync(TOKEN_KEY);
+        if (!stored) return;
+        const payload = decodeJWTPayload(stored);
+        if (!payload || typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()) {
+          Alert.alert(
+            'Session Expired',
+            'Your session has expired. Please log in again.',
+            [{ text: 'OK' }],
+          );
+          await logout();
+        }
+      } catch (err) {
+        console.warn('[AuthContext] foreground expiry check failed:', err?.message);
+      }
+    });
+    return () => sub.remove();
   }, [logout]);
 
   // ── login ─────────────────────────────────────────────────────────

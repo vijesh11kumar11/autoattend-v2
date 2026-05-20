@@ -6,7 +6,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, FlatList, RefreshControl,
-  SafeAreaView, StyleSheet, Text, View,
+  SafeAreaView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
@@ -14,7 +14,7 @@ import { useAuth } from '../../context/AuthContext';
 
 const PRIMARY = '#1a237e';
 
-export default function ClassesScreen() {
+export default function ClassesScreen({ navigation }) {
   const { user } = useAuth();
   const [classes, setClasses]       = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -24,7 +24,7 @@ export default function ClassesScreen() {
     try {
       const { data } = await client.get(`/faculty/${user?.id}/classes`);
       setClasses(Array.isArray(data) ? data : []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[ClassesScreen] fetch error:", err?.message); }
   }, [user?.id]);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -54,6 +54,15 @@ export default function ClassesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{c.name}</Text>
               <Text style={styles.meta}>{c.code} · Semester {c.semester ?? '—'}</Text>
+              {navigation && (
+                <TouchableOpacity
+                  style={styles.manageBtn}
+                  onPress={() => navigation.navigate('AttendanceManage', { subject_id: c.id, subject_name: c.name })}
+                >
+                  <Ionicons name="create-outline" size={12} color={PRIMARY} />
+                  <Text style={styles.manageBtnText}>Manage Attendance</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -73,4 +82,12 @@ const styles = StyleSheet.create({
   meta: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
   empty: { alignItems: 'center', paddingTop: 60 },
   emptyTxt: { fontSize: 14, color: '#94a3b8', marginTop: 12 },
+  manageBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start', marginTop: 8,
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 6, borderWidth: 1, borderColor: '#c7d2fe',
+    backgroundColor: '#eef2ff',
+  },
+  manageBtnText: { fontSize: 11, fontWeight: '700', color: PRIMARY },
 });

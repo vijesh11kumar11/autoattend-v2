@@ -46,7 +46,7 @@ export default function PrincipalDashboard({ navigation }) {
       setCollege(data.college ?? {});
       setStats(data.stats ?? []);
       setDepartments(data.departments ?? []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[PrincipalDashboard] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

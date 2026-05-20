@@ -32,7 +32,7 @@ from database import (
     UserRole,
     get_db,
 )
-from utils.auth_utils import hod_or_above
+from utils.auth_utils import hod_or_above, student_only
 from utils.whatsapp import send_whatsapp_message
 
 logger = logging.getLogger(__name__)
@@ -307,3 +307,34 @@ def send_custom_alert(
         "reason":       wa.get("error"),
     }
 
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# STUDENT — read own notification feed
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/student")
+def my_alerts(
+    limit:        int  = Query(50, ge=1, le=200),
+    current_user: dict = Depends(student_only),
+    db:           Session = Depends(get_db),
+):
+    """Return this student's most-recent alerts (WhatsApp/SMS/in-app)."""
+    rows = (
+        db.query(AlertsLog)
+        .filter(AlertsLog.student_id == current_user["id"])
+        .order_by(AlertsLog.sent_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id":          a.id,
+            "alert_type":  a.alert_type,
+            "message":     a.message,
+            "sent_at":     a.sent_at.isoformat() if a.sent_at else None,
+            "status":      a.status.value   if a.status   else None,
+            "channel":     a.channel.value  if a.channel  else None,
+        }
+        for a in rows
+    ]

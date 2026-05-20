@@ -26,7 +26,7 @@ const STATUS_MAP = {
   absent:  { short: 'A', color: '#ef4444', bg: '#fef2f2' },
 };
 
-export default function AttendanceHistoryScreen() {
+export default function AttendanceHistoryScreen({ navigation }) {
   const [subjects,        setSubjects]        = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null); // null = All
   const [selectedMonth,   setSelectedMonth]   = useState(new Date().getMonth());
@@ -125,8 +125,11 @@ export default function AttendanceHistoryScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const s = STATUS_MAP[(item.status ?? '').toLowerCase()] ?? STATUS_MAP.absent;
+            const statusLower = (item.status ?? '').toLowerCase();
+            const s = STATUS_MAP[statusLower] ?? STATUS_MAP.absent;
             const d = item.date ? new Date(item.date) : null;
+            const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const canDispute = navigation && statusLower === 'absent' && item.session_id && d && d >= sevenDaysAgo;
             return (
               <View style={styles.row}>
                 <View style={styles.dateCol}>
@@ -141,6 +144,19 @@ export default function AttendanceHistoryScreen() {
                   <Text style={styles.rowSubject}>{item.subject_name ?? '—'}</Text>
                   {item.marked_via && (
                     <Text style={styles.rowVia}>via {item.marked_via}</Text>
+                  )}
+                  {canDispute && (
+                    <TouchableOpacity
+                      style={styles.disputeBtn}
+                      onPress={() => navigation.navigate('Dispute', {
+                        session_id:   item.session_id,
+                        subject_name: item.subject_name,
+                        date:         item.date,
+                      })}
+                    >
+                      <Ionicons name="alert-circle-outline" size={12} color="#ef4444" />
+                      <Text style={styles.disputeBtnText}>Raise Dispute</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: s.bg }]}>
@@ -203,6 +219,14 @@ const styles = StyleSheet.create({
   rowVia:      { fontSize: 10, color: '#94a3b8', marginTop: 1 },
   statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
   statusText:  { fontSize: 14, fontWeight: '900' },
+  disputeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start', marginTop: 6,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6, borderWidth: 1, borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+  },
+  disputeBtnText: { fontSize: 10, fontWeight: '700', color: '#ef4444' },
 
   summaryBar: {
     backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0',

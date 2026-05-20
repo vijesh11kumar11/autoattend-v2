@@ -24,7 +24,7 @@ export default function TeacherDashboard({ navigation }) {
     try {
       const { data } = await client.get(`/faculty/${user?.id}/classes`);
       setClasses(Array.isArray(data) ? data : []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[TeacherDashboard] fetch error:", err?.message); }
   }, [user?.id]);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -57,6 +57,10 @@ export default function TeacherDashboard({ navigation }) {
           <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Reports')}>
             <Ionicons name="stats-chart-outline" size={28} color={PRIMARY} />
             <Text style={styles.actionTxt}>Reports</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('LeaveManagement')}>
+            <Ionicons name="mail-unread-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>Leave Reqs</Text>
           </TouchableOpacity>
         </View>
 

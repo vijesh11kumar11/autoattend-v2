@@ -26,7 +26,7 @@ export default function StudentsScreen() {
       const { data } = await client.get('/hod/dashboard');
       setSubjects(data?.subjects ?? []);
       setStudentCount(data?.student_count ?? 0);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[StudentsScreen] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

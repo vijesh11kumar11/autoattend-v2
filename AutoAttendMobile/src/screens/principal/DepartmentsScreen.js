@@ -24,7 +24,7 @@ export default function DepartmentsScreen() {
     try {
       const { data } = await client.get('/principal/stats');
       setDepts(data?.departments ?? []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[DepartmentsScreen] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

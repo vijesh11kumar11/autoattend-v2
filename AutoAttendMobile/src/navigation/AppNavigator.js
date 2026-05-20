@@ -38,16 +38,25 @@ import HODReportsScreen        from '../screens/hod/HODReportsScreen';
 import PendingApprovalsScreen  from '../screens/hod/PendingApprovalsScreen';
 
 // ── Teacher screens ───────────────────────────────────────────────────
-import TeacherDashboard     from '../screens/teacher/TeacherDashboard';
-import QRGenerateScreen     from '../screens/teacher/QRGenerateScreen';
-import ClassesScreen        from '../screens/teacher/ClassesScreen';
-import TeacherReportsScreen from '../screens/teacher/TeacherReportsScreen';
+import TeacherDashboard         from '../screens/teacher/TeacherDashboard';
+import QRGenerateScreen         from '../screens/teacher/QRGenerateScreen';
+import ClassesScreen            from '../screens/teacher/ClassesScreen';
+import TeacherReportsScreen     from '../screens/teacher/TeacherReportsScreen';
+import AttendanceManageScreen   from '../screens/teacher/AttendanceManageScreen';
+import LeaveManagementScreen    from '../screens/teacher/LeaveManagementScreen';
 
 // ── Student screens ───────────────────────────────────────────────────
 import StudentDashboard        from '../screens/student/StudentDashboard';
 import ScanQRScreen            from '../screens/student/ScanQRScreen';
 import AttendanceHistoryScreen from '../screens/student/AttendanceHistoryScreen';
-import TimetableScreen         from '../screens/student/TimetableScreen';import {
+import TimetableScreen         from '../screens/student/TimetableScreen';
+import LeaveRequestScreen      from '../screens/student/LeaveRequestScreen';
+import NotificationsScreen     from '../screens/student/NotificationsScreen';
+import DisputeScreen           from '../screens/student/DisputeScreen';
+
+// ── Shared screens ────────────────────────────────────────────────────
+import ProfileScreen            from '../screens/shared/ProfileScreen';
+import {
   ClassPulseHomeScreen,
   ClassPulseSubjectScreen,
   CapsuleMobileDetailScreen,
@@ -62,10 +71,11 @@ import {
 export const navigationRef = createNavigationContainerRef();
 
 // ── Navigators ────────────────────────────────────────────────────────
-const AuthStack    = createStackNavigator();
-const HODStack     = createStackNavigator();
-const StudentStack = createStackNavigator();
-const TeacherStack = createStackNavigator();
+const AuthStack      = createStackNavigator();
+const HODStack       = createStackNavigator();
+const StudentStack   = createStackNavigator();
+const TeacherStack   = createStackNavigator();
+const PrincipalStack = createStackNavigator();
 const PrincipalTab = createBottomTabNavigator();
 const HODTab       = createBottomTabNavigator();
 const TeacherTab   = createBottomTabNavigator();
@@ -99,6 +109,25 @@ function icon(name) {
   return ({ color, size }) => <Ionicons name={name} size={size} color={color} />;
 }
 
+// Header-right buttons (Notifications + Profile) shown across all role tab navigators.
+function makeHeaderRight(navigation, { showNotifications = false } = {}) {
+  return () => (
+    <View style={{ flexDirection: 'row', marginRight: 12 }}>
+      {showNotifications && (
+        <Ionicons
+          name="notifications-outline" size={22} color="#fff"
+          style={{ marginRight: 16 }}
+          onPress={() => navigation.navigate('Notifications')}
+        />
+      )}
+      <Ionicons
+        name="person-circle-outline" size={24} color="#fff"
+        onPress={() => navigation.navigate('Profile')}
+      />
+    </View>
+  );
+}
+
 // ── Auth navigator ────────────────────────────────────────────────────
 function AuthNavigator() {
   return (
@@ -112,9 +141,10 @@ function AuthNavigator() {
 }
 
 // ── Principal navigator ───────────────────────────────────────────────
-function PrincipalNavigator() {
+function PrincipalTabNavigator({ navigation }) {
+  const headerRight = makeHeaderRight(navigation);
   return (
-    <PrincipalTab.Navigator screenOptions={SHARED_TAB_OPTS}>
+    <PrincipalTab.Navigator screenOptions={{ ...SHARED_TAB_OPTS, headerRight }}>
       <PrincipalTab.Screen
         name="Dashboard"   component={PrincipalDashboard}
         options={{ title: 'Dashboard',   tabBarIcon: icon('home-outline') }}
@@ -135,10 +165,20 @@ function PrincipalNavigator() {
   );
 }
 
-// ── HOD navigator ─────────────────────────────────────────────────────
-function HODTabNavigator() {
+function PrincipalNavigator() {
   return (
-    <HODTab.Navigator screenOptions={SHARED_TAB_OPTS}>
+    <PrincipalStack.Navigator screenOptions={{ headerShown: false }}>
+      <PrincipalStack.Screen name="PrincipalTabs" component={PrincipalTabNavigator} />
+      <PrincipalStack.Screen name="Profile"       component={ProfileScreen} options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
+    </PrincipalStack.Navigator>
+  );
+}
+
+// ── HOD navigator ─────────────────────────────────────────────────────
+function HODTabNavigator({ navigation }) {
+  const headerRight = makeHeaderRight(navigation);
+  return (
+    <HODTab.Navigator screenOptions={{ ...SHARED_TAB_OPTS, headerRight }}>
       <HODTab.Screen
         name="Dashboard" component={HODDashboard}
         options={{ title: 'Dashboard', tabBarIcon: icon('home-outline') }}
@@ -164,14 +204,17 @@ function HODNavigator() {
     <HODStack.Navigator screenOptions={{ headerShown: false }}>
       <HODStack.Screen name="HODTabs"           component={HODTabNavigator} />
       <HODStack.Screen name="PendingApprovals"  component={PendingApprovalsScreen} />
+      <HODStack.Screen name="LeaveManagement"   component={LeaveManagementScreen} options={{ headerShown: true, title: 'Leave Requests', ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="Profile"           component={ProfileScreen}          options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </HODStack.Navigator>
   );
 }
 
 // ── Teacher navigator ─────────────────────────────────────────────────
-function TeacherTabNavigator() {
+function TeacherTabNavigator({ navigation }) {
+  const headerRight = makeHeaderRight(navigation);
   return (
-    <TeacherTab.Navigator screenOptions={SHARED_TAB_OPTS}>
+    <TeacherTab.Navigator screenOptions={{ ...SHARED_TAB_OPTS, headerRight }}>
       <TeacherTab.Screen
         name="Dashboard"  component={TeacherDashboard}
         options={{ title: 'Dashboard',   tabBarIcon: icon('home-outline') }}
@@ -202,14 +245,18 @@ function TeacherNavigator() {
       <TeacherStack.Screen name="TeacherTabs"      component={TeacherTabNavigator} />
       <TeacherStack.Screen name="CapsuleAnalytics" component={CapsuleAnalyticsMobileScreen} options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
       <TeacherStack.Screen name="AnswerDoubt"      component={AnswerDoubtMobileScreen}      options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="AttendanceManage" component={AttendanceManageScreen}       options={{ headerShown: true, title: 'Manage Attendance', ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="LeaveManagement"  component={LeaveManagementScreen}        options={{ headerShown: true, title: 'Leave Requests', ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="Profile"          component={ProfileScreen}                options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </TeacherStack.Navigator>
   );
 }
 
 // ── Student navigator ─────────────────────────────────────────────────
-function StudentTabNavigator() {
+function StudentTabNavigator({ navigation }) {
+  const headerRight = makeHeaderRight(navigation, { showNotifications: true });
   return (
-    <StudentTab.Navigator screenOptions={SHARED_TAB_OPTS}>
+    <StudentTab.Navigator screenOptions={{ ...SHARED_TAB_OPTS, headerRight }}>
       <StudentTab.Screen
         name="Dashboard"  component={StudentDashboard}
         options={{ title: 'Dashboard',  tabBarIcon: icon('home-outline') }}
@@ -241,6 +288,10 @@ function StudentNavigator() {
       <StudentStack.Screen name="ClassPulseSubject" component={ClassPulseSubjectScreen}   options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="CapsuleDetail"     component={CapsuleMobileDetailScreen} options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="ClassWall"         component={ClassWallMobileScreen}     options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="LeaveRequest"      component={LeaveRequestScreen}        options={{ headerShown: true, title: 'My Leave Requests', ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="Notifications"     component={NotificationsScreen}       options={{ headerShown: true, title: 'Notifications', ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="Dispute"           component={DisputeScreen}             options={{ headerShown: true, title: 'Attendance Dispute', ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="Profile"           component={ProfileScreen}             options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </StudentStack.Navigator>
   );
 }

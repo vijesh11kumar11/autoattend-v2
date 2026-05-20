@@ -33,7 +33,7 @@ export default function DeptOverviewScreen() {
     try {
       const res = await client.get('/hod/dashboard');
       setData(res.data);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[DeptOverviewScreen] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

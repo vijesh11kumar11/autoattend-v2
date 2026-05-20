@@ -40,7 +40,7 @@ export default function HODDashboard({ navigation }) {
         pending:  data.pending_count ?? 0,
       });
       setTeachers(data.teachers ?? []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[HODDashboard] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

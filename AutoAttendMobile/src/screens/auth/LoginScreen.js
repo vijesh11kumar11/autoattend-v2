@@ -40,11 +40,13 @@ import {
 import { LinearGradient }  from 'expo-linear-gradient';
 import { SafeAreaView }    from 'react-native-safe-area-context';
 import { Ionicons }        from '@expo/vector-icons';
-import AsyncStorage        from '@react-native-async-storage/async-storage';
+import * as SecureStore    from 'expo-secure-store';
 import { useAuth }         from '../../context/AuthContext';
 import client              from '../../api/client';
 
-const REMEMBER_KEY = 'aa_remember_identifier';
+const REMEMBER_KEY    = 'aa_remember_identifier';
+const MAX_ATTEMPTS    = 5;
+const COOLDOWN_SECONDS = 30;
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function LoginScreen({ navigation }) {
@@ -56,19 +58,51 @@ export default function LoginScreen({ navigation }) {
   const [rememberMe,   setRememberMe]   = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [deviceDialog, setDeviceDialog] = useState(false);
+  const [errors,       setErrors]       = useState({ identifier: '', password: '' });
+  const [cooldown,     setCooldown]     = useState(0);   // seconds remaining
 
-  const shakeAnim   = useRef(new Animated.Value(0)).current;
-  const passwordRef = useRef(null);
+  const attemptsRef   = useRef(0);
+  const cooldownTimer = useRef(null);
+  const shakeAnim     = useRef(new Animated.Value(0)).current;
+  const passwordRef   = useRef(null);
 
-  // ── Restore remembered identifier ──────────────────────────────────────────
+  // ── Restore remembered identifier from SecureStore ─────────────────────────
   useEffect(() => {
-    AsyncStorage.getItem(REMEMBER_KEY).then((val) => {
+    SecureStore.getItemAsync(REMEMBER_KEY).then((val) => {
       if (val) {
         setIdentifier(val);
         setRememberMe(true);
       }
-    });
+    }).catch(() => {});
   }, []);
+
+  // Cleanup cooldown timer on unmount
+  useEffect(() => () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current); }, []);
+
+  const startCooldown = useCallback(() => {
+    setCooldown(COOLDOWN_SECONDS);
+    if (cooldownTimer.current) clearInterval(cooldownTimer.current);
+    cooldownTimer.current = setInterval(() => {
+      setCooldown((s) => {
+        if (s <= 1) {
+          clearInterval(cooldownTimer.current);
+          cooldownTimer.current = null;
+          attemptsRef.current = 0;     // reset after cooldown
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+  }, []);
+
+  const validate = useCallback(() => {
+    const next = { identifier: '', password: '' };
+    const id   = identifier.trim();
+    if (id.length < 3)         next.identifier = 'Enter at least 3 characters.';
+    if (password.length < 6)   next.password   = 'Password must be at least 6 characters.';
+    setErrors(next);
+    return !next.identifier && !next.password;
+  }, [identifier, password]);
 
   // ── Shake card ─────────────────────────────────────────────────────────────
   const shake = useCallback(() => {
@@ -176,7 +210,7 @@ export default function LoginScreen({ navigation }) {
               <Text style={styles.cardTitle}>Sign In</Text>
 
               {/* Identifier */}
-              <View style={styles.field}>
+              <View style={[styles.field, errors.identifier && styles.fieldError]}>
                 <Ionicons
                   name="person-outline"
                   size={18}
@@ -188,7 +222,7 @@ export default function LoginScreen({ navigation }) {
                   placeholder="Email or Roll Number"
                   placeholderTextColor="#94a3b8"
                   value={identifier}
-                  onChangeText={setIdentifier}
+                  onChangeText={(t) => { setIdentifier(t); if (errors.identifier) setErrors((e) => ({ ...e, identifier: '' })); }}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -198,9 +232,10 @@ export default function LoginScreen({ navigation }) {
                   textContentType="username"
                 />
               </View>
+              {errors.identifier ? <Text style={styles.errorText}>{errors.identifier}</Text> : null}
 
               {/* Password */}
-              <View style={styles.field}>
+              <View style={[styles.field, errors.password && styles.fieldError]}>
                 <Ionicons
                   name="lock-closed-outline"
                   size={18}
@@ -213,7 +248,7 @@ export default function LoginScreen({ navigation }) {
                   placeholder="Password"
                   placeholderTextColor="#94a3b8"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(t) => { setPassword(t); if (errors.password) setErrors((e) => ({ ...e, password: '' })); }}
                   secureTextEntry={!showPw}
                   returnKeyType="done"
                   onSubmitEditing={handleLogin}
@@ -232,6 +267,7 @@ export default function LoginScreen({ navigation }) {
                   />
                 </TouchableOpacity>
               </View>
+              {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
 
               {/* Remember me */}
               <View style={styles.rememberRow}>
@@ -247,14 +283,16 @@ export default function LoginScreen({ navigation }) {
 
               {/* Login button */}
               <TouchableOpacity
-                style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
+                style={[styles.loginBtn, (loading || cooldown > 0) && styles.loginBtnDisabled]}
                 onPress={handleLogin}
-                disabled={loading}
+                disabled={loading || cooldown > 0}
                 activeOpacity={0.85}
               >
                 {loading
                   ? <ActivityIndicator color="#ffffff" size="small" />
-                  : <Text style={styles.loginBtnText}>Sign In</Text>
+                  : <Text style={styles.loginBtnText}>
+                      {cooldown > 0 ? `Try again in ${cooldown}s` : 'Sign In'}
+                    </Text>
                 }
               </TouchableOpacity>
 
@@ -371,6 +409,8 @@ const styles = StyleSheet.create({
   },
   fieldIcon:  { marginRight: 10 },
   fieldInput: { flex: 1, fontSize: 15, color: '#1e293b', paddingVertical: 0 },
+  fieldError: { borderColor: '#ef4444' },
+  errorText:  { fontSize: 12, color: '#ef4444', marginTop: -8, marginBottom: 10, marginLeft: 4 },
   eyeBtn:     { padding: 4 },
 
   // ── Remember me ───────────────────────────────────────────────────────────

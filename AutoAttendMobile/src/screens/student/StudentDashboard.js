@@ -63,7 +63,7 @@ export default function StudentDashboard({ navigation }) {
         (d.subjects ?? []).filter((s) => (s.percentage ?? 0) < THRESHOLDS.SAFE).length,
       );
       setTodayClasses(Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data.classes ?? []));
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[StudentDashboard] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => {
@@ -191,6 +191,15 @@ export default function StudentDashboard({ navigation }) {
         >
           <Ionicons name="bar-chart-outline" size={18} color="#fff" />
           <Text style={styles.bottomBtnText}>View Full Attendance</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.bottomBtn, { backgroundColor: '#0ea5e9', marginTop: 10 }]}
+          onPress={() => navigation.navigate('LeaveRequest')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="document-text-outline" size={18} color="#fff" />
+          <Text style={styles.bottomBtnText}>My Leave Requests</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

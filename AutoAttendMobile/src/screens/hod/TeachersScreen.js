@@ -23,7 +23,7 @@ export default function TeachersScreen() {
     try {
       const { data } = await client.get('/hod/dashboard');
       setTeachers(data?.teachers ?? []);
-    } catch { /* silent */ }
+    } catch (err) { console.warn("[TeachersScreen] fetch error:", err?.message); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);

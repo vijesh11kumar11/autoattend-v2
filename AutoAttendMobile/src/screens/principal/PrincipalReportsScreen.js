@@ -10,14 +10,13 @@ import {
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking';
-import { API_BASE_URL } from '../../config';
+import { downloadAndShare } from '../../utils/secureDownload';
 
 const PRIMARY = '#1a237e';
 
 const REPORTS = [
-  { id: 'monthly', icon: 'calendar-outline', title: 'Monthly Attendance Excel', sub: 'Comprehensive monthly report across all departments', path: '/api/reports/monthly-excel' },
-  { id: 'defaulters', icon: 'alert-circle-outline', title: 'Defaulters Report (PDF)', sub: 'Students below 75% attendance across the college', path: '/api/reports/defaulters-pdf' },
+  { id: 'monthly',    icon: 'calendar-outline',     title: 'Monthly Attendance Excel', sub: 'Comprehensive monthly report across all departments', path: '/api/reports/monthly-excel',   ext: 'xlsx' },
+  { id: 'defaulters', icon: 'alert-circle-outline', title: 'Defaulters Report (PDF)',  sub: 'Students below 75% attendance across the college',   path: '/api/reports/defaulters-pdf', ext: 'pdf'  },
 ];
 
 export default function PrincipalReportsScreen() {
@@ -26,9 +25,14 @@ export default function PrincipalReportsScreen() {
   const handleDownload = async (report) => {
     setDownloading(report.id);
     try {
-      await Linking.openURL(`${API_BASE_URL}${report.path}`);
-    } catch {
-      Alert.alert('Error', `Could not download ${report.title}.`);
+      await downloadAndShare({
+        path:        report.path,
+        fileName:    `college-${report.id}`,
+        fallbackExt: report.ext || 'pdf',
+        title:       `Save ${report.title}`,
+      });
+    } catch (err) {
+      console.warn('[PrincipalReportsScreen] download error:', err?.message);
     } finally { setDownloading(null); }
   };
 

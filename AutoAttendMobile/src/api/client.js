@@ -23,6 +23,40 @@ import { API_BASE_URL, API_TIMEOUT } from '../config';
 const TOKEN_KEY     = 'aa_auth_token';
 const DEVICE_ID_KEY = 'aa_device_id';
 
+// ── JWT helpers ───────────────────────────────────────────────────────
+/** Decode the payload portion of a JWT without an external library. */
+export function decodeJWTPayload(token) {
+  try {
+    const [, payload] = String(token || '').split('.');
+    if (!payload) return null;
+    const padded  = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    const decoded = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+/** True if a JWT is missing/malformed or its `exp` claim is in the past. */
+export function isTokenExpired(token) {
+  if (!token) return true;
+  const payload = decodeJWTPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return true;
+  return payload.exp * 1000 <= Date.now();
+}
+
+let _expiryAlertShown = false;
+function notifyExpiredOnce() {
+  if (_expiryAlertShown) return;
+  _expiryAlertShown = true;
+  Alert.alert(
+    'Session Expired',
+    'Your session has expired. Please log in again.',
+    [{ text: 'OK', onPress: () => { _expiryAlertShown = false; } }],
+  );
+}
+export function resetExpiryAlert() { _expiryAlertShown = false; }
+
 // ── Unauthorized callback (set by AuthContext on mount) ───────────────
 let _onUnauthorized = null;
 export function setUnauthorizedCallback(fn) {
@@ -81,6 +115,15 @@ client.interceptors.request.use(
       getDeviceId(),
     ]);
     if (token) {
+      // Pre-flight expiry guard — never send a request with a dead token.
+      if (isTokenExpired(token)) {
+        try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch {}
+        notifyExpiredOnce();
+        if (_onUnauthorized) {
+          try { await _onUnauthorized(); } catch {}
+        }
+        return Promise.reject(new axios.Cancel('Session expired'));
+      }
       config.headers.Authorization = `Bearer ${token}`;
     }
     config.headers['X-Device-ID'] = deviceId;
