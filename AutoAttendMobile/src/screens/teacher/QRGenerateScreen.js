@@ -366,7 +366,8 @@ export default function QRGenerateScreen() {
     //
     // For now, store the token; the session's bluetooth_token is already
     // served via the API and students can match it from the QR payload.
-    console.log('[BLE] Would broadcast token:', token);
+    // SECURITY: Never log the raw token. Only emit a redacted dev marker.
+    if (__DEV__) console.log('[BLE] Would broadcast token: <redacted>', token ? `(len=${String(token).length})` : '');
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -113,6 +113,16 @@ export default function PrincipalDashboard({ navigation }) {
           <Ionicons name="chevron-forward" size={18} color={PRIMARY} />
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.overviewBtn}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('PrincipalClassPulse')}
+        >
+          <Ionicons name="film-outline" size={18} color={PRIMARY} />
+          <Text style={styles.overviewTxt}>ClassPulse — All Departments</Text>
+          <Ionicons name="chevron-forward" size={18} color={PRIMARY} />
+        </TouchableOpacity>
+
         {/* Departments */}
         <Text style={styles.sectionTitle}>Departments</Text>
         {departments.map((dept, i) => {

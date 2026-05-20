@@ -31,6 +31,7 @@ import PrincipalReportsScreen from '../screens/principal/PrincipalReportsScreen'
 import PrincipalAlertsScreen  from '../screens/principal/PrincipalAlertsScreen';
 import PrincipalAuditScreen   from '../screens/principal/PrincipalAuditScreen';
 import CollegeOverviewScreen  from '../screens/principal/CollegeOverviewScreen';
+import PrincipalClassPulseScreen from '../screens/principal/PrincipalClassPulseScreen';
 
 // ── HOD screens ───────────────────────────────────────────────────────
 import HODDashboard            from '../screens/hod/HODDashboard';
@@ -44,6 +45,15 @@ import StudentDetailScreen     from '../screens/hod/StudentDetailScreen';
 import SemesterProgressScreen  from '../screens/hod/SemesterProgressScreen';
 import SectionAnalyticsScreen  from '../screens/hod/SectionAnalyticsScreen';
 import DeptOverviewScreen      from '../screens/hod/DeptOverviewScreen';
+import SectionsScreen           from '../screens/hod/SectionsScreen';
+import SubjectsScreen           from '../screens/hod/SubjectsScreen';
+import HODTimetableScreen       from '../screens/hod/HODTimetableScreen';
+import TutorManagementScreen    from '../screens/hod/TutorManagementScreen';
+import HODReportsHomeScreen     from '../screens/hod/HODReportsHomeScreen';
+import LiveAnalyticsScreen      from '../screens/hod/LiveAnalyticsScreen';
+import TeacherPerformanceScreen from '../screens/hod/TeacherPerformanceScreen';
+import HODDisputesScreen        from '../screens/hod/HODDisputesScreen';
+import HODClassPulseScreen      from '../screens/hod/HODClassPulseScreen';
 
 // ── Teacher screens ───────────────────────────────────────────────────
 import TeacherDashboard         from '../screens/teacher/TeacherDashboard';
@@ -202,6 +212,7 @@ function PrincipalNavigator() {
   return (
     <PrincipalStack.Navigator screenOptions={{ headerShown: false }}>
       <PrincipalStack.Screen name="PrincipalTabs" component={PrincipalTabNavigator} />
+      <PrincipalStack.Screen name="PrincipalClassPulse" component={PrincipalClassPulseScreen} options={{ headerShown: true, title: 'ClassPulse', ...SHARED_TAB_OPTS }} />
       <PrincipalStack.Screen name="Profile"       component={ProfileScreen} options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </PrincipalStack.Navigator>
   );
@@ -247,6 +258,15 @@ function HODNavigator() {
       <HODStack.Screen name="SemesterProgress"  component={SemesterProgressScreen} options={{ headerShown: true, title: 'Semester Progress', ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="SectionAnalytics"  component={SectionAnalyticsScreen} options={{ headerShown: true, title: 'Section Analytics', ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="DeptOverview"      component={DeptOverviewScreen}     options={{ headerShown: true, title: 'Department Overview', ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="Sections"          component={SectionsScreen}            options={{ headerShown: true, title: 'Sections',            ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="Subjects"          component={SubjectsScreen}            options={{ headerShown: true, title: 'Subjects',            ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="HODTimetable"      component={HODTimetableScreen}        options={{ headerShown: true, title: 'Timetable',           ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="TutorManagement"   component={TutorManagementScreen}     options={{ headerShown: true, title: 'Tutor Management',    ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="HODReportsHome"    component={HODReportsHomeScreen}      options={{ headerShown: true, title: 'Reports',             ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="LiveAnalytics"     component={LiveAnalyticsScreen}       options={{ headerShown: true, title: 'Live Sessions',       ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="TeacherPerformance" component={TeacherPerformanceScreen} options={{ headerShown: true, title: 'Teacher Performance', ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="HODDisputes"       component={HODDisputesScreen}         options={{ headerShown: true, title: 'Disputes',            ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="HODClassPulse"     component={HODClassPulseScreen}       options={{ headerShown: true, title: 'ClassPulse',          ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="Profile"           component={ProfileScreen}          options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </HODStack.Navigator>
   );

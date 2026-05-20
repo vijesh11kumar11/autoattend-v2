@@ -138,6 +138,46 @@ export default function HODDashboard({ navigation }) {
             </TouchableOpacity>
           ))}
         </View>
+
+        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Management</Text>
+        <View style={styles.actionsGrid}>
+          {[
+            { icon: 'layers-outline',   label: 'Sections',  onPress: () => navigation.navigate('Sections') },
+            { icon: 'book-outline',     label: 'Subjects',  onPress: () => navigation.navigate('Subjects') },
+            { icon: 'calendar-outline', label: 'Timetable', onPress: () => navigation.navigate('HODTimetable') },
+          ].map((a, i) => (
+            <TouchableOpacity key={i} style={styles.actionBtn} onPress={a.onPress} activeOpacity={0.8}>
+              <Ionicons name={a.icon} size={24} color={PRIMARY} />
+              <Text style={styles.actionLabel}>{a.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={[styles.actionsGrid, { marginTop: 10 }]}>
+          {[
+            { icon: 'people-circle-outline', label: 'Tutors',         onPress: () => navigation.navigate('TutorManagement') },
+            { icon: 'document-outline',      label: 'Reports Hub',    onPress: () => navigation.navigate('HODReportsHome') },
+            { icon: 'radio-outline',         label: 'Live Sessions',  onPress: () => navigation.navigate('LiveAnalytics') },
+          ].map((a, i) => (
+            <TouchableOpacity key={i} style={styles.actionBtn} onPress={a.onPress} activeOpacity={0.8}>
+              <Ionicons name={a.icon} size={24} color={PRIMARY} />
+              <Text style={styles.actionLabel}>{a.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={[styles.actionsGrid, { marginTop: 10 }]}>
+          {[
+            { icon: 'trending-up-outline', label: 'Performance', onPress: () => navigation.navigate('TeacherPerformance') },
+            { icon: 'shield-outline',      label: 'Disputes',    onPress: () => navigation.navigate('HODDisputes') },
+            { icon: 'film-outline',        label: 'ClassPulse',  onPress: () => navigation.navigate('HODClassPulse') },
+          ].map((a, i) => (
+            <TouchableOpacity key={i} style={styles.actionBtn} onPress={a.onPress} activeOpacity={0.8}>
+              <Ionicons name={a.icon} size={24} color={PRIMARY} />
+              <Text style={styles.actionLabel}>{a.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
