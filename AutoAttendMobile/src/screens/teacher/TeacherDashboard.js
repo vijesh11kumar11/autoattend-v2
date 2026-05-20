@@ -68,9 +68,36 @@ export default function TeacherDashboard({ navigation }) {
             <Ionicons name="shield-checkmark-outline" size={28} color={PRIMARY} />
             <Text style={styles.actionTxt}>Disputes</Text>
           </TouchableOpacity>
-          <View style={[styles.actionCard, { opacity: 0 }]} />
-          <View style={[styles.actionCard, { opacity: 0 }]} />
-          <View style={[styles.actionCard, { opacity: 0 }]} />
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('TWMDashboard')}>
+            <Ionicons name="people-circle-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>TWM</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('TutorDashboard')}>
+            <Ionicons name="school-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>Tutor</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('AttendanceHistory')}>
+            <Ionicons name="calendar-clear-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>History</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.actionsRow, { marginTop: 12 }]}>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('MyLiveSessions')}>
+            <Ionicons name="radio-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>Live</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('CareerRoadmap')}>
+            <Ionicons name="rocket-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>Career</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('SuggestionBox')}>
+            <Ionicons name="bulb-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>Ideas</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Feed')}>
+            <Ionicons name="newspaper-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>Feed</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Classes */}

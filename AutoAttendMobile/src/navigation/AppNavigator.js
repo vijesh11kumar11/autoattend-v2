@@ -55,6 +55,12 @@ import LeaveManagementScreen    from '../screens/teacher/LeaveManagementScreen';
 import SubjectAnalyticsScreen     from '../screens/teacher/SubjectAnalyticsScreen';
 import TeacherDisputesScreen      from '../screens/teacher/TeacherDisputesScreen';
 import LiveSessionDashboardScreen from '../screens/teacher/LiveSessionDashboardScreen';
+import TWMDashboardScreen         from '../screens/teacher/TWMDashboardScreen';
+import TutorDashboardScreen       from '../screens/teacher/TutorDashboardScreen';
+import PreClassBriefScreen        from '../screens/teacher/PreClassBriefScreen';
+import SessionHealthReportScreen  from '../screens/teacher/SessionHealthReportScreen';
+import MyLiveSessionsScreen       from '../screens/teacher/MyLiveSessionsScreen';
+import TeacherAttendanceHistoryScreen from '../screens/teacher/AttendanceHistoryScreen';
 
 // ── Student screens ───────────────────────────────────────────────────
 import StudentDashboard        from '../screens/student/StudentDashboard';
@@ -67,9 +73,14 @@ import DisputeScreen           from '../screens/student/DisputeScreen';
 import FeedScreen              from '../screens/student/FeedScreen';
 import SuggestionBoxScreen     from '../screens/student/SuggestionBoxScreen';
 import LiveSessionScreen       from '../screens/student/LiveSessionScreen';
+import AttendanceForecastScreen     from '../screens/student/AttendanceForecastScreen';
+import MyTutorScreen                from '../screens/student/MyTutorScreen';
+import StudentKnowledgeGraphScreen  from '../screens/student/StudentKnowledgeGraphScreen';
+import MySessionsScreen             from '../screens/student/MySessionsScreen';
 
 // ── Shared screens ────────────────────────────────────────────────────
 import ProfileScreen            from '../screens/shared/ProfileScreen';
+import CareerRoadmapScreen      from '../screens/shared/CareerRoadmapScreen';
 import {
   ClassPulseHomeScreen,
   ClassPulseSubjectScreen,
@@ -281,6 +292,16 @@ function TeacherNavigator() {
       <TeacherStack.Screen name="SubjectAnalytics" component={SubjectAnalyticsScreen}       options={{ headerShown: true, title: 'Subject Analytics', ...SHARED_TAB_OPTS }} />
       <TeacherStack.Screen name="Disputes"         component={TeacherDisputesScreen}        options={{ headerShown: true, title: 'Pending Disputes',  ...SHARED_TAB_OPTS }} />
       <TeacherStack.Screen name="LiveSessionDash"  component={LiveSessionDashboardScreen}   options={{ headerShown: true, title: 'Live Session',      ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="LiveSessionDashboard" component={LiveSessionDashboardScreen} options={{ headerShown: true, title: 'Live Session',      ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="TWMDashboard"     component={TWMDashboardScreen}           options={{ headerShown: true, title: 'TWM Sessions',      ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="TutorDashboard"   component={TutorDashboardScreen}         options={{ headerShown: true, title: 'My Wards',          ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="PreClassBrief"    component={PreClassBriefScreen}          options={{ headerShown: true, title: 'Pre-Class Brief',   ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="SessionHealthReport" component={SessionHealthReportScreen} options={{ headerShown: true, title: 'Health Report',     ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="MyLiveSessions"   component={MyLiveSessionsScreen}         options={{ headerShown: true, title: 'My Live Sessions', ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="AttendanceHistory" component={TeacherAttendanceHistoryScreen} options={{ headerShown: true, title: 'Attendance History', ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="CareerRoadmap"    component={CareerRoadmapScreen}          options={{ headerShown: true, title: 'Career Roadmap',   ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="SuggestionBox"    component={SuggestionBoxScreen}          options={{ headerShown: true, title: 'Suggestion Box',   ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="Feed"             component={FeedScreen}                   options={{ headerShown: true, title: 'Feed',             ...SHARED_TAB_OPTS }} />
       <TeacherStack.Screen name="Profile"          component={ProfileScreen}                options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </TeacherStack.Navigator>
   );
@@ -331,6 +352,11 @@ function StudentNavigator() {
       <StudentStack.Screen name="Dispute"           component={DisputeScreen}             options={{ headerShown: true, title: 'Attendance Dispute', ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="SuggestionBox"     component={SuggestionBoxScreen}       options={{ headerShown: true, title: 'Suggestion Box',     ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="LiveSession"       component={LiveSessionScreen}         options={{ headerShown: true, title: 'Live Session',        ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="AttendanceForecast" component={AttendanceForecastScreen} options={{ headerShown: true, title: 'Attendance Forecast', ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="MyTutor"           component={MyTutorScreen}             options={{ headerShown: true, title: 'My Tutor',            ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="KnowledgeGraph"    component={StudentKnowledgeGraphScreen} options={{ headerShown: true, title: 'Knowledge Graph',    ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="MySessions"        component={MySessionsScreen}          options={{ headerShown: true, title: 'My Sessions',         ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="CareerRoadmap"     component={CareerRoadmapScreen}       options={{ headerShown: true, title: 'Career Roadmap',      ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="Profile"           component={ProfileScreen}             options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </StudentStack.Navigator>
   );

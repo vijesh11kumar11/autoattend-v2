@@ -18,6 +18,7 @@ import { Ionicons }     from '@expo/vector-icons';
 import client           from '../../api/client';
 import { useAuth }      from '../../context/AuthContext';
 import { CardSkeleton, StatsSkeleton } from '../../components/SkeletonLoader';
+import { downloadAndShare } from '../../utils/secureDownload';
 
 const PRIMARY = '#1a237e';
 const THRESHOLDS = { SAFE: 75, WARNING: 65, CRITICAL: 50 };
@@ -201,6 +202,59 @@ export default function StudentDashboard({ navigation }) {
           <Ionicons name="document-text-outline" size={18} color="#fff" />
           <Text style={styles.bottomBtnText}>My Leave Requests</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.bottomBtn, { backgroundColor: '#22c55e', marginTop: 10 }]}
+          onPress={() => downloadAndShare({
+            path: `/api/reports/student/${user?.id}/pdf`,
+            fileName: `attendance_${user?.id}`,
+            fallbackExt: 'pdf',
+            title: 'My Attendance Report',
+          })}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="download-outline" size={18} color="#fff" />
+          <Text style={styles.bottomBtnText}>Download My Report</Text>
+        </TouchableOpacity>
+
+        {/* ── Quick links grid (S1-S6) ────────────────────────────── */}
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>More</Text>
+        <View style={styles.gridRow}>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('AttendanceForecast')}>
+            <Ionicons name="trending-up-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>Forecast</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('MyTutor')}>
+            <Ionicons name="person-circle-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>My Tutor</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('CareerRoadmap')}>
+            <Ionicons name="rocket-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>Career</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('KnowledgeGraph')}>
+            <Ionicons name="git-network-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>Knowledge</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.gridRow, { marginTop: 10 }]}>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('MySessions')}>
+            <Ionicons name="calendar-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>Sessions</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('Feed')}>
+            <Ionicons name="newspaper-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>Feed</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('SuggestionBox')}>
+            <Ionicons name="bulb-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>Suggest</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('Profile')}>
+            <Ionicons name="person-outline" size={24} color={PRIMARY} />
+            <Text style={styles.gridTxt}>Profile</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -264,4 +318,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25, shadowRadius: 4,
   },
   bottomBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  gridRow: { flexDirection: 'row', gap: 8 },
+  gridCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', gap: 6 },
+  gridTxt:  { fontSize: 11, color: '#1e293b', fontWeight: '700', textAlign: 'center' },
 });
