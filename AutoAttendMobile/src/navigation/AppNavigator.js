@@ -29,6 +29,8 @@ import PrincipalDashboard     from '../screens/principal/PrincipalDashboard';
 import DepartmentsScreen      from '../screens/principal/DepartmentsScreen';
 import PrincipalReportsScreen from '../screens/principal/PrincipalReportsScreen';
 import PrincipalAlertsScreen  from '../screens/principal/PrincipalAlertsScreen';
+import PrincipalAuditScreen   from '../screens/principal/PrincipalAuditScreen';
+import CollegeOverviewScreen  from '../screens/principal/CollegeOverviewScreen';
 
 // ── HOD screens ───────────────────────────────────────────────────────
 import HODDashboard            from '../screens/hod/HODDashboard';
@@ -36,6 +38,12 @@ import TeachersScreen          from '../screens/hod/TeachersScreen';
 import StudentsScreen          from '../screens/hod/StudentsScreen';
 import HODReportsScreen        from '../screens/hod/HODReportsScreen';
 import PendingApprovalsScreen  from '../screens/hod/PendingApprovalsScreen';
+import HODAlertsScreen         from '../screens/hod/HODAlertsScreen';
+import TeacherDetailScreen     from '../screens/hod/TeacherDetailScreen';
+import StudentDetailScreen     from '../screens/hod/StudentDetailScreen';
+import SemesterProgressScreen  from '../screens/hod/SemesterProgressScreen';
+import SectionAnalyticsScreen  from '../screens/hod/SectionAnalyticsScreen';
+import DeptOverviewScreen      from '../screens/hod/DeptOverviewScreen';
 
 // ── Teacher screens ───────────────────────────────────────────────────
 import TeacherDashboard         from '../screens/teacher/TeacherDashboard';
@@ -44,6 +52,9 @@ import ClassesScreen            from '../screens/teacher/ClassesScreen';
 import TeacherReportsScreen     from '../screens/teacher/TeacherReportsScreen';
 import AttendanceManageScreen   from '../screens/teacher/AttendanceManageScreen';
 import LeaveManagementScreen    from '../screens/teacher/LeaveManagementScreen';
+import SubjectAnalyticsScreen     from '../screens/teacher/SubjectAnalyticsScreen';
+import TeacherDisputesScreen      from '../screens/teacher/TeacherDisputesScreen';
+import LiveSessionDashboardScreen from '../screens/teacher/LiveSessionDashboardScreen';
 
 // ── Student screens ───────────────────────────────────────────────────
 import StudentDashboard        from '../screens/student/StudentDashboard';
@@ -53,6 +64,9 @@ import TimetableScreen         from '../screens/student/TimetableScreen';
 import LeaveRequestScreen      from '../screens/student/LeaveRequestScreen';
 import NotificationsScreen     from '../screens/student/NotificationsScreen';
 import DisputeScreen           from '../screens/student/DisputeScreen';
+import FeedScreen              from '../screens/student/FeedScreen';
+import SuggestionBoxScreen     from '../screens/student/SuggestionBoxScreen';
+import LiveSessionScreen       from '../screens/student/LiveSessionScreen';
 
 // ── Shared screens ────────────────────────────────────────────────────
 import ProfileScreen            from '../screens/shared/ProfileScreen';
@@ -150,6 +164,10 @@ function PrincipalTabNavigator({ navigation }) {
         options={{ title: 'Dashboard',   tabBarIcon: icon('home-outline') }}
       />
       <PrincipalTab.Screen
+        name="Overview"    component={CollegeOverviewScreen}
+        options={{ title: 'Overview',    tabBarIcon: icon('stats-chart-outline') }}
+      />
+      <PrincipalTab.Screen
         name="Departments" component={DepartmentsScreen}
         options={{ title: 'Departments', tabBarIcon: icon('business-outline') }}
       />
@@ -160,6 +178,10 @@ function PrincipalTabNavigator({ navigation }) {
       <PrincipalTab.Screen
         name="Alerts"      component={PrincipalAlertsScreen}
         options={{ title: 'Alerts',      tabBarIcon: icon('notifications-outline') }}
+      />
+      <PrincipalTab.Screen
+        name="Audit"       component={PrincipalAuditScreen}
+        options={{ title: 'Audit',       tabBarIcon: icon('time-outline') }}
       />
     </PrincipalTab.Navigator>
   );
@@ -192,6 +214,10 @@ function HODTabNavigator({ navigation }) {
         options={{ title: 'Students',  tabBarIcon: icon('school-outline') }}
       />
       <HODTab.Screen
+        name="Alerts"    component={HODAlertsScreen}
+        options={{ title: 'Alerts',    tabBarIcon: icon('megaphone-outline') }}
+      />
+      <HODTab.Screen
         name="Reports"   component={HODReportsScreen}
         options={{ title: 'Reports',   tabBarIcon: icon('bar-chart-outline') }}
       />
@@ -205,6 +231,11 @@ function HODNavigator() {
       <HODStack.Screen name="HODTabs"           component={HODTabNavigator} />
       <HODStack.Screen name="PendingApprovals"  component={PendingApprovalsScreen} />
       <HODStack.Screen name="LeaveManagement"   component={LeaveManagementScreen} options={{ headerShown: true, title: 'Leave Requests', ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="TeacherDetail"     component={TeacherDetailScreen}    options={{ headerShown: true, title: 'Teacher Detail',   ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="StudentDetail"     component={StudentDetailScreen}    options={{ headerShown: true, title: 'Student Detail',   ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="SemesterProgress"  component={SemesterProgressScreen} options={{ headerShown: true, title: 'Semester Progress', ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="SectionAnalytics"  component={SectionAnalyticsScreen} options={{ headerShown: true, title: 'Section Analytics', ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="DeptOverview"      component={DeptOverviewScreen}     options={{ headerShown: true, title: 'Department Overview', ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="Profile"           component={ProfileScreen}          options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </HODStack.Navigator>
   );
@@ -246,7 +277,10 @@ function TeacherNavigator() {
       <TeacherStack.Screen name="CapsuleAnalytics" component={CapsuleAnalyticsMobileScreen} options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
       <TeacherStack.Screen name="AnswerDoubt"      component={AnswerDoubtMobileScreen}      options={{ headerShown: true, ...SHARED_TAB_OPTS }} />
       <TeacherStack.Screen name="AttendanceManage" component={AttendanceManageScreen}       options={{ headerShown: true, title: 'Manage Attendance', ...SHARED_TAB_OPTS }} />
-      <TeacherStack.Screen name="LeaveManagement"  component={LeaveManagementScreen}        options={{ headerShown: true, title: 'Leave Requests', ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="LeaveManagement"  component={LeaveManagementScreen}        options={{ headerShown: true, title: 'Leave Requests',    ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="SubjectAnalytics" component={SubjectAnalyticsScreen}       options={{ headerShown: true, title: 'Subject Analytics', ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="Disputes"         component={TeacherDisputesScreen}        options={{ headerShown: true, title: 'Pending Disputes',  ...SHARED_TAB_OPTS }} />
+      <TeacherStack.Screen name="LiveSessionDash"  component={LiveSessionDashboardScreen}   options={{ headerShown: true, title: 'Live Session',      ...SHARED_TAB_OPTS }} />
       <TeacherStack.Screen name="Profile"          component={ProfileScreen}                options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </TeacherStack.Navigator>
   );
@@ -277,6 +311,10 @@ function StudentTabNavigator({ navigation }) {
         name="Timetable"  component={TimetableScreen}
         options={{ title: 'Timetable',  tabBarIcon: icon('calendar-outline') }}
       />
+      <StudentTab.Screen
+        name="Feed"       component={FeedScreen}
+        options={{ title: 'Feed',       tabBarIcon: icon('newspaper-outline') }}
+      />
     </StudentTab.Navigator>
   );
 }
@@ -291,6 +329,8 @@ function StudentNavigator() {
       <StudentStack.Screen name="LeaveRequest"      component={LeaveRequestScreen}        options={{ headerShown: true, title: 'My Leave Requests', ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="Notifications"     component={NotificationsScreen}       options={{ headerShown: true, title: 'Notifications', ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="Dispute"           component={DisputeScreen}             options={{ headerShown: true, title: 'Attendance Dispute', ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="SuggestionBox"     component={SuggestionBoxScreen}       options={{ headerShown: true, title: 'Suggestion Box',     ...SHARED_TAB_OPTS }} />
+      <StudentStack.Screen name="LiveSession"       component={LiveSessionScreen}         options={{ headerShown: true, title: 'Live Session',        ...SHARED_TAB_OPTS }} />
       <StudentStack.Screen name="Profile"           component={ProfileScreen}             options={{ headerShown: true, title: 'Profile', ...SHARED_TAB_OPTS }} />
     </StudentStack.Navigator>
   );

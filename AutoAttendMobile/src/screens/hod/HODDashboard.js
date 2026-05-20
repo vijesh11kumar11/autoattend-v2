@@ -108,9 +108,9 @@ export default function HODDashboard({ navigation }) {
         <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Quick Actions</Text>
         <View style={styles.actionsGrid}>
           {[
-            { icon: 'alert-circle-outline',     label: 'View Defaulters',   onPress: () => navigation.navigate('Reports') },
-            { icon: 'notifications-outline',     label: 'Send Alerts',       onPress: () => navigation.navigate('Reports') },
-            { icon: 'document-text-outline',     label: 'Pending Requests',  onPress: () => navigation.navigate('PendingApprovals'), badge: stats.pending },
+            { icon: 'alert-circle-outline',  label: 'Defaulters',   onPress: () => navigation.navigate('Reports') },
+            { icon: 'megaphone-outline',     label: 'Send Alerts',  onPress: () => navigation.navigate('Alerts') },
+            { icon: 'document-text-outline', label: 'Approvals',    onPress: () => navigation.navigate('PendingApprovals'), badge: stats.pending },
           ].map((a, i) => (
             <TouchableOpacity key={i} style={styles.actionBtn} onPress={a.onPress} activeOpacity={0.8}>
               <View style={{ position: 'relative' }}>
@@ -121,6 +121,19 @@ export default function HODDashboard({ navigation }) {
                   </View>
                 )}
               </View>
+              <Text style={styles.actionLabel}>{a.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={[styles.actionsGrid, { marginTop: 10 }]}>
+          {[
+            { icon: 'calendar-outline',  label: 'Semester Progress', onPress: () => navigation.navigate('SemesterProgress') },
+            { icon: 'grid-outline',      label: 'Section Analytics', onPress: () => navigation.navigate('SectionAnalytics') },
+            { icon: 'pie-chart-outline', label: 'Dept Overview',     onPress: () => navigation.navigate('DeptOverview') },
+          ].map((a, i) => (
+            <TouchableOpacity key={i} style={styles.actionBtn} onPress={a.onPress} activeOpacity={0.8}>
+              <Ionicons name={a.icon} size={24} color={PRIMARY} />
               <Text style={styles.actionLabel}>{a.label}</Text>
             </TouchableOpacity>
           ))}

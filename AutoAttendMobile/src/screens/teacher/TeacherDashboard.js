@@ -63,6 +63,15 @@ export default function TeacherDashboard({ navigation }) {
             <Text style={styles.actionTxt}>Leave Reqs</Text>
           </TouchableOpacity>
         </View>
+        <View style={[styles.actionsRow, { marginTop: 12 }]}>
+          <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Disputes')}>
+            <Ionicons name="shield-checkmark-outline" size={28} color={PRIMARY} />
+            <Text style={styles.actionTxt}>Disputes</Text>
+          </TouchableOpacity>
+          <View style={[styles.actionCard, { opacity: 0 }]} />
+          <View style={[styles.actionCard, { opacity: 0 }]} />
+          <View style={[styles.actionCard, { opacity: 0 }]} />
+        </View>
 
         {/* Classes */}
         <Text style={styles.section}>My Classes ({classes.length})</Text>

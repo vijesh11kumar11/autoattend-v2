@@ -55,13 +55,22 @@ export default function ClassesScreen({ navigation }) {
               <Text style={styles.name}>{c.name}</Text>
               <Text style={styles.meta}>{c.code} · Semester {c.semester ?? '—'}</Text>
               {navigation && (
-                <TouchableOpacity
-                  style={styles.manageBtn}
-                  onPress={() => navigation.navigate('AttendanceManage', { subject_id: c.id, subject_name: c.name })}
-                >
-                  <Ionicons name="create-outline" size={12} color={PRIMARY} />
-                  <Text style={styles.manageBtnText}>Manage Attendance</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  <TouchableOpacity
+                    style={styles.manageBtn}
+                    onPress={() => navigation.navigate('AttendanceManage', { subject_id: c.id, subject_name: c.name })}
+                  >
+                    <Ionicons name="create-outline" size={12} color={PRIMARY} />
+                    <Text style={styles.manageBtnText}>Manage Attendance</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.manageBtn}
+                    onPress={() => navigation.navigate('SubjectAnalytics', { subject_id: c.id, subject_name: c.name })}
+                  >
+                    <Ionicons name="stats-chart-outline" size={12} color={PRIMARY} />
+                    <Text style={styles.manageBtnText}>View Analytics</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </View>
@@ -84,7 +93,6 @@ const styles = StyleSheet.create({
   emptyTxt: { fontSize: 14, color: '#94a3b8', marginTop: 12 },
   manageBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    alignSelf: 'flex-start', marginTop: 8,
     paddingHorizontal: 8, paddingVertical: 4,
     borderRadius: 6, borderWidth: 1, borderColor: '#c7d2fe',
     backgroundColor: '#eef2ff',

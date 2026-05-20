@@ -6,14 +6,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, FlatList, RefreshControl,
-  SafeAreaView, StyleSheet, Text, TextInput, View,
+  SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 
 const PRIMARY = '#1a237e';
 
-export default function TeachersScreen() {
+export default function TeachersScreen({ navigation }) {
   const [teachers, setTeachers]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,7 +64,10 @@ export default function TeachersScreen() {
           const sess = t.today_session;
           const hasSession = !!sess;
           return (
-            <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.7}
+              onPress={() => navigation?.navigate('TeacherDetail', { teacher_id: t.id, teacher_name: t.name })}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarTxt}>{(t.name || '?')[0].toUpperCase()}</Text>
               </View>
@@ -86,9 +89,9 @@ export default function TeachersScreen() {
                   <Text style={{ fontSize: 10, color: '#64748b' }}>{sess.present_count}/{sess.total_students}</Text>
                 </View>
               ) : (
-                <Text style={styles.noSess}>No session</Text>
+                <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
               )}
-            </View>
+            </TouchableOpacity>
           );
         }}
       />

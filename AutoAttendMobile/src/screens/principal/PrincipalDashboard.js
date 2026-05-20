@@ -102,6 +102,17 @@ export default function PrincipalDashboard({ navigation }) {
           ))}
         </ScrollView>
 
+        {/* Overview shortcut */}
+        <TouchableOpacity
+          style={styles.overviewBtn}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('Overview')}
+        >
+          <Ionicons name="stats-chart-outline" size={18} color={PRIMARY} />
+          <Text style={styles.overviewTxt}>View Full College Overview</Text>
+          <Ionicons name="chevron-forward" size={18} color={PRIMARY} />
+        </TouchableOpacity>
+
         {/* Departments */}
         <Text style={styles.sectionTitle}>Departments</Text>
         {departments.map((dept, i) => {
@@ -192,6 +203,12 @@ const styles = StyleSheet.create({
   barFill:  { height: '100%', borderRadius: 4 },
 
   alertCard: { backgroundColor: '#fff', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#e2e8f0' },
+  overviewBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#eef2ff', borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: '#c7d2fe', marginBottom: 18,
+  },
+  overviewTxt: { flex: 1, fontSize: 14, fontWeight: '700', color: PRIMARY },
   alertInput: {
     fontSize: 14, color: '#1e293b', minHeight: 60, textAlignVertical: 'top',
     marginBottom: 12, lineHeight: 20,
