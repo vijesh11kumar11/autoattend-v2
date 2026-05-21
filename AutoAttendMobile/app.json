@@ -49,6 +49,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/withKotlinVersion",
       [
         "expo-build-properties",
         {
