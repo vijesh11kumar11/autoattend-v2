@@ -49,16 +49,6 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "./plugins/withKotlinVersion",
-      "./plugins/withRemoveEnableBundleCompression",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "kotlinVersion": "2.1.21"
-          }
-        }
-      ],
       "expo-camera",
       "expo-location",
       "expo-local-authentication",
