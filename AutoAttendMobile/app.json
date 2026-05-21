@@ -49,6 +49,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.1.21"
+          }
+        }
+      ],
       "expo-camera",
       "expo-location",
       "expo-local-authentication",
@@ -59,7 +67,8 @@
           "color": "#1a237e",
           "sounds": []
         }
-      ]
+      ],
+      "expo-build-properties"
     ],
     "notification": {
       "icon": "./assets/notification-icon.png",
