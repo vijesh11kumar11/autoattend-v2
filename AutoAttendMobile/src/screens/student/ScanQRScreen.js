@@ -16,7 +16,7 @@
  *  6. success / failed — full-screen result
  *
  * Dependencies (all already in package.json):
- *   expo-camera ~16, expo-barcode-scanner ~13, expo-location ~18
+ *   expo-camera ~16, expo-location ~18
  *   react-native-ble-plx ^3.3, react-native-reanimated ~3.16
  *   @expo/vector-icons (bundled), react-native-safe-area-context,
  *   expo-secure-store (for device_id)
@@ -47,7 +47,6 @@ import {
 } from 'react-native';
 import { SafeAreaView }                   from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { BarCodeScanner }                  from 'expo-barcode-scanner';
 import * as Location                       from 'expo-location';
 import * as SecureStore                    from 'expo-secure-store';
 import { Ionicons }                        from '@expo/vector-icons';
@@ -535,10 +534,10 @@ export default function ScanQRScreen({ navigation }) {
     const cornerColor = cornerAnim.interpolate({ inputRange: [0, 1], outputRange: ['#22c55e', '#3b82f6'] });
     return (
       <View style={styles.fullScreen}>
-        <BarCodeScanner
-          onBarCodeScanned={handleBarCode}
+        <CameraView
+          onBarcodeScanned={handleBarCode}
           style={StyleSheet.absoluteFill}
-          barCodeTypes={[BarCodeScanner.Constants.BarCodeType.qr]}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         />
         <SafeAreaView style={styles.qrOverlay}>
           {/* Top bar */}
