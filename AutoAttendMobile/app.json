@@ -50,6 +50,7 @@
     },
     "plugins": [
       "./plugins/withKotlinVersion",
+      "./plugins/withRemoveEnableBundleCompression",
       [
         "expo-build-properties",
         {
