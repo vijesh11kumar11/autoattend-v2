@@ -63,13 +63,175 @@ function StatCard({ icon, label, value, sub, danger }) {
   );
 }
 
-// ── Face Re-enroll page (stub — full page in later prompt) ────────────
+// ── Face Re-enroll page ───────────────────────────────────────────────
+//   Lists students in the HOD's college and lets the HOD reset a student's
+//   face enrollment (clears azure_person_id, face_enrolled=False).  The
+//   student is prompted to re-enroll on next login.
 function FaceReenrollPage() {
+  const [students,  setStudents]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState('');
+  const [filter,    setFilter]    = useState('');
+  const [onlyEnrolled, setOnlyEnrolled] = useState(true);
+  const [target,    setTarget]    = useState(null);   // {id, name, roll_number}
+  const [reason,    setReason]    = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [flash,     setFlash]     = useState('');
+
+  const load = () => {
+    setLoading(true);
+    setError('');
+    api.get('/api/face/admin/students', { params: { only_enrolled: onlyEnrolled } })
+      .then(r => setStudents(r.data?.students || []))
+      .catch(err => setError(err.response?.data?.detail || 'Failed to load students.'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [onlyEnrolled]);   // reload when toggle flips
+
+  const filtered = students.filter(s => {
+    if (!filter.trim()) return true;
+    const q = filter.trim().toLowerCase();
+    return (
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.roll_number || '').toLowerCase().includes(q) ||
+      (s.email || '').toLowerCase().includes(q)
+    );
+  });
+
+  async function confirmReset() {
+    if (!target) return;
+    if (reason.trim().length < 5) {
+      setFlash('Reason must be at least 5 characters.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.post(`/api/face/admin/reset/${target.id}`, { reason: reason.trim() });
+      setFlash(`Face enrollment cleared for ${target.name}. They will re-enroll on next login.`);
+      setTarget(null);
+      setReason('');
+      load();
+    } catch (err) {
+      setFlash(err.response?.data?.detail || 'Reset failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
-    <div className="card p-10 text-center text-slate-400 space-y-2">
-      <span className="text-5xl">🤳</span>
-      <p className="font-medium text-slate-600">Face Re-enroll Requests</p>
-      <p className="text-sm">Full implementation coming in a later prompt.</p>
+    <div className="space-y-4">
+      {flash && (
+        <div className="card px-4 py-2.5 bg-amber-50 text-amber-800 text-sm flex items-center justify-between">
+          <span>{flash}</span>
+          <button onClick={() => setFlash('')} className="opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
+
+      <div className="card p-4 flex flex-wrap items-center gap-3">
+        <span className="text-3xl">🤳</span>
+        <div className="flex-1 min-w-[200px]">
+          <p className="font-semibold text-slate-800">Face Re-enrollment</p>
+          <p className="text-xs text-slate-500">
+            Clear a student's face data so they can re-enroll. All resets are
+            audited (FaceChangeLog).
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-slate-600">
+          <input type="checkbox" checked={onlyEnrolled}
+                 onChange={e => setOnlyEnrolled(e.target.checked)} />
+          Only enrolled
+        </label>
+        <input
+          type="search"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          placeholder="Search name / roll / email…"
+          className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-60"
+        />
+      </div>
+
+      {loading ? (
+        <div className="card p-10 text-center text-slate-400">Loading…</div>
+      ) : error ? (
+        <div className="card p-10 text-center text-red-500">{error}</div>
+      ) : filtered.length === 0 ? (
+        <div className="card p-10 text-center text-slate-400">No students match.</div>
+      ) : (
+        <div className="card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
+              <tr>
+                <th className="text-left px-4 py-2">Name</th>
+                <th className="text-left px-4 py-2">Roll</th>
+                <th className="text-left px-4 py-2">Email</th>
+                <th className="text-left px-4 py-2">Enrolled</th>
+                <th className="text-right px-4 py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(s => (
+                <tr key={s.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-2 font-medium text-slate-700">{s.name}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-slate-500">{s.roll_number}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{s.email}</td>
+                  <td className="px-4 py-2 text-xs">
+                    {s.face_enrolled
+                      ? <span className="text-emerald-600 font-semibold">✓ Yes</span>
+                      : <span className="text-slate-400">— No</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <button
+                      disabled={!s.face_enrolled}
+                      onClick={() => { setTarget(s); setReason(''); }}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600
+                                 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                      Reset face
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Confirm modal */}
+      {target && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5 space-y-4">
+            <h3 className="text-base font-bold text-slate-800">
+              Reset face for {target.name}?
+            </h3>
+            <p className="text-xs text-slate-500">
+              This clears the Azure face record. {target.name} will be prompted to
+              enroll their face again on next login. The action is irreversible
+              and is logged.
+            </p>
+            <textarea
+              rows={3}
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Reason (visible in audit log) — min 5 chars"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            />
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                onClick={() => { setTarget(null); setReason(''); }}
+                disabled={submitting}
+                className="px-4 py-2 text-sm rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200">
+                Cancel
+              </button>
+              <button
+                onClick={confirmReset}
+                disabled={submitting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60">
+                {submitting ? 'Resetting…' : 'Confirm reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

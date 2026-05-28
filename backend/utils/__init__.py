@@ -1,1 +1,1 @@
-# TODO: implement in a later prompt
+"""utils package — explicit submodule imports happen at call sites."""

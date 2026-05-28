@@ -15,8 +15,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 
 // ── Eager imports (always needed) ─────────────────────────────────────
 import LoginPage      from './pages/LoginPage';
-import UnauthorizedPage from './pages/UnauthorizedPage';
-
+import UnauthorizedPage from './pages/UnauthorizedPage';import NotFoundPage   from './pages/NotFoundPage';
+import ErrorBoundary  from './components/ErrorBoundary';
 // ── Lazy dashboard imports ────────────────────────────────────────────
 const PrincipalDashboard = lazy(() => import('./pages/principal/PrincipalDashboard'));
 const HODDashboard       = lazy(() => import('./pages/hod/HODDashboard'));
@@ -172,8 +172,8 @@ function AppRoutes() {
           }
         />
 
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Catch-all — show a real 404 page, not a silent redirect */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   );
@@ -182,10 +182,14 @@ function AppRoutes() {
 // ── Root export ───────────────────────────────────────────────────────
 export default function App() {
   return (
-    // AuthProvider needs to be inside BrowserRouter (provided in index.js)
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    // ErrorBoundary catches any uncaught render error and replaces the blank
+    // white screen with a friendly recovery page. AuthProvider must remain
+    // inside BrowserRouter (provided in index.js).
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

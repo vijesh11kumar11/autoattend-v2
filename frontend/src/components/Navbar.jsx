@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axios';
 
 // ── Role badge classes ────────────────────────────────────────────────
 const ROLE_BADGE = {
@@ -71,6 +72,134 @@ function BellIcon() {
                C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436
                L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
     </svg>
+  );
+}
+
+// ── Notifications dropdown ───────────────────────────────────────────
+const NOTIF_POLL_MS   = 60_000;            // poll every 60 s
+const SEEN_TS_KEY     = 'aa_notif_seen_ts';
+
+function NotificationBell() {
+  const [open,    setOpen]    = useState(false);
+  const [items,   setItems]   = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [unread,  setUnread]  = useState(0);
+  const wrapRef = useRef(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data } = await api.get('/api/notifications/me', { params: { limit: 20 } });
+      const next = Array.isArray(data?.items) ? data.items : [];
+      setItems(next);
+      const seen = Number(localStorage.getItem(SEEN_TS_KEY) || 0);
+      const u = next.filter((it) => {
+        const t = Date.parse(it.created_at || '');
+        return Number.isFinite(t) && t > seen;
+      }).length;
+      setUnread(u);
+    } catch (_) {
+      // Silent — bell stays in its last state if backend hiccups.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Poll on mount + interval
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, NOTIF_POLL_MS);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  // Close on outside click
+  useEffect(() => {
+    function onDoc(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  function toggle() {
+    setOpen((v) => !v);
+    if (!open) {
+      // Marking as 'seen' clears the unread badge until newer items arrive.
+      try { localStorage.setItem(SEEN_TS_KEY, String(Date.now())); } catch (_) {}
+      setUnread(0);
+    }
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const diffMs = Date.now() - d.getTime();
+    const min = Math.round(diffMs / 60000);
+    if (min < 1)   return 'just now';
+    if (min < 60)  return `${min}m ago`;
+    const hr = Math.round(min / 60);
+    if (hr < 24)   return `${hr}h ago`;
+    const day = Math.round(hr / 24);
+    if (day < 7)   return `${day}d ago`;
+    return d.toLocaleDateString();
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        className="relative p-2 text-slate-500 hover:text-slate-700
+                   hover:bg-slate-100 rounded-lg transition-colors"
+        aria-label="Notifications"
+        onClick={toggle}
+      >
+        <BellIcon />
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1
+                           rounded-full bg-red-500 text-white text-[10px] font-bold
+                           flex items-center justify-center">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-80 max-h-[420px] bg-white
+                        border border-slate-200 rounded-xl shadow-lg
+                        overflow-hidden z-50 flex flex-col">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-700">Notifications</span>
+            <button onClick={refresh}
+                    className="text-xs text-slate-500 hover:text-slate-700">
+              {loading ? '…' : 'Refresh'}
+            </button>
+          </div>
+          <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+            {items.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-slate-400">
+                {loading ? 'Loading…' : 'You\'re all caught up.'}
+              </div>
+            ) : (
+              items.map((it, idx) => (
+                <div key={idx} className="px-4 py-3 hover:bg-slate-50">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-xs font-semibold text-slate-700 truncate">
+                      {it.title || 'Notification'}
+                    </p>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                      {formatTime(it.created_at)}
+                    </span>
+                  </div>
+                  {it.body && (
+                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{it.body}</p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -150,17 +279,8 @@ export default function Navbar({ title = 'Dashboard', collapsed = false }) {
           <ISTClock />
         </div>
 
-        {/* Notification bell (placeholder) */}
-        <button
-          className="relative p-2 text-slate-500 hover:text-slate-700
-                     hover:bg-slate-100 rounded-lg transition-colors"
-          aria-label="Notifications"
-          onClick={() => {/* future: open notifications panel */}}
-        >
-          <BellIcon />
-          {/* Dot badge — remove when notifications page built */}
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-danger" />
-        </button>
+        {/* Notification bell (live) */}
+        <NotificationBell />
 
         {/* Divider */}
         <div className="w-px h-7 bg-slate-200" />

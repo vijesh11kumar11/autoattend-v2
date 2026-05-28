@@ -145,10 +145,15 @@ export default function LoginPage() {
   }, [isAuthenticated, navigate]);
 
   // Form state
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(() => {
+    // Restore the last-used identifier when 'remember me' was checked.
+    try { return localStorage.getItem('aa_remember_id') || ''; } catch { return ''; }
+  });
   const [password,   setPassword]   = useState('');
   const [showPwd,    setShowPwd]     = useState(false);
-  const [remember,   setRemember]    = useState(false);
+  const [remember,   setRemember]    = useState(() => {
+    try { return Boolean(localStorage.getItem('aa_remember_id')); } catch { return false; }
+  });
   const [loading,    setLoading]     = useState(false);
   const [error,      setError]       = useState('');
 
@@ -173,6 +178,14 @@ export default function LoginPage() {
         identifier: identifier.trim(),
         password,
       });
+
+      // Persist (or clear) the remembered identifier. We deliberately
+      // never store the password — only the username/roll-no/email so
+      // it pre-fills next visit on this device.
+      try {
+        if (remember) localStorage.setItem('aa_remember_id', identifier.trim());
+        else          localStorage.removeItem('aa_remember_id');
+      } catch { /* private mode — ignore */ }
 
       if (data.requires_totp) {
         // Store the totp_session_token for step 2

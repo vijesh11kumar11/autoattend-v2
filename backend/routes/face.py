@@ -17,12 +17,14 @@ from database import (
     AttendanceAudit,
     AttendanceSession,
     AuditResult,
+    FaceChangeLog,
     LivenessChallenge,
     SessionStatus,
     Subject,
     User,
     get_db,
 )
+from pydantic import BaseModel, Field
 from utils.auth_utils import (
     any_authenticated,
     create_face_verify_token,
@@ -312,3 +314,99 @@ def liveness_verify(
     logger.info("🧐 LIVENESS verify result │ student_id=%d │ confirmed=%s │ reason=%s",
                 current_user["id"], result.get("liveness_confirmed"), result.get("reason", "N/A"))
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# POST /api/face/admin/reset/{student_id}
+#   HOD / Principal — clears a student's face enrollment so they can re-enroll
+#   on next login. Logs to FaceChangeLog for audit.
+# ═══════════════════════════════════════════════════════════════════════
+
+class _FaceResetRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=500)
+
+
+@router.post("/admin/reset/{student_id}")
+def admin_reset_face(
+    student_id: int,
+    body: _FaceResetRequest,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
+):
+    """
+    HOD/Principal clears a student's face enrollment so they can re-enroll.
+    Audit-logged to face_change_log.
+    """
+    student: Optional[User] = db.query(User).filter(User.id == student_id).first()
+    if not student or not student.is_active or student.role.value != "student":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found.")
+
+    # College boundary
+    if student.college_id != current_user["college_id"]:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "You can only reset students in your own college.",
+        )
+
+    old_pid = student.azure_person_id
+
+    student.azure_person_id  = None
+    student.face_enrolled    = False
+    student.face_enrolled_at = None
+
+    db.add(FaceChangeLog(
+        student_id          = student.id,
+        changed_by          = current_user["id"],
+        old_azure_person_id = old_pid,
+        new_azure_person_id = None,
+        reason              = body.reason.strip(),
+    ))
+    db.commit()
+
+    logger.info(
+        "🤳 FACE RESET │ student_id=%d │ by_user_id=%d │ reason=%r",
+        student_id, current_user["id"], body.reason[:80],
+    )
+    return {
+        "ok": True,
+        "student_id": student_id,
+        "message": "Face enrollment cleared. Student will be prompted to re-enroll on next login.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/face/admin/students
+#   HOD / Principal — list students with their enrollment status (for the
+#   Face Re-enroll management page).
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/admin/students")
+def admin_list_students(
+    only_enrolled: bool = False,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
+):
+    """List students in caller's college with face enrollment status."""
+    q = db.query(User).filter(
+        User.college_id == current_user["college_id"],
+        User.role == "student",
+        User.is_active == True,  # noqa: E712
+    )
+    if only_enrolled:
+        q = q.filter(User.face_enrolled == True)  # noqa: E712
+
+    rows = q.order_by(User.name.asc()).limit(500).all()
+    return {
+        "students": [
+            {
+                "id": u.id,
+                "name": u.name,
+                "roll_number": u.roll_number,
+                "email": u.email,
+                "face_enrolled": u.face_enrolled,
+                "enrolled_at": u.face_enrolled_at.isoformat() if u.face_enrolled_at else None,
+            }
+            for u in rows
+        ],
+        "total": len(rows),
+    }

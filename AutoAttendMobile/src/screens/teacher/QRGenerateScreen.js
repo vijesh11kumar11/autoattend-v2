@@ -42,9 +42,13 @@ import {
 import { SafeAreaView }  from 'react-native-safe-area-context';
 import { Ionicons }      from '@expo/vector-icons';
 import * as Location     from 'expo-location';
+import * as FileSystem   from 'expo-file-system';
+import * as Sharing      from 'expo-sharing';
+import * as SecureStore  from 'expo-secure-store';
 import QRCode            from 'react-native-qrcode-svg';
 import { BleManager }    from 'react-native-ble-plx';
 import client            from '../../api/client';
+import { API_BASE_URL }  from '../../config';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const QR_SIZE          = 280;
@@ -318,8 +322,32 @@ export default function QRGenerateScreen() {
   const downloadPdf = useCallback(async () => {
     if (!summaryData?.session_id) return;
     try {
-      Alert.alert('PDF', 'PDF download will be available in a future update.');
-    } catch { /* noop */ }
+      const token  = await SecureStore.getItemAsync('aa_auth_token');
+      const remote = `${API_BASE_URL}/api/reports/class/${summaryData.session_id}/pdf`;
+      const local  = `${FileSystem.cacheDirectory}attendance_session_${summaryData.session_id}.pdf`;
+
+      const result = await FileSystem.downloadAsync(remote, local, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
+      if (result.status !== 200) {
+        Alert.alert('PDF', `Could not download report (HTTP ${result.status}).`);
+        return;
+      }
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(result.uri, {
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf',
+          dialogTitle: 'Save attendance PDF',
+        });
+      } else {
+        await Linking.openURL(result.uri);
+      }
+    } catch (err) {
+      Alert.alert('PDF', err?.message || 'Could not download the attendance PDF.');
+    }
   }, [summaryData]);
 
   // ── Quick override ────────────────────────────────────────────────────────

@@ -2,16 +2,29 @@
  * AutoAttend AI — Mobile runtime config
  *
  * API_BASE_URL   Set EXPO_PUBLIC_API_URL in your .env file for each environment.
- *               Default is the typical LAN IP when running Metro locally.
- *               Change to your server IP before first device test.
+ *                A loud console warning fires below if the fallback is hit so
+ *                production builds without the env var don't silently target
+ *                a LAN IP.
  *
  * API_TIMEOUT           Axios request timeout (milliseconds).
  * STARTUP_PING_TIMEOUT  Startup backend health-check timeout (milliseconds).
  */
 
-export const API_BASE_URL         = process.env.EXPO_PUBLIC_API_URL ?? 'http://192.168.1.100:8000';
+const _ENV_URL  = process.env.EXPO_PUBLIC_API_URL;
+const _FALLBACK = 'http://192.168.1.100:8000';
+
+export const API_BASE_URL         = _ENV_URL ?? _FALLBACK;
 export const API_TIMEOUT          = 15_000;
 export const STARTUP_PING_TIMEOUT = 10_000;
+export const IS_USING_FALLBACK    = !_ENV_URL;
+
+if (IS_USING_FALLBACK) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[config] EXPO_PUBLIC_API_URL is not set — falling back to ' + _FALLBACK +
+    '. Set EXPO_PUBLIC_API_URL in your .env / EAS build profile before shipping.'
+  );
+}
 
 // ── SSL pinning (off in Expo Go; requires EAS dev client to engage) ───
 // Filenames (sans extension) of certificate files bundled with the app.
