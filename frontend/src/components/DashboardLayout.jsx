@@ -11,7 +11,7 @@
  *   </DashboardLayout>
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
@@ -48,22 +48,55 @@ const TITLE_MAP = {
 };
 
 export default function DashboardLayout({ children }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed,  setCollapsed]  = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile,   setIsMobile]   = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
   const { pathname } = useLocation();
   const title = TITLE_MAP[pathname] ?? 'AutoAttend AI';
 
+  // Track viewport so we know whether to use the fixed sidebar margin (>=md)
+  // or the slide-in drawer pattern (<md) introduced for #92.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mql = window.matchMedia('(max-width: 767px)');
+    const onChange = (e) => {
+      setIsMobile(e.matches);
+      if (!e.matches) setMobileOpen(false);  // close drawer on resize up
+    };
+    mql.addEventListener?.('change', onChange);
+    return () => mql.removeEventListener?.('change', onChange);
+  }, []);
+
+  // Auto-close the drawer on any route change.
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
   return (
     <div className="min-h-screen bg-surface">
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
+      <Sidebar
+        collapsed={collapsed && !isMobile}
+        onToggle={() => setCollapsed((v) => !v)}
+        isMobile={isMobile}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
 
-      <Navbar title={title} collapsed={collapsed} />
+      <Navbar
+        title={title}
+        collapsed={collapsed}
+        isMobile={isMobile}
+        onHamburger={() => setMobileOpen(true)}
+      />
 
       <main
         className="transition-all duration-200 ease-in-out"
         style={{
-          marginLeft: collapsed
-            ? 'var(--sidebar-collapsed-width)'
-            : 'var(--sidebar-width)',
+          marginLeft: isMobile
+            ? 0
+            : collapsed
+              ? 'var(--sidebar-collapsed-width)'
+              : 'var(--sidebar-width)',
           marginTop:  'var(--navbar-height)',
           minHeight:  'calc(100vh - var(--navbar-height))',
           padding:    '1.5rem',

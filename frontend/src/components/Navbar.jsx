@@ -209,7 +209,7 @@ function NotificationBell() {
 
 const CANCEL_TIMEOUT_MS = 4000;
 
-export default function Navbar({ title = 'Dashboard', collapsed = false }) {
+export default function Navbar({ title = 'Dashboard', collapsed = false, isMobile = false, onHamburger }) {
   const { user, logout } = useAuth();
   const role = user?.role || 'student';
 
@@ -254,9 +254,9 @@ export default function Navbar({ title = 'Dashboard', collapsed = false }) {
   // Cleanup on unmount
   useEffect(() => () => clearTimers(), [clearTimers]);
 
-  const leftOffset = collapsed
-    ? 'var(--sidebar-collapsed-width)'
-    : 'var(--sidebar-width)';
+  const leftOffset = isMobile
+    ? 0
+    : (collapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)');
 
   return (
     <header
@@ -268,8 +268,23 @@ export default function Navbar({ title = 'Dashboard', collapsed = false }) {
         height: 'var(--navbar-height)',
       }}
     >
-      {/* ── Left: page title ── */}
-      <h1 className="text-base font-semibold text-slate-800 truncate">{title}</h1>
+      {/* ── Left: hamburger (mobile) + page title ── */}
+      <div className="flex items-center gap-2 min-w-0">
+        {isMobile && (
+          <button
+            type="button"
+            onClick={onHamburger}
+            aria-label="Open navigation menu"
+            className="p-2 -ml-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100
+                       transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        )}
+        <h1 className="text-base font-semibold text-slate-800 truncate">{title}</h1>
+      </div>
 
       {/* ── Right: clock · bell · user · logout ── */}
       <div className="flex items-center gap-4">

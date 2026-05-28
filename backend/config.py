@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional
 
 
@@ -145,6 +146,66 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
         extra = "ignore"
+
+    # ── Numeric range validation (#98) ─────────────────────────────
+    # Surface bad operator config at startup instead of at first request.
+    @field_validator("ATTENDANCE_THRESHOLD")
+    @classmethod
+    def _check_attendance_threshold(cls, v: float) -> float:
+        if not (0.0 <= v <= 100.0):
+            raise ValueError("ATTENDANCE_THRESHOLD must be between 0 and 100")
+        return v
+
+    @field_validator(
+        "QR_EXPIRY_SECONDS",
+        "FACE_VERIFY_TOKEN_EXPIRY_SECONDS",
+        "ACCESS_TOKEN_EXPIRE_HOURS",
+        "REFRESH_TOKEN_EXPIRE_DAYS",
+        "LEAVE_MAX_DAYS_PER_REQUEST",
+        "LEAVE_ALLOW_PAST_DATE_DAYS",
+        "LIVE_SESSION_HEARTBEAT_INTERVAL",
+        "LIVE_SESSION_MIN_ATTENDANCE_MINUTES",
+        "LIVE_SESSION_LIVENESS_CHECK_INTERVAL",
+        "AGORA_TOKEN_EXPIRY_SECONDS",
+        "FEED_CACHE_MINUTES",
+        "REQUEST_TIMEOUT_SECONDS",
+        "MAX_REQUEST_BODY_BYTES",
+        "DB_POOL_SIZE",
+        "DB_MAX_OVERFLOW",
+        "DB_POOL_RECYCLE_SECONDS",
+        "DB_POOL_TIMEOUT_SECONDS",
+        "ARGON2_TIME_COST",
+        "ARGON2_MEMORY_COST",
+        "ARGON2_PARALLELISM",
+    )
+    @classmethod
+    def _check_positive_int(cls, v: int, info) -> int:
+        if v < 1:
+            raise ValueError(f"{info.field_name} must be >= 1 (got {v})")
+        return v
+
+    @field_validator("GPS_RADIUS_METERS", "GPS_ACCURACY_THRESHOLD_METERS")
+    @classmethod
+    def _check_positive_float(cls, v: float, info) -> float:
+        if v <= 0:
+            raise ValueError(f"{info.field_name} must be > 0 (got {v})")
+        return v
+
+    @field_validator("LOG_FORMAT_MODE")
+    @classmethod
+    def _check_log_format(cls, v: str) -> str:
+        v = (v or "text").lower()
+        if v not in ("text", "json"):
+            raise ValueError("LOG_FORMAT_MODE must be 'text' or 'json'")
+        return v
+
+    @field_validator("COOKIE_SAMESITE")
+    @classmethod
+    def _check_samesite(cls, v: str) -> str:
+        v = (v or "strict").lower()
+        if v not in ("strict", "lax", "none"):
+            raise ValueError("COOKIE_SAMESITE must be one of: strict, lax, none")
+        return v
 
 
 settings = Settings()

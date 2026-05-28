@@ -47,7 +47,7 @@ export default class ErrorBoundary extends Component {
     const message = this.state.error?.message || 'Unexpected error.';
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-6">
+      <div role="alert" aria-live="assertive" className="min-h-screen flex items-center justify-center bg-slate-50 px-6">
         <div className="max-w-lg w-full bg-white border border-slate-200 rounded-2xl shadow-sm p-8 text-center space-y-5">
           <div className="text-5xl">⚠️</div>
           <h1 className="text-xl font-bold text-slate-800">Something went wrong</h1>

@@ -9,30 +9,45 @@
  *   face-reenroll → FaceReenrollPage (inline stub below)
  */
 
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import api from '../../api/axios';
 import DashboardLayout from '../../components/DashboardLayout';
-import AlertsPage      from './AlertsPage';
-import DeptReportsPage from './DeptReportsPage';
-import SectionsPage    from './SectionsPage';
-import StudentsPage    from './StudentsPage';
-import SubjectsPage    from './SubjectsPage';
-import TeachersPage    from './TeachersPage';
-import TimetablePage          from './TimetablePage';
-import TutorManagementPage    from './TutorManagementPage';
-import LeaveRequestsPage      from '../teacher/LeaveRequestsPage';
-import SectionAnalyticsPage   from './SectionAnalyticsPage';
-import TeacherPerformancePage from './TeacherPerformancePage';
-import TutorOverviewPage      from './TutorOverviewPage';
-import HODDisputesPage        from './HODDisputesPage';
-import SemesterProgressPage   from './SemesterProgressPage';
-import FeedPage               from '../shared/FeedPage';
-import ArticleDetailPage      from '../shared/ArticleDetailPage';
-import CareerRoadmapPage      from '../shared/CareerRoadmapPage';
-import SuggestionBoxPage      from '../shared/SuggestionBoxPage';
-import HODClassPulsePage      from './HODClassPulsePage';
-import LiveSessionAnalyticsPage from './LiveSessionAnalyticsPage';
+
+// #97 — lazy-load every sub-route page so the HOD bundle only fetches
+// chunks the user actually visits. The inline HODOverview + FaceReenrollPage
+// defined in this file stay eager because they reference local helpers.
+const AlertsPage              = lazy(() => import('./AlertsPage'));
+const DeptReportsPage         = lazy(() => import('./DeptReportsPage'));
+const SectionsPage            = lazy(() => import('./SectionsPage'));
+const StudentsPage            = lazy(() => import('./StudentsPage'));
+const SubjectsPage            = lazy(() => import('./SubjectsPage'));
+const TeachersPage            = lazy(() => import('./TeachersPage'));
+const TimetablePage           = lazy(() => import('./TimetablePage'));
+const TutorManagementPage     = lazy(() => import('./TutorManagementPage'));
+const LeaveRequestsPage       = lazy(() => import('../teacher/LeaveRequestsPage'));
+const SectionAnalyticsPage    = lazy(() => import('./SectionAnalyticsPage'));
+const TeacherPerformancePage  = lazy(() => import('./TeacherPerformancePage'));
+const TutorOverviewPage       = lazy(() => import('./TutorOverviewPage'));
+const HODDisputesPage         = lazy(() => import('./HODDisputesPage'));
+const SemesterProgressPage    = lazy(() => import('./SemesterProgressPage'));
+const FeedPage                = lazy(() => import('../shared/FeedPage'));
+const ArticleDetailPage       = lazy(() => import('../shared/ArticleDetailPage'));
+const CareerRoadmapPage       = lazy(() => import('../shared/CareerRoadmapPage'));
+const SuggestionBoxPage       = lazy(() => import('../shared/SuggestionBoxPage'));
+const HODClassPulsePage       = lazy(() => import('./HODClassPulsePage'));
+const LiveSessionAnalyticsPage = lazy(() => import('./LiveSessionAnalyticsPage'));
+
+function RouteFallback() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div style={{ borderColor: '#e2e8f0', borderTopColor: '#3b82f6',
+                    width: 32, height: 32, borderWidth: 4,
+                    borderRadius: '9999px', borderStyle: 'solid' }}
+           className="animate-spin" />
+    </div>
+  );
+}
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -641,31 +656,33 @@ function PendingApprovals({ onAction, actionLoading, actionMsg }) {
 export default function HODDashboard() {
   return (
     <DashboardLayout>
-      <Routes>
-        <Route path="dashboard"     element={<HODOverview />} />
-        <Route path="students"      element={<StudentsPage />} />
-        <Route path="sections"      element={<SectionsPage />} />
-        <Route path="teachers"      element={<TeachersPage />} />
-        <Route path="subjects"      element={<SubjectsPage />} />
-        <Route path="timetable"     element={<TimetablePage />} />
-        <Route path="reports"       element={<DeptReportsPage />} />
-        <Route path="alerts"        element={<AlertsPage />} />
-        <Route path="face-reenroll" element={<FaceReenrollPage />} />
-        <Route path="tutors"            element={<TutorManagementPage />} />
-        <Route path="leave-requests"    element={<LeaveRequestsPage />} />
-        <Route path="section-analytics" element={<SectionAnalyticsPage />} />
-        <Route path="teacher-perf"      element={<TeacherPerformancePage />} />
-        <Route path="tutor-overview"    element={<TutorOverviewPage />} />
-        <Route path="disputes"          element={<HODDisputesPage />} />
-        <Route path="semester-progress" element={<SemesterProgressPage />} />
-        <Route path="feed"              element={<FeedPage />} />
-        <Route path="feed/:articleId"   element={<ArticleDetailPage />} />
-        <Route path="career"              element={<CareerRoadmapPage />} />
-        <Route path="suggestions"         element={<SuggestionBoxPage />} />
-        <Route path="classpulse"          element={<HODClassPulsePage />} />
-        <Route path="live-analytics"      element={<LiveSessionAnalyticsPage />} />
-        <Route path="*"                 element={<Navigate to="dashboard" replace />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="dashboard"     element={<HODOverview />} />
+          <Route path="students"      element={<StudentsPage />} />
+          <Route path="sections"      element={<SectionsPage />} />
+          <Route path="teachers"      element={<TeachersPage />} />
+          <Route path="subjects"      element={<SubjectsPage />} />
+          <Route path="timetable"     element={<TimetablePage />} />
+          <Route path="reports"       element={<DeptReportsPage />} />
+          <Route path="alerts"        element={<AlertsPage />} />
+          <Route path="face-reenroll" element={<FaceReenrollPage />} />
+          <Route path="tutors"            element={<TutorManagementPage />} />
+          <Route path="leave-requests"    element={<LeaveRequestsPage />} />
+          <Route path="section-analytics" element={<SectionAnalyticsPage />} />
+          <Route path="teacher-perf"      element={<TeacherPerformancePage />} />
+          <Route path="tutor-overview"    element={<TutorOverviewPage />} />
+          <Route path="disputes"          element={<HODDisputesPage />} />
+          <Route path="semester-progress" element={<SemesterProgressPage />} />
+          <Route path="feed"              element={<FeedPage />} />
+          <Route path="feed/:articleId"   element={<ArticleDetailPage />} />
+          <Route path="career"              element={<CareerRoadmapPage />} />
+          <Route path="suggestions"         element={<SuggestionBoxPage />} />
+          <Route path="classpulse"          element={<HODClassPulsePage />} />
+          <Route path="live-analytics"      element={<LiveSessionAnalyticsPage />} />
+          <Route path="*"                 element={<Navigate to="dashboard" replace />} />
+        </Routes>
+      </Suspense>
     </DashboardLayout>
   );
 }

@@ -491,6 +491,55 @@ def _validate_security_config():
     logger.info("✅ Security configuration validated.")
 
 
+# Optional-integration startup warnings (#105, #106, #107) — features
+# silently degrade when these keys are blank; surface them loudly so an
+# operator notices BEFORE users start hitting broken endpoints.
+def _warn_optional_integrations():
+    is_prod = not settings.DEBUG
+
+    def _warn(missing: str, message: str):
+        # In production these are real outages → ERROR; in DEBUG mode they
+        # are expected (no real keys yet) → INFO.
+        (logger.error if is_prod else logger.info)(
+            "⚠️  %s missing — %s", missing, message
+        )
+
+    if not settings.NEWS_API_KEY:
+        _warn(
+            "NEWS_API_KEY",
+            "News Feed will return an empty list (cards will show a "
+            "'feed unavailable' banner instead of crashing).",
+        )
+
+    if not settings.AGORA_APP_ID or not settings.AGORA_APP_CERTIFICATE:
+        _warn(
+            "AGORA_APP_ID/CERTIFICATE",
+            "ClassPulse live sessions will fail at /live/token — joining "
+            "a live class will return HTTP 503.",
+        )
+
+    if not settings.MSG91_EMAIL_DOMAIN:
+        _warn(
+            "MSG91_EMAIL_DOMAIN",
+            "Email OTP delivery via MSG91 will be rejected by the provider "
+            "(MSG91 requires the verified sending domain).",
+        )
+
+    if not settings.FAST2SMS_API_KEY:
+        _warn(
+            "FAST2SMS_API_KEY",
+            "SMS notifications are disabled — send_sms() returns "
+            "{ok:false,error:'FAST2SMS_API_KEY not configured'}.",
+        )
+
+    if not (settings.GEMINI_API_KEY or settings.GROQ_API_KEY or settings.DEEPSEEK_API_KEY):
+        _warn(
+            "GEMINI_API_KEY/GROQ_API_KEY/DEEPSEEK_API_KEY",
+            "All AI providers unconfigured — Career Roadmap and AI "
+            "suggestion endpoints will return 503.",
+        )
+
+
 # Logging configuration — invoked from _lifespan.
 def _configure_logging():
     """
@@ -721,6 +770,7 @@ async def _lifespan(app: FastAPI):
     # Startup — run validators and bring up the scheduler exactly once.
     _configure_logging()
     _validate_security_config()
+    _warn_optional_integrations()
     if not scheduler.running:
         scheduler.start()
         logger.info("🕒 APScheduler started (5 jobs)")

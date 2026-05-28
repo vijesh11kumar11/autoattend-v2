@@ -9,7 +9,7 @@
  *   audit       → PrincipalAuditPage
  */
 
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
@@ -17,15 +17,29 @@ import {
 } from 'recharts';
 import api from '../../api/axios';
 import DashboardLayout from '../../components/DashboardLayout';
-import CollegeReportsPage  from './CollegeReportsPage';
-import DepartmentsPage     from './DepartmentsPage';
-import PrincipalAlertsPage from './PrincipalAlertsPage';
-import PrincipalAuditPage  from './PrincipalAuditPage';
-import FeedPage            from '../shared/FeedPage';
-import ArticleDetailPage   from '../shared/ArticleDetailPage';
-import CareerRoadmapPage   from '../shared/CareerRoadmapPage';
-import SuggestionBoxPage   from '../shared/SuggestionBoxPage';
-import PrincipalClassPulsePage from './PrincipalClassPulsePage';
+
+// #97 — lazy-load every sub-route page so the Principal bundle only
+// fetches chunks the user actually visits.
+const CollegeReportsPage      = lazy(() => import('./CollegeReportsPage'));
+const DepartmentsPage         = lazy(() => import('./DepartmentsPage'));
+const PrincipalAlertsPage     = lazy(() => import('./PrincipalAlertsPage'));
+const PrincipalAuditPage      = lazy(() => import('./PrincipalAuditPage'));
+const FeedPage                = lazy(() => import('../shared/FeedPage'));
+const ArticleDetailPage       = lazy(() => import('../shared/ArticleDetailPage'));
+const CareerRoadmapPage       = lazy(() => import('../shared/CareerRoadmapPage'));
+const SuggestionBoxPage       = lazy(() => import('../shared/SuggestionBoxPage'));
+const PrincipalClassPulsePage = lazy(() => import('./PrincipalClassPulsePage'));
+
+function RouteFallback() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div style={{ borderColor: '#e2e8f0', borderTopColor: '#3b82f6',
+                    width: 32, height: 32, borderWidth: 4,
+                    borderRadius: '9999px', borderStyle: 'solid' }}
+           className="animate-spin" />
+    </div>
+  );
+}
 
 // ── colour helpers ────────────────────────────────────────────────────
 const PCT_COLOR = (pct) => {
@@ -275,19 +289,21 @@ function PrincipalOverview() {
 export default function PrincipalDashboard() {
   return (
     <DashboardLayout>
-      <Routes>
-        <Route path="dashboard"   element={<PrincipalOverview />} />
-        <Route path="departments" element={<DepartmentsPage />} />
-        <Route path="reports"     element={<CollegeReportsPage />} />
-        <Route path="alerts"      element={<PrincipalAlertsPage />} />
-        <Route path="audit"       element={<PrincipalAuditPage />} />
-        <Route path="feed"        element={<FeedPage />} />
-        <Route path="feed/:articleId" element={<ArticleDetailPage />} />
-        <Route path="career"           element={<CareerRoadmapPage />} />
-        <Route path="suggestions"      element={<SuggestionBoxPage />} />
-        <Route path="classpulse"       element={<PrincipalClassPulsePage />} />
-        <Route path="*"           element={<Navigate to="dashboard" replace />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="dashboard"   element={<PrincipalOverview />} />
+          <Route path="departments" element={<DepartmentsPage />} />
+          <Route path="reports"     element={<CollegeReportsPage />} />
+          <Route path="alerts"      element={<PrincipalAlertsPage />} />
+          <Route path="audit"       element={<PrincipalAuditPage />} />
+          <Route path="feed"        element={<FeedPage />} />
+          <Route path="feed/:articleId" element={<ArticleDetailPage />} />
+          <Route path="career"           element={<CareerRoadmapPage />} />
+          <Route path="suggestions"      element={<SuggestionBoxPage />} />
+          <Route path="classpulse"       element={<PrincipalClassPulsePage />} />
+          <Route path="*"           element={<Navigate to="dashboard" replace />} />
+        </Routes>
+      </Suspense>
     </DashboardLayout>
   );
 }
