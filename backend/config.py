@@ -64,7 +64,24 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
     COLLEGE_NAME: str = "Your College Name"
-
+    # ── Production hardening ──────────────────────────────
+    # Expose /api/docs, /api/redoc, /api/openapi.json. Independent of
+    # DEBUG so an operator can disable them in dev too. Defaults to the
+    # value of DEBUG via the validator below if not explicitly set.
+    EXPOSE_DOCS: bool = False
+    # Enforce HTTPS redirect for plain-http requests (only meaningful when
+    # the app is the TLS terminator; behind a load balancer the proxy
+    # usually handles this and X-Forwarded-Proto should be trusted).
+    FORCE_HTTPS: bool = False
+    # Hard cap on any single request body (bytes). 10 MiB by default —
+    # uploads/face frames go to dedicated endpoints with larger caps.
+    MAX_REQUEST_BODY_BYTES: int = 10 * 1024 * 1024
+    # Per-request hard timeout (seconds). Long-running handlers exceeding
+    # this are aborted with 504 to stop them holding DB connections.
+    REQUEST_TIMEOUT_SECONDS: int = 60
+    # Auto-run Base.metadata.create_all() at startup. NEVER True in
+    # production — always use Alembic migrations.
+    AUTO_CREATE_TABLES: bool = False
     # ── Auth cookie (web only — mobile keeps Bearer token) ─────────────
     # In production: COOKIE_SECURE=True, COOKIE_SAMESITE=strict.
     # For cross-site (vercel frontend + render backend): COOKIE_SAMESITE=none + COOKIE_SECURE=True.

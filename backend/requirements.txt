@@ -30,3 +30,8 @@ agora-token-builder==1.0.0
 beautifulsoup4==4.12.3
 lxml==5.3.0
 bleach>=6.0.0
+# AI providers — conditionally imported by live_session_ai / classpulse_ai /
+# career / suggestions. Pin to avoid breakage on fresh installs.
+google-genai>=0.3.0
+groq>=0.11.0
+# DeepSeek is accessed via plain HTTP (requests) — no SDK needed.

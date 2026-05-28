@@ -2,16 +2,22 @@
 AutoAttend AI v2.0 — FastAPI entry point
 """
 
+import asyncio
 import logging
 import sys
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from config import settings
 from database import Base, engine
@@ -38,8 +44,20 @@ LOG_FORMAT = (
 
 logger = logging.getLogger(__name__)
 
-# Create all tables (idempotent)
-Base.metadata.create_all(bind=engine)
+# Schema creation is intentionally GATED. In production, run Alembic
+# migrations (`alembic upgrade head`) before the app starts. The dev
+# convenience auto-create runs only when AUTO_CREATE_TABLES=True or
+# DEBUG=True (which also serves a local SQLite/dev DB).
+if settings.AUTO_CREATE_TABLES or settings.DEBUG:
+    Base.metadata.create_all(bind=engine)
+    logger.info("📦 Base.metadata.create_all() applied (DEBUG/AUTO_CREATE_TABLES)")
+else:
+    logger.info("📦 Schema creation skipped — use 'alembic upgrade head' in production")
+
+# Whether to expose interactive docs. Independent of DEBUG so an
+# operator can keep DEBUG=True locally without exposing the OpenAPI
+# schema, or expose docs in a staging environment with DEBUG=False.
+_expose_docs = settings.EXPOSE_DOCS or settings.DEBUG
 
 # ── Rate limiter ───────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
@@ -47,9 +65,10 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
-    docs_url="/api/docs" if settings.DEBUG else None,
-    redoc_url="/api/redoc" if settings.DEBUG else None,
-    openapi_url="/api/openapi.json" if settings.DEBUG else None,
+    docs_url="/api/docs" if _expose_docs else None,
+    redoc_url="/api/redoc" if _expose_docs else None,
+    openapi_url="/api/openapi.json" if _expose_docs else None,
+    # lifespan is bound later (see end of file) once _lifespan is defined.
 )
 
 app.state.limiter = limiter
@@ -106,6 +125,57 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIDMiddleware)
 
+
+# ── Request body size cap (defence against memory exhaustion) ─────────
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    """Reject any request whose advertised Content-Length exceeds the
+    configured cap. Streamed/chunked uploads that omit Content-Length are
+    still bounded by uvicorn's per-connection limits."""
+
+    async def dispatch(self, request: Request, call_next):
+        cl = request.headers.get("content-length")
+        if cl and cl.isdigit() and int(cl) > settings.MAX_REQUEST_BODY_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large"},
+            )
+        return await call_next(request)
+
+
+app.add_middleware(MaxBodySizeMiddleware)
+
+
+# ── Per-request timeout (defence against slow/hung handlers) ───────────
+class RequestTimeoutMiddleware(BaseHTTPMiddleware):
+    """Cap any single request at REQUEST_TIMEOUT_SECONDS. Long-poll and
+    WebSocket routes bypass this middleware automatically (WS uses its
+    own protocol)."""
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await asyncio.wait_for(
+                call_next(request),
+                timeout=settings.REQUEST_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("⏱️ request timeout: %s %s", request.method, request.url.path)
+            return JSONResponse(
+                status_code=504,
+                content={"detail": "Server timeout while processing request"},
+            )
+
+
+app.add_middleware(RequestTimeoutMiddleware)
+
+
+# ── HTTPS enforcement (production only) ──────────────────────────
+# When FORCE_HTTPS=True we are the TLS terminator and any plain-http
+# request must 301 to https. Behind a load balancer set FORCE_HTTPS=False
+# and let the proxy handle redirects (it will set X-Forwarded-Proto).
+if settings.FORCE_HTTPS and not settings.DEBUG:
+    app.add_middleware(HTTPSRedirectMiddleware)
+    logger.info("🔒 HTTPSRedirectMiddleware enabled")
+
 # CORS — production list contains ONLY settings.FRONTEND_URL.
 # Vite dev origin (http://localhost:5173) is added only when DEBUG=True.
 _cors_origins = [settings.FRONTEND_URL]
@@ -146,7 +216,32 @@ app.include_router(live_session.router)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "2.0.0"}
+    """Liveness + readiness probe.
+
+    Returns 200 only when the DB is reachable. Load balancers / orchestrators
+    can rely on the status code; the body is for human debugging.
+    """
+    db_ok = False
+    db_error = None
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as exc:
+        db_error = str(exc)[:200]
+        logger.error("❌ health DB check failed: %s", db_error)
+
+    payload = {
+        "status": "ok" if db_ok else "degraded",
+        "version": "2.0.0",
+        "db": "ok" if db_ok else "down",
+    }
+    if db_error and settings.DEBUG:
+        payload["db_error"] = db_error
+    return JSONResponse(
+        status_code=200 if db_ok else 503,
+        content=payload,
+    )
 
 
 # ── WebSocket: real-time live-session signalling ────────────────────────
@@ -346,14 +441,14 @@ async def live_session_ws(
         live_ws_manager.disconnect(session_id, user_id)
 
 
-@app.on_event("startup")
+# Startup validator — invoked from _lifespan (no @app.on_event decorator;
+# that API is deprecated in FastAPI >= 0.93 in favour of lifespan).
 def _validate_security_config():
     """
     Refuse to start the app with insecure or missing security configuration.
     Runs before the first request is served.
     """
     errors: list[str] = []
-
     if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
         errors.append("SECRET_KEY must be set and at least 32 characters long")
 
@@ -394,7 +489,7 @@ def _validate_security_config():
     logger.info("✅ Security configuration validated.")
 
 
-@app.on_event("startup")
+# Logging configuration — invoked from _lifespan.
 def _configure_logging():
     """
     Configure logging AFTER uvicorn has set up its own handlers.
@@ -595,5 +690,37 @@ scheduler.add_job(_daily_low_attendance_alerts,  "cron",     hour=20, minute=0, 
 scheduler.add_job(_purge_old_login_attempts,     "interval", hours=1,          id="purge_login_attempts")
 scheduler.add_job(_purge_expired_refresh_tokens, "cron",     hour=3,  minute=0, id="purge_refresh_tokens")
 scheduler.add_job(_daily_cleanup_tokens,         "cron",     hour=4,  minute=0, id="cleanup_tokens")
-scheduler.start()
+
+
+# ── Lifespan: start scheduler at app boot, stop cleanly on shutdown ─────
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Startup — run validators and bring up the scheduler exactly once.
+    _configure_logging()
+    _validate_security_config()
+    if not scheduler.running:
+        scheduler.start()
+        logger.info("🕒 APScheduler started (5 jobs)")
+    try:
+        yield
+    finally:
+        # Shutdown — stop scheduler so background jobs do not keep DB
+        # connections / threads alive across reloads or graceful restarts.
+        if scheduler.running:
+            try:
+                scheduler.shutdown(wait=False)
+                logger.info("🛑 APScheduler shut down cleanly")
+            except Exception as exc:
+                logger.warning("APScheduler shutdown failed: %s", exc)
+        # Dispose the SQLAlchemy engine pool too — avoids leaked
+        # connections during fast deploy cycles.
+        try:
+            engine.dispose()
+            logger.info("🛑 SQLAlchemy engine pool disposed")
+        except Exception as exc:
+            logger.warning("engine.dispose() failed: %s", exc)
+
+
+# Bind the lifespan to the FastAPI instance now that it is defined.
+app.router.lifespan_context = _lifespan
 

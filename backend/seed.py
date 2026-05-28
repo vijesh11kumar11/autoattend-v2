@@ -2,13 +2,21 @@
 AutoAttend AI v2.0 — Seed script
 Creates test college, department, course, subjects, timetable, and 4 test users.
 Run once:  python seed.py
+
+Safety:
+  * Refuses to run when DEBUG=False unless ALLOW_SEED_IN_PROD=1 is set.
+  * Password comes from SEED_PASSWORD env var (random 24-char default if unset)
+    — NEVER ships with a hard-coded 'password123'.
+  * College/department names come from SEED_COLLEGE_NAME / SEED_COLLEGE_CODE
+    etc. so the same script works for any tenant without code edits.
 """
 
-import sys, os
+import sys, os, secrets
 sys.path.insert(0, os.path.dirname(__file__))
 
 from datetime import datetime, timezone
 from argon2 import PasswordHasher
+from config import settings
 from database import SessionLocal, Base, engine
 from database import (
     College, Department, Course, Subject, User, Timetable,
@@ -16,8 +24,29 @@ from database import (
     Capsule, CapsuleType, CapsuleUnlockMode,
 )
 
+# ── Production guard ─────────────────────────────────────────
+if not settings.DEBUG and os.environ.get("ALLOW_SEED_IN_PROD") != "1":
+    print("❌ seed.py refused: DEBUG=False and ALLOW_SEED_IN_PROD!=1.")
+    print("   Set ALLOW_SEED_IN_PROD=1 explicitly if you really want to seed production.")
+    sys.exit(2)
+
+# ── Tenant-specific values (env-driven — no hard-coded "SVEC") ─────────
+SEED_COLLEGE_NAME    = os.environ.get("SEED_COLLEGE_NAME", settings.COLLEGE_NAME or "Demo College")
+SEED_COLLEGE_CODE    = os.environ.get("SEED_COLLEGE_CODE", "DEMO").lower()
+SEED_COLLEGE_ADDR    = os.environ.get("SEED_COLLEGE_ADDRESS", "123 Example Street")
+SEED_COLLEGE_PHONE   = os.environ.get("SEED_COLLEGE_PHONE", "+910000000000")
+SEED_COLLEGE_EMAIL   = os.environ.get("SEED_COLLEGE_EMAIL", f"admin@{SEED_COLLEGE_CODE}.edu.in")
+SEED_EMAIL_DOMAIN    = os.environ.get("SEED_EMAIL_DOMAIN", f"{SEED_COLLEGE_CODE}.edu.in")
+
+# ── Password (env override else random) ──────────────────────────
+SEED_PASSWORD = os.environ.get("SEED_PASSWORD") or secrets.token_urlsafe(18)
+if not os.environ.get("SEED_PASSWORD"):
+    print(f"⚠️  SEED_PASSWORD not set — generated random password for this run:")
+    print(f"   → {SEED_PASSWORD}")
+    print(f"   Save it now; it will NOT be shown again.")
+
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
-PWD_HASH = ph.hash("password123")        # all test users share this password
+PWD_HASH = ph.hash(SEED_PASSWORD)
 
 db = SessionLocal()
 
@@ -25,10 +54,10 @@ try:
     # ── 1. College ───────────────────────────────────────────────
     college = db.query(College).first()
     if not college:
-        college = College(name="Sri Venkateswara Engineering College",
-                          address="Tirupati, AP 517502",
-                          phone="+919876543210",
-                          email="admin@svec.edu.in")
+        college = College(name=SEED_COLLEGE_NAME,
+                          address=SEED_COLLEGE_ADDR,
+                          phone=SEED_COLLEGE_PHONE,
+                          email=SEED_COLLEGE_EMAIL)
         db.add(college)
         db.flush()
         print(f"✅ College created  (id={college.id})")
@@ -341,13 +370,15 @@ try:
     db.commit()
     print("\n🎉 Seed complete!")
     print("─" * 50)
-    print("TEST CREDENTIALS (all use password: password123)")
+    print(f"TEST CREDENTIALS (all use password set above)")
     print("─" * 50)
     print("Principal : principal@svec.edu.in")
     print("HOD       : hod.cse@svec.edu.in")
     print("Teacher   : priya.teacher@svec.edu.in")
     print("Student 1 : 21CSE001  (or vijesh@svec.edu.in)")
     print("Student 2 : 21CSE002  (or arun@svec.edu.in)")
+    print("─" * 50)
+    print(f"Password  : {'(from SEED_PASSWORD env)' if os.environ.get('SEED_PASSWORD') else SEED_PASSWORD}")
     print("─" * 50)
 
 except Exception as e:
