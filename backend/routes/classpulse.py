@@ -84,6 +84,7 @@ from utils.pdf_watermark import (
     cleanup_expired_watermarks,
     watermark_pdf_for_student,
 )
+from utils.sanitization import clean_text
 from utils.signed_urls import generate_signed_capsule_url, verify_signed_url
 from utils.sms import send_sms
 from utils.whatsapp import send_whatsapp_message
@@ -876,9 +877,9 @@ def update_capsule(
         raise HTTPException(403, "You did not create this capsule")
 
     if body.title is not None:
-        capsule.title = body.title.strip()
+        capsule.title = clean_text(body.title.strip())
     if body.description is not None:
-        capsule.description = body.description.strip() or None
+        capsule.description = clean_text(body.description.strip()) or None
     if body.unlock_mode is not None:
         if body.unlock_mode not in {um.value for um in CapsuleUnlockMode}:
             raise HTTPException(400, "Invalid unlock_mode")
@@ -1900,7 +1901,7 @@ def student_post_doubt(
         capsule_id=capsule_id,
         live_session_id=body.live_session_id,
         page_number=body.page_number,
-        content=body.content.strip(),
+        content=clean_text(body.content.strip()),
     )
     db.add(post)
     db.commit()

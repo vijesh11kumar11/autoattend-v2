@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from database import AttendanceSession, SessionStatus, get_db
 from utils.auth_utils import teacher_or_above
+from utils.crypto_utils import decrypt_field
 from utils.qr_utils import generate_qr_token, get_session_qr_secret
 
 router = APIRouter(prefix="/api/qr", tags=["QR"])
@@ -62,7 +63,7 @@ def get_qr_token(
                 "This session does not belong to your college.",
             )
 
-    qr_secret = session.qr_secret
+    qr_secret = decrypt_field(session.qr_secret)
     result    = generate_qr_token(session_id, qr_secret)
 
     logger.info("📷 QR TOKEN generated │ session_id=%d │ by user_id=%d (role=%s)",

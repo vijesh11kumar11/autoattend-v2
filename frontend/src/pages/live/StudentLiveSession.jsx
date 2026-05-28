@@ -23,7 +23,7 @@ export default function StudentLiveSession() {
   const [search] = useSearchParams();
   const joinCode = search.get('join');
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
 
   const [info, setInfo] = useState(null);
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -148,11 +148,19 @@ export default function StudentLiveSession() {
   useEffect(() => {
     if (!info) return;
     const guestToken = sessionStorage.getItem('aa_guest_token');
-    const wsToken = guestToken || token || localStorage.getItem('aa_token') || '';
+    // For logged-in users we rely on the httpOnly aa_token cookie
+    // (sent automatically on the WS handshake). Guests pass their token
+    // explicitly because they have no login cookie.
+    const wsToken = guestToken || '';
     const userId = info.guest ? info.participant_id : (user?.id || 0);
     if (!userId) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws/live/${sessionId}/${userId}?token=${encodeURIComponent(wsToken)}`);
+    // Prefer Sec-WebSocket-Protocol over ?token= to keep tokens out of
+    // access logs / browser history. Server accepts ["aa-jwt", <token>].
+    const wsUrl = `${proto}://${window.location.host}/ws/live/${sessionId}/${userId}`;
+    const ws = wsToken
+      ? new WebSocket(wsUrl, ['aa-jwt', wsToken])
+      : new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onmessage = (ev) => {
@@ -226,7 +234,7 @@ export default function StudentLiveSession() {
     ws.onerror = () => setBandwidth('poor');
     ws.onclose  = () => { wsRef.current = null; };
     return () => { try { ws.close(); } catch {} };
-  }, [info?.session?.id, info?.guest, sessionId, token, user?.id]);
+  }, [info?.session?.id, info?.guest, sessionId, user?.id]);
 
   // ─── Session timer ──────────────────────────────────────────────────
   useEffect(() => {

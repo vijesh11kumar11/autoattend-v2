@@ -26,6 +26,9 @@ class LoginResponse(BaseModel):
     """
     access_token:             Optional[str]  = None
     token_type:               str            = "bearer"
+    # Mobile clients receive the refresh token in JSON body
+    # (web clients receive it via httpOnly cookie).
+    refresh_token:            Optional[str]  = None
     role:                     Optional[str]  = None
     name:                     Optional[str]  = None
     # Student-specific
@@ -35,6 +38,17 @@ class LoginResponse(BaseModel):
     totp_session_token:       Optional[str]  = None
     # Staff first-time TOTP setup
     totp_setup_required:      Optional[bool] = None
+
+
+class RefreshTokenRequest(BaseModel):
+    """Mobile body for /api/auth/refresh; web sends the refresh cookie instead."""
+    refresh_token: Optional[str] = None
+
+
+class RefreshTokenResponse(BaseModel):
+    access_token:  str
+    refresh_token: Optional[str] = None   # only populated for mobile
+    token_type:    str = "bearer"
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -212,9 +212,10 @@ def get_session_qr_secret(session_id: int, db: Session) -> str | None:
     Return the per-session QR secret stored in attendance_sessions.qr_secret.
     Returns None if the session does not exist.
     """
+    from utils.crypto_utils import decrypt_field  # local import avoids cycle
     session = (
         db.query(AttendanceSession.qr_secret)
         .filter(AttendanceSession.id == session_id)
         .first()
     )
-    return session.qr_secret if session else None
+    return decrypt_field(session.qr_secret) if session else None

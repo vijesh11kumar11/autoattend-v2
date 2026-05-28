@@ -159,7 +159,8 @@ def _create_guest_token(session_id: int, participant_id: int, guest_name: str) -
         "exp": expire,
         "jti": str(uuid4()),
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    from utils.auth_utils import jwt_signing_key
+    return jwt.encode(payload, jwt_signing_key(), algorithm=settings.ALGORITHM)
 
 
 def _build_webrtc_config(
@@ -1767,9 +1768,10 @@ def get_participant_names(
     if not authorised and credentials and credentials.credentials:
         # Try to validate as a guest token for this session
         try:
+            from utils.auth_utils import jwt_verify_key
             payload = jwt.decode(
                 credentials.credentials,
-                settings.SECRET_KEY,
+                jwt_verify_key(),
                 algorithms=[settings.ALGORITHM],
             )
             if payload.get("purpose") == "live_guest" and int(payload.get("session_id") or 0) == session_id:

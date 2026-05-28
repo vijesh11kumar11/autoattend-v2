@@ -178,8 +178,9 @@ export default function LoginPage() {
         // Store the totp_session_token for step 2
         setTotpToken(data.totp_session_token || '');
         setShowTotp(true);
-      } else if (data.access_token) {
-        const user = login(data.access_token);
+      } else {
+        // Cookie is now set by the server — pull /me to populate user.
+        const user = await login();
         // Students must enroll face before accessing dashboard
         if (data.face_enrollment_required && user.role === 'student') {
           navigate('/student/face-enrollment', { replace: true });
@@ -217,10 +218,9 @@ export default function LoginPage() {
         totp_session_token: totpToken,
         code: totpCode.trim(),
       });
-      if (data.access_token) {
-        const user = login(data.access_token);
-        redirectByRole(user.role);
-      }
+      // Cookie is now set by the server — pull /me to populate user.
+      const user = await login();
+      redirectByRole(user.role);
     } catch (err) {
       const detail = err.response?.data?.detail;
       setTotpError(

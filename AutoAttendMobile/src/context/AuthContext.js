@@ -98,12 +98,18 @@ export function AuthProvider({ children }) {
   }, [logout]);
 
   // ── login ─────────────────────────────────────────────────────────
-  const login = useCallback(async (newToken) => {
+  // Accepts either (accessToken) for back-compat OR (accessToken, refreshToken).
+  const login = useCallback(async (newToken, refreshToken) => {
     const payload = decodeJWTPayload(newToken);
     if (!payload) throw new Error('Invalid or malformed token.');
     await SecureStore.setItemAsync(TOKEN_KEY, newToken, {
       keychainAccessible: SecureStore.WHEN_UNLOCKED,
     });
+    if (refreshToken) {
+      await SecureStore.setItemAsync('aa_refresh_token', refreshToken, {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED,
+      });
+    }
     setToken(newToken);
     setUser(payload);
   }, []);

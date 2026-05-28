@@ -436,6 +436,29 @@ export default function ScanQRScreen({ navigation }) {
     let parsedSession = null;
     try { parsedSession = JSON.parse(qrData)?.session_id ?? qrData; } catch { parsedSession = qrData; }
 
+    // Fresh single-shot GPS read so we get the `mocked` flag (Android only).
+    // expo-location's `mocked` field is always false on iOS — treated as defense-in-depth.
+    let mockFlag = false;
+    try {
+      const fresh = await Location.getCurrentPositionAsync({
+        accuracy: GPS_DESIRED_ACCURACY,
+        mayShowUserSettingsDialog: false,
+      });
+      mockFlag = Boolean(fresh?.mocked);
+    } catch {
+      // ignore — we already have watchPositionAsync coords; mockFlag stays false
+    }
+
+    // Re-check device security so the audit log captures last-mile state.
+    let isRooted = false;
+    try {
+      const { checkDeviceSecurity } = await import('../../utils/deviceSecurity');
+      const sec = await checkDeviceSecurity();
+      isRooted = !sec.isSecure;
+    } catch {
+      // best-effort
+    }
+
     try {
       const { data } = await client.post('/attendance/mark', {
         session_id:               parsedSession,
@@ -447,6 +470,8 @@ export default function ScanQRScreen({ navigation }) {
         bluetooth_token_detected: bluetoothToken ?? null,
         device_id:                deviceId,
         subject_id:               selectedSubject?.id ?? null,
+        mock_location_detected:   mockFlag,
+        is_rooted:                isRooted,
       });
       setSuccessData(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

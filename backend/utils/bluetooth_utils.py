@@ -101,13 +101,19 @@ The backend only:
 See: utils/location_utils.py → verify_bluetooth_proximity()
 """
 
+import hashlib
+import hmac
 import logging
 import secrets
+import time
 
 logger = logging.getLogger(__name__)
 
 # Length of generated Bluetooth token (hex chars = 16 bytes = 128-bit entropy)
 _BT_TOKEN_LENGTH = 16
+
+# BLE token rotation period (seconds)
+BLE_WINDOW_SECONDS = 30
 
 
 def generate_bluetooth_token() -> str:
@@ -126,4 +132,56 @@ def generate_bluetooth_token() -> str:
     token = secrets.token_hex(_BT_TOKEN_LENGTH)
     logger.info("📶 BLE token generated │ length=%d chars │ hint=%s...", len(token), token[:8])
     return token
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# HMAC-rotating BLE token (30-second window)
+# ═══════════════════════════════════════════════════════════════════════
+#
+# The per-session value stored in attendance_sessions.bluetooth_token is now
+# a *secret seed*. What the teacher broadcasts on BLE is the HMAC-SHA-256
+# of the current 30-second time window keyed by that seed, truncated to
+# 32 hex chars for compact BLE advertisement payloads.
+#
+# A captured token therefore expires within ≤30 s, neutralising replay
+# attacks that record the BLE advertisement and re-use it later.
+
+def _current_window(now_ts: float | None = None) -> int:
+    return int((now_ts if now_ts is not None else time.time()) // BLE_WINDOW_SECONDS)
+
+
+def compute_ble_window_token(secret: str, window: int | None = None) -> str:
+    """
+    Compute the BLE advertisement payload for a given 30-second window.
+    Defaults to the current window if `window` is omitted.
+    """
+    if window is None:
+        window = _current_window()
+    msg = f"BLE:{window}".encode()
+    digest = hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+    return digest[:32]   # 16 bytes of HMAC = plenty for proximity proof
+
+
+def seconds_until_next_window(now_ts: float | None = None) -> int:
+    now = now_ts if now_ts is not None else time.time()
+    return BLE_WINDOW_SECONDS - int(now) % BLE_WINDOW_SECONDS
+
+
+def verify_bluetooth_token(
+    secret:           str,
+    presented_token:  str,
+    tolerance_windows: int = 1,
+) -> bool:
+    """
+    Constant-time check: does `presented_token` match the HMAC of the
+    current, previous, or next 30-s window?  ±tolerance_windows defaults to 1.
+    """
+    if not secret or not presented_token:
+        return False
+    win = _current_window()
+    for delta in range(-tolerance_windows, tolerance_windows + 1):
+        expected = compute_ble_window_token(secret, win + delta)
+        if hmac.compare_digest(expected, presented_token):
+            return True
+    return False
 

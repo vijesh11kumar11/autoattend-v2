@@ -4,12 +4,14 @@ AutoAttend AI v2.0 — FastAPI entry point
 
 import logging
 import sys
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
 from database import Base, engine
@@ -24,6 +26,7 @@ from routes import career
 from routes import suggestions
 from routes import classpulse
 from routes import live_session
+from routes import principal
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
@@ -44,20 +47,72 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    docs_url="/api/docs" if settings.DEBUG else None,
+    redoc_url="/api/redoc" if settings.DEBUG else None,
+    openapi_url="/api/openapi.json" if settings.DEBUG else None,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ── Global security headers middleware ────────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Adds OWASP-recommended security headers to every HTTP response.
+    Route-level overrides are preserved: if a route already set a header,
+    we do not replace it.
+    """
+
+    _DEFAULTS = {
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+        "X-Content-Type-Options":    "nosniff",
+        "X-Frame-Options":           "DENY",
+        "X-XSS-Protection":          "1; mode=block",
+        "Referrer-Policy":           "strict-origin-when-cross-origin",
+        "Permissions-Policy":        "camera=(self), microphone=(self), geolocation=(self), bluetooth=(self)",
+        "Content-Security-Policy": (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' wss: https:; "
+            "frame-ancestors 'none'"
+        ),
+    }
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        for header, value in self._DEFAULTS.items():
+            response.headers.setdefault(header, value)
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ── Request-ID middleware (correlates security_events + access logs) ──
+import uuid as _uuid
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        rid = request.headers.get("X-Request-ID") or _uuid.uuid4().hex
+        request.state.request_id = rid
+        response = await call_next(request)
+        response.headers.setdefault("X-Request-ID", rid)
+        return response
+
+
+app.add_middleware(RequestIDMiddleware)
 
 # CORS — allow the Vite dev server and production frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL, "http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Device-ID", "X-Client-Type", "X-Request-ID", "X-Requested-With", "Accept"],
 )
 
 # ── register routers ───────────────────────────────────────────────────
@@ -70,6 +125,7 @@ app.include_router(faculty.router)
 app.include_router(reports.router)
 app.include_router(alerts.router)
 app.include_router(users.router)
+app.include_router(principal.router)
 app.include_router(sections.router)
 app.include_router(tutor.router)
 app.include_router(timetable.router)
@@ -115,11 +171,35 @@ async def live_session_ws(
 ):
     """Real-time channel for a live session.
 
-    Auth: query-param `?token=<JWT>` (issued by /api/auth/login or
-    `_create_guest_token` from the join endpoint). The token's `id` (or
-    `participant_id` for guests) must match the URL `user_id`.
+    Auth precedence (most → least secure):
+      1. httpOnly `aa_token` cookie sent on the WS handshake (web users).
+      2. `Sec-WebSocket-Protocol: aa-jwt, <token>` subprotocol header
+         (mobile/guest clients — keeps token OUT of URL & access logs).
+      3. `?token=<JWT>` query param (DEPRECATED — kept for legacy clients;
+         logged as WARNING so we can phase it out).
+
+    The token's `id` (or `participant_id` for guests) must match the URL
+    `user_id`.
     """
-    payload = _verify_ws_token(token)
+    # 1. Cookie
+    cookie_token = websocket.cookies.get("aa_token")
+
+    # 2. Subprotocol — browser/RN pass `new WebSocket(url, ["aa-jwt", token])`
+    subproto_token = None
+    chosen_subproto = None
+    subprotos = websocket.headers.get("sec-websocket-protocol", "")
+    if subprotos:
+        parts = [p.strip() for p in subprotos.split(",")]
+        if len(parts) >= 2 and parts[0] == "aa-jwt":
+            subproto_token = parts[1]
+            chosen_subproto = "aa-jwt"
+
+    # 3. Query string fallback (deprecated)
+    if not cookie_token and not subproto_token and token:
+        logger.warning("WS auth via ?token= query param (deprecated) │ session=%s user=%s ip=%s",
+                       session_id, user_id, websocket.client.host if websocket.client else "?")
+
+    payload = _verify_ws_token(cookie_token or subproto_token or token)
     if payload is None:
         await websocket.close(code=4401)
         return
@@ -143,7 +223,9 @@ async def live_session_ws(
     finally:
         db.close()
 
-    await live_ws_manager.connect(websocket, session_id, user_id, is_teacher=is_teacher)
+    await live_ws_manager.connect(websocket, session_id, user_id,
+                                  is_teacher=is_teacher,
+                                  subprotocol=chosen_subproto)
     try:
         # Greet the joiner
         await websocket.send_json({
@@ -249,6 +331,54 @@ async def live_session_ws(
     except Exception as exc:  # pragma: no cover
         logger.exception("WebSocket error: %s", exc)
         live_ws_manager.disconnect(session_id, user_id)
+
+
+@app.on_event("startup")
+def _validate_security_config():
+    """
+    Refuse to start the app with insecure or missing security configuration.
+    Runs before the first request is served.
+    """
+    errors: list[str] = []
+
+    if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
+        errors.append("SECRET_KEY must be set and at least 32 characters long")
+
+    if settings.DEBUG and settings.FRONTEND_URL not in (
+        "http://localhost:3000", "http://localhost:5173",
+    ):
+        errors.append(
+            "DEBUG=True must not be used in production "
+            f"(non-localhost FRONTEND_URL detected: {settings.FRONTEND_URL})"
+        )
+
+    if not settings.AZURE_FACE_KEY or settings.AZURE_FACE_KEY in (
+        "YOUR_AZURE_KEY_1_HERE", "changeme", "placeholder",
+    ):
+        errors.append("AZURE_FACE_KEY must be configured with a real key")
+
+    for key_name in ("TOTP_ENCRYPTION_KEY", "SESSION_SECRET_ENCRYPTION_KEY"):
+        val = getattr(settings, key_name, "")
+        if val and len(val) < 44:
+            errors.append(f"{key_name} must be a valid Fernet key (44 base64 chars)")
+        if not settings.DEBUG and not val:
+            errors.append(f"{key_name} must be set in production (DEBUG=False)")
+
+    # Asymmetric JWT: require matching key paths when ALGORITHM is non-symmetric.
+    alg = (settings.ALGORITHM or "HS256").upper()
+    if not alg.startswith("HS"):
+        if not settings.JWT_PRIVATE_KEY_PATH or not settings.JWT_PUBLIC_KEY_PATH:
+            errors.append(
+                f"ALGORITHM={alg} requires JWT_PRIVATE_KEY_PATH and JWT_PUBLIC_KEY_PATH"
+            )
+
+    if errors:
+        for e in errors:
+            logger.critical("🚨 SECURITY CONFIG ERROR: %s", e)
+        raise RuntimeError(
+            "Security configuration invalid: " + "; ".join(errors)
+        )
+    logger.info("✅ Security configuration validated.")
 
 
 @app.on_event("startup")
@@ -370,8 +500,87 @@ def _daily_low_attendance_alerts():
 # Need Integer for cast in the job
 from sqlalchemy import Integer
 
+
+def _purge_old_login_attempts():
+    """Hourly job: drop LoginAttemptLog rows older than 30 days."""
+    from database import LoginAttemptLog
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=30)
+    db = SessionLocal()
+    try:
+        n = db.query(LoginAttemptLog).filter(
+            LoginAttemptLog.attempted_at < cutoff
+        ).delete(synchronize_session=False)
+        db.commit()
+        if n:
+            logger.info("🧹 Purged %d login_attempt_log rows older than 30 days", n)
+    except Exception as exc:
+        logger.error("_purge_old_login_attempts failed: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _daily_cleanup_tokens():
+    """
+    Daily 04:00 — drop short-lived auth artifacts that have served their purpose:
+      * face_verify_tokens : used OR older than 1 day
+      * qr_tokens          : used OR older than 7 days
+      * otp_logs           : expired more than 1 day ago
+    """
+    from database import FaceVerifyToken, QRToken, OTPLog
+    now = datetime.now(tz=timezone.utc)
+    db  = SessionLocal()
+    try:
+        n_face = db.query(FaceVerifyToken).filter(
+            (FaceVerifyToken.used == True)  # noqa: E712
+            | (FaceVerifyToken.expires_at < now - timedelta(days=1))
+        ).delete(synchronize_session=False)
+
+        n_qr = db.query(QRToken).filter(
+            (QRToken.is_used == True)  # noqa: E712
+            | (QRToken.created_at < now - timedelta(days=7))
+        ).delete(synchronize_session=False)
+
+        n_otp = db.query(OTPLog).filter(
+            OTPLog.expires_at < now - timedelta(days=1)
+        ).delete(synchronize_session=False)
+
+        db.commit()
+        if n_face or n_qr or n_otp:
+            logger.info("🧹 Cleaned tokens │ face=%d qr=%d otp=%d", n_face, n_qr, n_otp)
+    except Exception as exc:
+        logger.error("_daily_cleanup_tokens failed: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _purge_expired_refresh_tokens():
+    """Daily job: drop expired or long-revoked refresh tokens (>30 d)."""
+    from database import RefreshToken
+    now    = datetime.now(tz=timezone.utc)
+    cutoff = now - timedelta(days=30)
+    db = SessionLocal()
+    try:
+        n = db.query(RefreshToken).filter(
+            (RefreshToken.expires_at < now)
+            | ((RefreshToken.revoked == True) & (RefreshToken.revoked_at < cutoff))  # noqa: E712
+        ).delete(synchronize_session=False)
+        db.commit()
+        if n:
+            logger.info("🧹 Purged %d refresh_tokens rows (expired or long-revoked)", n)
+    except Exception as exc:
+        logger.error("_purge_expired_refresh_tokens failed: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 scheduler = BackgroundScheduler()
-scheduler.add_job(_auto_expire_job, "interval", minutes=1, id="auto_expire")
-scheduler.add_job(_daily_low_attendance_alerts, "cron", hour=20, minute=0, id="daily_alerts")
+scheduler.add_job(_auto_expire_job,              "interval", minutes=1,        id="auto_expire")
+scheduler.add_job(_daily_low_attendance_alerts,  "cron",     hour=20, minute=0, id="daily_alerts")
+scheduler.add_job(_purge_old_login_attempts,     "interval", hours=1,          id="purge_login_attempts")
+scheduler.add_job(_purge_expired_refresh_tokens, "cron",     hour=3,  minute=0, id="purge_refresh_tokens")
+scheduler.add_job(_daily_cleanup_tokens,         "cron",     hour=4,  minute=0, id="cleanup_tokens")
 scheduler.start()
 

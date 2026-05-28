@@ -33,6 +33,7 @@ from database import (
     MarkedBy,
     Section,
     SessionStatus,
+    StudentGPSSnapshot,
     Subject,
     User,
     UserRole,
@@ -62,7 +63,13 @@ from utils.auth_utils import (
     teacher_or_above,
     validate_face_verify_token,
 )
-from utils.bluetooth_utils import generate_bluetooth_token
+from utils.bluetooth_utils import (
+    compute_ble_window_token,
+    generate_bluetooth_token,
+    seconds_until_next_window,
+)
+from utils.crypto_utils import decrypt_field, encrypt_field
+from utils.security_logger import SecurityEventType, Severity, sec_logger
 from utils.location_utils import verify_bluetooth_proximity, verify_gps_proximity
 from utils.notification_utils import send_push_notification, send_push_to_many
 from utils.qr_utils import validate_qr_token
@@ -184,8 +191,8 @@ def start_session(
         status            = SessionStatus.active,
         teacher_latitude  = body.teacher_latitude,
         teacher_longitude = body.teacher_longitude,
-        bluetooth_token   = bt_token,
-        qr_secret         = qr_secret,
+        bluetooth_token   = encrypt_field(bt_token),
+        qr_secret         = encrypt_field(qr_secret),
     )
     db.add(session)
     db.flush()   # get session.id before bulk insert
@@ -262,13 +269,14 @@ def start_session(
     )
 
     return StartSessionResponse(
-        session_id      = session.id,
-        subject_name    = subject.name,
-        subject_code    = subject.code,
-        bluetooth_token = bt_token,
-        qr_secret_hint  = qr_secret[:8],
-        total_students  = len(students),
-        started_at      = now,
+        session_id              = session.id,
+        subject_name            = subject.name,
+        subject_code            = subject.code,
+        bluetooth_token         = compute_ble_window_token(bt_token),
+        bluetooth_window_seconds = seconds_until_next_window(),
+        qr_secret_hint          = qr_secret[:8],
+        total_students          = len(students),
+        started_at              = now,
     )
 
 
@@ -300,6 +308,13 @@ def mark_attendance(
     logger.info("📝 MARK ATTENDANCE │ student_id=%d │ session_id=%d │ IP=%s",
                 student_id, body.session_id, ip)
     logger.info("="*70)
+
+    if getattr(body, "is_rooted", False):
+        sec_logger.log(SecurityEventType.ROOTED_DEVICE_DETECTED, Severity.CRITICAL,
+                       user_id=student_id, ip_address=ip,
+                       details={"session_id": body.session_id, "device_id": body.device_id},
+                       request_id=getattr(request.state, "request_id", None),
+                       db=db)
 
     # Snapshot of check results — updated throughout
     checks = {
@@ -408,7 +423,7 @@ def mark_attendance(
     qr_result = validate_qr_token(
         body.qr_data,
         body.session_id,
-        session.qr_secret,
+        decrypt_field(session.qr_secret),
         student_id,
         db,
     )
@@ -416,6 +431,11 @@ def mark_attendance(
         logger.warning("❌ STEP 4 │ QR INVALID │ reason=%s", qr_result.get("reason", "unknown"))
         _write_audit(db, session.id, student_id, AuditResult.failed,
                      qr_result.get("reason", "QR invalid"), 0.0, None, body.device_id, ip)
+        sec_logger.log(SecurityEventType.QR_INVALID, Severity.WARN,
+                       user_id=student_id, ip_address=ip,
+                       details={"session_id": session.id, "reason": qr_result.get("reason")},
+                       request_id=getattr(request.state, "request_id", None) if request else None,
+                       db=db)
         return AttendanceResultResponse(
             success      = False,
             status       = "failed",
@@ -436,11 +456,19 @@ def mark_attendance(
                     body.student_latitude or 0.0, body.student_longitude or 0.0,
                     body.student_gps_accuracy or 0.0)
         gps_result = verify_gps_proximity(
-            student_lat      = body.student_latitude,
-            student_lon      = body.student_longitude,
-            student_accuracy = body.student_gps_accuracy,
-            teacher_lat      = session.teacher_latitude,
-            teacher_lon      = session.teacher_longitude,
+            student_lat            = body.student_latitude,
+            student_lon            = body.student_longitude,
+            student_accuracy       = body.student_gps_accuracy,
+            teacher_lat            = session.teacher_latitude,
+            teacher_lon            = session.teacher_longitude,
+            mock_location_detected = bool(getattr(body, "mock_location_detected", False)),
+            previous_lat           = (
+                prev_snap.latitude  if (prev_snap := db.query(StudentGPSSnapshot)
+                                          .filter(StudentGPSSnapshot.user_id == student_id).first())
+                else None
+            ),
+            previous_lon           = prev_snap.longitude    if prev_snap else None,
+            previous_recorded_at   = prev_snap.recorded_at  if prev_snap else None,
         )
         if not gps_result.get("verified"):
             logger.warning("❌ STEP 5 │ GPS FAILED │ distance=%s m │ reason=%s",
@@ -448,6 +476,18 @@ def mark_attendance(
             _write_audit(db, session.id, student_id, AuditResult.failed,
                          gps_result.get("reason", "GPS failed"),
                          0.0, gps_result.get("distance_meters"), body.device_id, ip)
+            reason = gps_result.get("reason", "")
+            is_spoof = "mock" in reason.lower() or "velocity" in reason.lower() or "accuracy" in reason.lower()
+            sec_logger.log(
+                SecurityEventType.GPS_SPOOFING_DETECTED if is_spoof else SecurityEventType.ATTENDANCE_FRAUD_SUSPECTED,
+                Severity.CRITICAL if is_spoof else Severity.WARN,
+                user_id=student_id, ip_address=ip,
+                details={"session_id": session.id, "reason": reason,
+                         "distance_m": gps_result.get("distance_meters"),
+                         "accuracy_m": body.student_gps_accuracy,
+                         "mock_location": bool(getattr(body, "mock_location_detected", False))},
+                request_id=getattr(request.state, "request_id", None) if request else None,
+                db=db)
             return AttendanceResultResponse(
                 success      = False,
                 status       = "failed",
@@ -460,6 +500,26 @@ def mark_attendance(
         gps_distance = gps_result.get("distance_meters")
         logger.info("✅ STEP 5 │ GPS VERIFIED │ distance=%.1f m │ accuracy=%.1f m │ suspicious=%s",
                     gps_distance or 0.0, body.student_gps_accuracy or 0.0, gps_flagged)
+
+        # Upsert most-recent GPS snapshot for next velocity check
+        try:
+            snap = db.query(StudentGPSSnapshot).filter(
+                StudentGPSSnapshot.user_id == student_id
+            ).first()
+            if snap:
+                snap.latitude    = body.student_latitude
+                snap.longitude   = body.student_longitude
+                snap.recorded_at = now
+            else:
+                db.add(StudentGPSSnapshot(
+                    user_id     = student_id,
+                    latitude    = body.student_latitude,
+                    longitude   = body.student_longitude,
+                    recorded_at = now,
+                ))
+            db.flush()
+        except Exception as e:
+            logger.warning("GPS snapshot upsert failed (non-fatal): %s", e)
     else:
         # Session has no GPS data (teacher didn't share location) — skip check
         checks["gps_verified"] = True
@@ -467,10 +527,11 @@ def mark_attendance(
         logger.info("⚠️ STEP 5 │ GPS skipped — teacher did not share location")
 
     # ── STEP 6 — Bluetooth check ─────────────────────────────────────
-    logger.info("📶 STEP 6 │ Bluetooth check │ session_token=%s... │ detected_token=%s...",
-                (session.bluetooth_token or "")[:8], (body.bluetooth_token_detected or "")[:8])
+    bt_secret = decrypt_field(session.bluetooth_token) or ""
+    logger.info("📶 STEP 6 │ Bluetooth check │ seed=%s... │ detected_token=%s...",
+                bt_secret[:8], (body.bluetooth_token_detected or "")[:8])
     bt_result = verify_bluetooth_proximity(
-        session.bluetooth_token or "",
+        bt_secret,
         body.bluetooth_token_detected or "",
     )
     bt_verified = bt_result.get("verified", False)
@@ -482,6 +543,11 @@ def mark_attendance(
             _write_audit(db, session.id, student_id, AuditResult.failed,
                          bt_result.get("reason", "Bluetooth failed"),
                          0.0, gps_distance, body.device_id, ip)
+            sec_logger.log(SecurityEventType.BLE_MISMATCH, Severity.WARN,
+                           user_id=student_id, ip_address=ip,
+                           details={"session_id": session.id, "reason": bt_result.get("reason")},
+                           request_id=getattr(request.state, "request_id", None) if request else None,
+                           db=db)
             return AttendanceResultResponse(
                 success      = False,
                 status       = "failed",
@@ -615,6 +681,45 @@ def _write_audit(
         ip_address          = ip,
     ))
     # commit is deferred to caller to allow batching
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/attendance/session/{session_id}/ble-token  (teacher rotates every 30 s)
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.get("/session/{session_id}/ble-token")
+def get_ble_window_token(
+    session_id:   int,
+    current_user: dict    = Depends(teacher_or_above),
+    db:           Session = Depends(get_db),
+):
+    """
+    Returns the CURRENT 30-second BLE advertisement token for an active
+    session. The teacher's app should poll this every ~`window_seconds`
+    seconds and re-advertise the returned token over BLE.
+
+    The session's raw `bluetooth_token` (HMAC secret) NEVER leaves the server.
+    """
+    session: Optional[AttendanceSession] = (
+        db.query(AttendanceSession)
+        .filter(
+            AttendanceSession.id     == session_id,
+            AttendanceSession.status == SessionStatus.active,
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Active session not found.")
+
+    # Same authorisation rules as start-session
+    if current_user["role"] == "teacher" and session.teacher_id != current_user["id"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You did not start this session.")
+
+    return {
+        "session_id":     session.id,
+        "token":          compute_ble_window_token(decrypt_field(session.bluetooth_token) or ""),
+        "window_seconds": seconds_until_next_window(),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════

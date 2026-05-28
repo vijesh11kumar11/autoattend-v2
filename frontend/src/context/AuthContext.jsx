@@ -1,16 +1,24 @@
 /**
  * AutoAttend AI v2.0 — Auth Context
  *
- * Provides: user, token, loading, isAuthenticated
- * Functions: login(token), logout(), hasRole(minRole)
- * Booleans:  isPrincipal, isHOD, isTeacher, isStudent
+ * Web auth model:
+ *   • JWT lives in an httpOnly `aa_token` cookie (set by the backend).
+ *   • JavaScript NEVER sees the token (XSS-safe).
+ *   • Only user metadata (role, name, id, ...) is held in React state.
+ *   • On page refresh we restore state by calling GET /api/auth/me
+ *     (the cookie travels automatically).
  *
- * JWT is decoded client-side for display only — actual
- * authorization is always enforced server-side.
+ * Public API:
+ *   user, loading, isAuthenticated
+ *   login()           → call AFTER /api/auth/login succeeds; pulls /me and sets user.
+ *   logout()          → calls /api/auth/logout (server clears cookie) and resets state.
+ *   hasRole(minRole)
+ *   isPrincipal, isHOD, isTeacher, isStudent
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../api/axios';
 
 // Role hierarchy (higher = more privilege)
 const ROLE_HIERARCHY = {
@@ -20,87 +28,65 @@ const ROLE_HIERARCHY = {
   principal: 3,
 };
 
-// ── JWT decode (no verification — payload for display only) ───────────
-function decodeJWT(token) {
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const json = atob(base64);
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
 // ── Context ───────────────────────────────────────────────────────────
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const navigate = useNavigate();
 
-  const [token,   setToken]   = useState(() => localStorage.getItem('aa_token') || null);
-  const [user,    setUser]    = useState(() => {
-    try { return JSON.parse(localStorage.getItem('aa_user') || 'null'); } catch { return null; }
-  });
+  const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount: validate stored token is not expired
-  useEffect(() => {
-    if (token) {
-      const payload = decodeJWT(token);
-      if (!payload || (payload.exp && payload.exp * 1000 < Date.now())) {
-        // Token expired — clean up silently
-        localStorage.removeItem('aa_token');
-        localStorage.removeItem('aa_user');
-        setToken(null);
-        setUser(null);
-      } else if (!user) {
-        // Reconstruct user from JWT payload if localStorage lost it
-        setUser({
-          id:            payload.id,
-          sub:           payload.sub,
-          name:          payload.name  || '',
-          role:          payload.role  || 'student',
-          college_id:    payload.college_id,
-          department_id: payload.department_id,
-          face_enrolled: payload.face_enrolled,
-        });
-      }
+  // Fetch the current profile using the httpOnly cookie.
+  // Returns the user object on success, or null on 401/network error.
+  const fetchMe = useCallback(async () => {
+    try {
+      const { data } = await api.get('/auth/me');
+      const userObj = {
+        id:             data.id,
+        name:           data.name,
+        email:          data.email,
+        role:           data.role,
+        college_id:     data.college_id,
+        department_id: data.department_id,
+        face_enrolled: data.face_enrolled,
+        totp_enabled:  data.totp_enabled,
+      };
+      setUser(userObj);
+      return userObj;
+    } catch {
+      setUser(null);
+      return null;
     }
-    setLoading(false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // login(token) — called after successful auth API response
-  const login = useCallback((newToken) => {
-    const payload = decodeJWT(newToken);
-    if (!payload) throw new Error('Invalid token received from server.');
-
-    const userObj = {
-      id:            payload.id,
-      sub:           payload.sub,
-      name:          payload.name  || '',
-      role:          payload.role  || 'student',
-      college_id:    payload.college_id,
-      department_id: payload.department_id,
-      face_enrolled: payload.face_enrolled,
-    };
-
-    localStorage.setItem('aa_token', newToken);
-    localStorage.setItem('aa_user',  JSON.stringify(userObj));
-    setToken(newToken);
-    setUser(userObj);
-    return userObj;
   }, []);
 
-  // logout() — clear everything, go to login
-  const logout = useCallback(() => {
-    localStorage.removeItem('aa_token');
-    localStorage.removeItem('aa_user');
-    setToken(null);
+  // On mount: try to restore session from cookie.
+  useEffect(() => {
+    (async () => {
+      await fetchMe();
+      setLoading(false);
+    })();
+  }, [fetchMe]);
+
+  // login() — call AFTER POST /api/auth/login (or /verify-totp) succeeds.
+  // The cookie is already set; we just pull /me and stash the user.
+  const login = useCallback(async () => {
+    const u = await fetchMe();
+    if (!u) throw new Error('Login succeeded but profile fetch failed.');
+    return u;
+  }, [fetchMe]);
+
+  // logout() — server clears the cookie, then we reset and redirect.
+  const logout = useCallback(async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // ignore network errors — still log out client-side
+    }
     setUser(null);
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  // hasRole(minRole) — true if current user's role >= minRole
   const hasRole = useCallback((minRole) => {
     if (!user) return false;
     return (ROLE_HIERARCHY[user.role] ?? -1) >= (ROLE_HIERARCHY[minRole] ?? 99);
@@ -108,11 +94,9 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => ({
     user,
-    token,
     loading,
-    isAuthenticated: !!token && !!user,
+    isAuthenticated: !!user,
 
-    // Convenience booleans
     isPrincipal: user?.role === 'principal',
     isHOD:       user?.role === 'hod',
     isTeacher:   user?.role === 'teacher',
@@ -121,7 +105,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     hasRole,
-  }), [user, token, loading, login, logout, hasRole]);
+  }), [user, loading, login, logout, hasRole]);
 
   return (
     <AuthContext.Provider value={value}>

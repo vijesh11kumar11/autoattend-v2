@@ -17,7 +17,7 @@ Tutor / HOD endpoints:
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -36,6 +36,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import any_authenticated, student_only, teacher_or_above
+from utils.audit_helpers import audit_admin_action
 from utils.notification_utils import send_push_to_many
 
 router = APIRouter(prefix="/api/leave", tags=["leave"])
@@ -356,6 +357,7 @@ def leave_history(
 def approve_leave(
     leave_id: int,
     body: ReviewNoteBody,
+    request: Request,
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
 ):
@@ -412,6 +414,20 @@ def approve_leave(
     lr.attendance_updated = updated_count > 0
     db.commit()
 
+    audit_admin_action(
+        "leave.approve",
+        request=request,
+        current_user=current_user,
+        db=db,
+        target_id=lr.id,
+        before={"status": "pending"},
+        after={"status": "approved",
+               "student_id": lr.student_id,
+               "from_date": str(lr.from_date),
+               "to_date": str(lr.to_date),
+               "attendance_updated": updated_count},
+    )
+
     # Push notification to student
     reviewer = db.query(User).filter(User.id == current_user["id"]).first()
     reviewer_name = reviewer.name if reviewer else "Your tutor"
@@ -435,6 +451,7 @@ def approve_leave(
 def reject_leave(
     leave_id: int,
     body: ReviewNoteBody,
+    request: Request,
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
 ):
@@ -457,6 +474,18 @@ def reject_leave(
     lr.reviewed_at = func.now()
     lr.reviewed_by = current_user["id"]
     db.commit()
+
+    audit_admin_action(
+        "leave.reject",
+        request=request,
+        current_user=current_user,
+        db=db,
+        target_id=lr.id,
+        before={"status": "pending"},
+        after={"status": "rejected",
+               "student_id": lr.student_id,
+               "note": (body.note or "")[:200]},
+    )
 
     # Push notification to student
     reason_msg = f": {body.note}" if body.note else "."

@@ -46,7 +46,8 @@ def send_push_notification(
         logger.debug("No push token for user_id=%d, skipping notification.", user_id)
         return False
 
-    token = user.push_token
+    from utils.crypto_utils import decrypt_field
+    token = decrypt_field(user.push_token) or ""
     if not token.startswith("ExponentPushToken["):
         logger.warning("Invalid push token format for user_id=%d: %s", user_id, token[:30])
         return False
@@ -99,11 +100,13 @@ def send_push_to_many(
 
     messages = []
     token_user_map = {}
+    from utils.crypto_utils import decrypt_field
     for user in users:
-        if user.push_token and user.push_token.startswith("ExponentPushToken["):
+        decoded = decrypt_field(user.push_token) if user.push_token else None
+        if decoded and decoded.startswith("ExponentPushToken["):
             messages.append(
                 PushMessage(
-                    to=user.push_token,
+                    to=decoded,
                     title=title,
                     body=body,
                     data=data or {},
@@ -111,7 +114,7 @@ def send_push_to_many(
                     priority="high",
                 )
             )
-            token_user_map[user.push_token] = user
+            token_user_map[decoded] = user
 
     if not messages:
         return 0
