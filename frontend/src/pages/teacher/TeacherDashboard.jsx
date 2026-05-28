@@ -20,6 +20,8 @@ const FeedPage                 = lazy(() => import('../shared/FeedPage'));
 const ArticleDetailPage        = lazy(() => import('../shared/ArticleDetailPage'));
 const CareerRoadmapPage        = lazy(() => import('../shared/CareerRoadmapPage'));
 const SuggestionBoxPage        = lazy(() => import('../shared/SuggestionBoxPage'));
+const ProfilePage              = lazy(() => import('../shared/ProfilePage'));
+const NotificationsInboxPage   = lazy(() => import('../shared/NotificationsInboxPage'));
 const ClassPulsePage           = lazy(() => import('./ClassPulsePage'));
 const TeacherLiveDashboard     = lazy(() => import('../live/TeacherLiveDashboard'));
 const TeacherPreClassBrief     = lazy(() => import('../live/TeacherPreClassBrief'));
@@ -55,6 +57,8 @@ export default function TeacherDashboard() {
           <Route path="feed/:articleId"  element={<ArticleDetailPage />} />
           <Route path="career"             element={<CareerRoadmapPage />} />
           <Route path="suggestions"        element={<SuggestionBoxPage />} />
+          <Route path="profile"            element={<ProfilePage />} />
+          <Route path="inbox"              element={<NotificationsInboxPage />} />
           <Route path="classpulse"         element={<ClassPulsePage />} />
           <Route path="live"               element={<TeacherLiveDashboard />} />
           <Route path="live/:sessionId"    element={<TeacherLiveDashboard />} />

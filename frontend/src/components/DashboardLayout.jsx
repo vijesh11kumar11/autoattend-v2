@@ -45,6 +45,15 @@ const TITLE_MAP = {
   '/student/attendance':  'My Attendance',
   '/student/timetable':   'Timetable',
   '/student/download':    'Download Report',
+  // Shared (mounted under every role)
+  '/student/profile':     'My Profile',
+  '/teacher/profile':     'My Profile',
+  '/hod/profile':         'My Profile',
+  '/principal/profile':   'My Profile',
+  '/student/inbox':       'Notifications',
+  '/teacher/inbox':       'Notifications',
+  '/hod/inbox':           'Notifications',
+  '/principal/inbox':     'Notifications',
 };
 
 export default function DashboardLayout({ children }) {

@@ -26,6 +26,8 @@ const NAV_ITEMS = {
     { to: '/principal/career',      icon: '🎯', label: 'Career Roadmap' },
     { to: '/principal/suggestions',  icon: '💡', label: 'Suggestion Box' },
     { to: '/principal/classpulse',  icon: '📚', label: 'ClassPulse'    },
+    { to: '/principal/inbox',       icon: '📥', label: 'Inbox'         },
+    { to: '/principal/profile',     icon: '👤', label: 'Profile'       },
   ],
   hod: [
     { to: '/hod/dashboard',         icon: '🏠', label: 'Overview'            },
@@ -47,6 +49,8 @@ const NAV_ITEMS = {
     { to: '/hod/suggestions',      icon: '💡', label: 'Suggestion Box'    },
     { to: '/hod/classpulse',       icon: '📚', label: 'ClassPulse'          },
     { to: '/hod/live-analytics',   icon: '📺', label: 'Live Sessions'      },
+    { to: '/hod/inbox',            icon: '📥', label: 'Inbox'              },
+    { to: '/hod/profile',          icon: '👤', label: 'Profile'            },
   ],
   teacher: [
     { to: '/teacher/dashboard', icon: '🏠', label: 'Dashboard'          },
@@ -63,6 +67,8 @@ const NAV_ITEMS = {
     { to: '/teacher/suggestions',  icon: '💡', label: 'Suggestion Box'    },
     { to: '/teacher/classpulse',   icon: '📚', label: 'ClassPulse'         },
     { to: '/teacher/live',         icon: '🔴', label: 'Live Classes'      },
+    { to: '/teacher/inbox',        icon: '📥', label: 'Inbox'              },
+    { to: '/teacher/profile',      icon: '👤', label: 'Profile'            },
   ],
   student: [
     { to: '/student/dashboard',  icon: '🏠', label: 'Dashboard'         },
@@ -77,6 +83,8 @@ const NAV_ITEMS = {
     { to: '/student/suggestions', icon: '💡', label: 'Suggestion Box' },
     { to: '/student/classpulse', icon: '📚', label: 'ClassPulse'      },
     { to: '/student/knowledge-graph', icon: '🧠', label: 'My Progress' },
+    { to: '/student/inbox',           icon: '📥', label: 'Inbox'         },
+    { to: '/student/profile',         icon: '👤', label: 'Profile'       },
   ],
 };
 
