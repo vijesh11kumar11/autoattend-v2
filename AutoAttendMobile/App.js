@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 import { MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -23,6 +23,7 @@ import OfflineBanner  from './src/components/OfflineBanner';
 import { AuthProvider } from './src/context/AuthContext';
 import AppNavigator    from './src/navigation/AppNavigator';
 import { API_BASE_URL, STARTUP_PING_TIMEOUT } from './src/config';
+import { checkDeviceSecurity } from './src/utils/deviceSecurity';
 import {
   registerForPushNotifications,
   setupNotificationResponseListener,
@@ -73,9 +74,22 @@ async function pingBackend() {
 // ═══════════════════════════════════════════════════════════════════════
 export default function App() {
   const [appReady, setAppReady] = useState(false);
+  const [deviceBlock, setDeviceBlock] = useState(null);
 
   useEffect(() => {
     (async () => {
+      // Root/jailbreak/emulator gate — server is still source of truth
+      try {
+        const sec = await checkDeviceSecurity();
+        if (!sec.isSecure) {
+          setDeviceBlock(sec.reason || 'insecure_device');
+          setAppReady(true);
+          await SplashScreen.hideAsync();
+          return;
+        }
+      } catch {
+        // Best-effort: if the check itself fails, do not block startup.
+      }
       await pingBackend();
       await registerForPushNotifications();
       setAppReady(true);
@@ -88,6 +102,22 @@ export default function App() {
   }, []);
 
   if (!appReady) return null;
+
+  if (deviceBlock) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#1a237e' }}>
+        <StatusBar style="light" />
+        <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 16 }}>
+          Device Security Check Failed
+        </Text>
+        <Text style={{ color: '#e8eaf6', fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+          This device appears to be rooted, jailbroken, or running in an emulator.{'\n\n'}
+          For security reasons, AutoAttend AI cannot run on modified devices.{'\n\n'}
+          Reason: {deviceBlock}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>

@@ -35,8 +35,9 @@ class SessionConnectionManager:
         session_id: int,
         user_id: int,
         is_teacher: bool = False,
+        subprotocol: str | None = None,
     ) -> None:
-        await websocket.accept()
+        await websocket.accept(subprotocol=subprotocol) if subprotocol else await websocket.accept()
         async with self._lock:
             self.active_connections.setdefault(session_id, {})[user_id] = websocket
             if is_teacher:

@@ -352,6 +352,8 @@ class User(Base):
     is_active           = Column(Boolean, default=True,  nullable=False)
     totp_fail_count     = Column(Integer, default=0,     nullable=False)
     totp_locked_until   = Column(DateTime(timezone=True), nullable=True)
+    login_fail_count    = Column(Integer, default=0,     nullable=False)
+    login_locked_until  = Column(DateTime(timezone=True), nullable=True)
     face_auth_enabled   = Column(Boolean, default=False, nullable=False)
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
     last_login          = Column(DateTime(timezone=True), nullable=True)
@@ -1593,6 +1595,99 @@ class LiveSessionBreakoutRoom(Base):
 
     live_session = relationship("LiveSession", back_populates="breakout_rooms")
     peer_expert  = relationship("User", foreign_keys=[peer_expert_detected_user_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Security tables — login attempts, refresh tokens, GPS anti-spoof snapshots
+# ═══════════════════════════════════════════════════════════════════════
+
+class LoginAttemptLog(Base):
+    """SIEM/audit trail — every login attempt regardless of outcome."""
+    __tablename__ = "login_attempt_log"
+    __table_args__ = (
+        Index("ix_login_attempt_log_ip",          "ip_address"),
+        Index("ix_login_attempt_log_identifier",  "user_identifier"),
+        Index("ix_login_attempt_log_attempted",   "attempted_at"),
+        Index("ix_login_attempt_log_success",     "success"),
+    )
+
+    id              = Column(Integer, primary_key=True, index=True)
+    ip_address      = Column(String(64),  nullable=True)
+    user_identifier = Column(String(255), nullable=True)
+    success         = Column(Boolean, default=False, nullable=False)
+    failure_reason  = Column(String(255), nullable=True)
+    user_agent      = Column(String(500), nullable=True)
+    attempted_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class RefreshToken(Base):
+    """
+    Persisted refresh tokens (rotation chain).
+    Only the SHA-256 hash of the raw token is stored.
+    """
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        Index("ix_refresh_tokens_user_id",  "user_id"),
+        Index("ix_refresh_tokens_hash",     "token_hash", unique=True),
+        Index("ix_refresh_tokens_expires",  "expires_at"),
+    )
+
+    id                = Column(Integer, primary_key=True, index=True)
+    user_id           = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash        = Column(String(255), nullable=False)
+    device_id         = Column(String(500), nullable=True)
+    created_at        = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at        = Column(DateTime(timezone=True), nullable=False)
+    revoked           = Column(Boolean, default=False, nullable=False)
+    revoked_at        = Column(DateTime(timezone=True), nullable=True)
+    replaced_by_hash  = Column(String(255), nullable=True)
+
+    user = relationship("User")
+
+
+class StudentGPSSnapshot(Base):
+    """
+    Last GPS reading a student submitted (for velocity / teleport detection).
+    One row per student — upserted on every attendance attempt.
+    """
+    __tablename__ = "student_gps_snapshots"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_student_gps_snapshot_user"),
+        Index("ix_student_gps_snapshots_user_id", "user_id"),
+    )
+
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    latitude    = Column(Float, nullable=False)
+    longitude   = Column(Float, nullable=False)
+    recorded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class SecurityEvent(Base):
+    """
+    Structured security audit log. WARN and CRITICAL events are persisted here
+    in addition to the JSONL file written by utils.security_logger.
+    """
+    __tablename__ = "security_events"
+    __table_args__ = (
+        Index("ix_security_events_timestamp",     "timestamp_utc"),
+        Index("ix_security_events_event_type",    "event_type"),
+        Index("ix_security_events_severity",      "severity"),
+        Index("ix_security_events_user_id",       "user_id"),
+        Index("ix_security_events_request_id",    "request_id"),
+        Index("ix_security_events_ts_type",       "timestamp_utc", "event_type"),
+    )
+
+    id              = Column(Integer, primary_key=True, index=True)
+    event_type      = Column(String(64),  nullable=False)
+    severity        = Column(String(16),  nullable=False)
+    timestamp_utc   = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    user_id         = Column(Integer, ForeignKey("users.id",     ondelete="SET NULL"), nullable=True)
+    college_id      = Column(Integer, ForeignKey("colleges.id",  ondelete="SET NULL"), nullable=True)
+    ip_address      = Column(String(64),  nullable=True)
+    user_agent      = Column(String(500), nullable=True)
+    request_id      = Column(String(36),  nullable=True)
+    details         = Column(JSONB, nullable=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════

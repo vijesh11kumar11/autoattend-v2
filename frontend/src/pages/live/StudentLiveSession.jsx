@@ -148,13 +148,19 @@ export default function StudentLiveSession() {
   useEffect(() => {
     if (!info) return;
     const guestToken = sessionStorage.getItem('aa_guest_token');
-    // Logged-in users auth via httpOnly cookie (no query-param needed).
-    // Guests must pass their short-lived token as a query param.
+    // For logged-in users we rely on the httpOnly aa_token cookie
+    // (sent automatically on the WS handshake). Guests pass their token
+    // explicitly because they have no login cookie.
     const wsToken = guestToken || '';
     const userId = info.guest ? info.participant_id : (user?.id || 0);
     if (!userId) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws/live/${sessionId}/${userId}?token=${encodeURIComponent(wsToken)}`);
+    // Prefer Sec-WebSocket-Protocol over ?token= to keep tokens out of
+    // access logs / browser history. Server accepts ["aa-jwt", <token>].
+    const wsUrl = `${proto}://${window.location.host}/ws/live/${sessionId}/${userId}`;
+    const ws = wsToken
+      ? new WebSocket(wsUrl, ['aa-jwt', wsToken])
+      : new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onmessage = (ev) => {

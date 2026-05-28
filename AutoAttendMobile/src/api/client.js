@@ -20,8 +20,27 @@ import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, API_TIMEOUT } from '../config';
 
-const TOKEN_KEY     = 'aa_auth_token';
-const DEVICE_ID_KEY = 'aa_device_id';
+const TOKEN_KEY         = 'aa_auth_token';
+const REFRESH_TOKEN_KEY = 'aa_refresh_token';
+const DEVICE_ID_KEY     = 'aa_device_id';
+
+/**
+ * Persist both tokens after login or rotation.
+ * Call from AuthContext / LoginScreen after a successful login response.
+ */
+export async function saveAuthTokens(accessToken, refreshToken) {
+  if (accessToken) {
+    await SecureStore.setItemAsync(TOKEN_KEY, accessToken);
+  }
+  if (refreshToken) {
+    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+  }
+}
+
+export async function clearAuthTokens() {
+  try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch {}
+  try { await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY); } catch {}
+}
 
 // ── JWT helpers ───────────────────────────────────────────────────────
 /** Decode the payload portion of a JWT without an external library. */
@@ -126,19 +145,69 @@ client.interceptors.request.use(
       }
       config.headers.Authorization = `Bearer ${token}`;
     }
-    config.headers['X-Device-ID'] = deviceId;
+    config.headers['X-Device-ID']   = deviceId;
+    config.headers['X-Client-Type'] = 'mobile';
     return config;
   },
   (error) => Promise.reject(error),
 );
 
 // ── Response interceptor ──────────────────────────────────────────────
+// On 401: try refresh once, retry the original request. If refresh fails, logout.
+let _refreshInFlight = null;
+
+async function tryRefreshToken() {
+  if (_refreshInFlight) return _refreshInFlight;
+  _refreshInFlight = (async () => {
+    const stored = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+    if (!stored) throw new Error('No refresh token');
+    const deviceId = await getDeviceId();
+    const { data } = await axios.post(
+      `${API_BASE_URL}/api/auth/refresh`,
+      { refresh_token: stored },
+      {
+        timeout: API_TIMEOUT,
+        headers: {
+          'Content-Type':  'application/json',
+          'X-Device-ID':   deviceId,
+          'X-Client-Type': 'mobile',
+        },
+      },
+    );
+    await saveAuthTokens(data.access_token, data.refresh_token);
+    return data.access_token;
+  })().finally(() => { _refreshInFlight = null; });
+  return _refreshInFlight;
+}
+
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error.response?.status;
+    const cfg    = error.config || {};
+    const url    = cfg.url || '';
+    const isAuthCall =
+      url.includes('/auth/login') ||
+      url.includes('/auth/refresh') ||
+      url.includes('/auth/verify-totp');
+
+    if (status === 401 && !isAuthCall && !cfg._retried) {
+      try {
+        const newAccess = await tryRefreshToken();
+        cfg._retried = true;
+        cfg.headers  = { ...(cfg.headers || {}), Authorization: `Bearer ${newAccess}` };
+        return client.request(cfg);
+      } catch {
+        await clearAuthTokens();
+        if (_onUnauthorized) {
+          await _onUnauthorized();
+        }
+        return Promise.reject(error);
+      }
+    }
 
     if (status === 401) {
+      await clearAuthTokens();
       if (_onUnauthorized) {
         await _onUnauthorized();
       }

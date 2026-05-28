@@ -43,7 +43,8 @@ def register_push_token(
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
 
-    user.push_token = token
+    from utils.crypto_utils import encrypt_field
+    user.push_token = encrypt_field(token)
     db.commit()
 
     return PushTokenResponse(message="Push token registered successfully.")

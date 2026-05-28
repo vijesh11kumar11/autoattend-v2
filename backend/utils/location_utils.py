@@ -19,6 +19,7 @@ Anti-spoofing:
 """
 
 import logging
+from datetime import datetime, timezone
 from math import asin, atan2, cos, radians, sin, sqrt
 
 from config import settings
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 # Accuracy values that are suspiciously too perfect for real GPS
 _SUSPICIOUS_ACCURACY_THRESHOLD = 3.0  # meters
+# Hard ceiling on plausible human ground-speed between two GPS readings.
+# 30 m/s ≈ 108 km/h — covers running, cycling, city driving without false-positives.
+_MAX_PLAUSIBLE_SPEED_MPS = 30.0
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -63,12 +67,16 @@ def calculate_distance(
 # ═══════════════════════════════════════════════════════════════════════
 
 def verify_gps_proximity(
-    student_lat:      float,
-    student_lon:      float,
-    student_accuracy: float,
-    teacher_lat:      float,
-    teacher_lon:      float,
-    max_distance:     float | None = None,
+    student_lat:              float,
+    student_lon:              float,
+    student_accuracy:         float,
+    teacher_lat:              float,
+    teacher_lon:              float,
+    max_distance:             float | None = None,
+    mock_location_detected:   bool         = False,
+    previous_lat:             float | None = None,
+    previous_lon:             float | None = None,
+    previous_recorded_at:     datetime | None = None,
 ) -> dict:
     """
     Verify that a student is within the allowed radius of the teacher.
@@ -105,6 +113,23 @@ def verify_gps_proximity(
                 student_lat, student_lon, student_accuracy,
                 teacher_lat, teacher_lon, max_distance)
 
+    # ── 0) Hard-reject if client reported a mock-location provider ──────
+    if mock_location_detected:
+        logger.warning(
+            "GPS rejected — mock_location_detected=True │ student=(%.6f, %.6f)",
+            student_lat, student_lon,
+        )
+        return {
+            "verified":           False,
+            "distance_meters":    None,
+            "accuracy_meters":    student_accuracy,
+            "flagged_suspicious": True,
+            "reason": (
+                "Mock location detected on this device. "
+                "Disable any fake-GPS or developer location overrides and try again."
+            ),
+        }
+
     # ── a) Accuracy gate ──────────────────────────────────────────────
     if student_accuracy > settings.GPS_ACCURACY_THRESHOLD_METERS:
         logger.info(
@@ -121,16 +146,54 @@ def verify_gps_proximity(
             ),
         }
 
-    # ── Anti-spoofing: suspiciously perfect accuracy ───────────────────
-    flagged = False
+    # ── Anti-spoofing: suspiciously perfect accuracy → hard reject ──────
     if student_accuracy < _SUSPICIOUS_ACCURACY_THRESHOLD:
-        flagged = True
         logger.warning(
-            "GPS suspicious — reported accuracy=%.2f m (< %.1f m) — "
-            "possible mock location — student_lat=%.6f lon=%.6f",
+            "GPS rejected — reported accuracy=%.2f m (< %.1f m) — "
+            "likely mock location — student_lat=%.6f lon=%.6f",
             student_accuracy, _SUSPICIOUS_ACCURACY_THRESHOLD,
             student_lat, student_lon,
         )
+        return {
+            "verified":           False,
+            "distance_meters":    None,
+            "accuracy_meters":    student_accuracy,
+            "flagged_suspicious": True,
+            "reason": (
+                "Suspicious GPS reading (accuracy too perfect). "
+                "Disable any mock-location app and try again."
+            ),
+        }
+
+    # ── a2) Velocity / teleport check vs previous snapshot ─────────────
+    if (previous_lat is not None and previous_lon is not None
+            and previous_recorded_at is not None):
+        prev_dist = calculate_distance(
+            previous_lat, previous_lon, student_lat, student_lon,
+        )
+        now = datetime.now(tz=timezone.utc)
+        prev_ts = previous_recorded_at
+        if prev_ts.tzinfo is None:
+            prev_ts = prev_ts.replace(tzinfo=timezone.utc)
+        dt = max(1.0, (now - prev_ts).total_seconds())
+        speed = prev_dist / dt
+        if speed > _MAX_PLAUSIBLE_SPEED_MPS:
+            logger.warning(
+                "GPS rejected — impossible movement │ distance=%.1f m in %.1f s → %.1f m/s (>%.0f)",
+                prev_dist, dt, speed, _MAX_PLAUSIBLE_SPEED_MPS,
+            )
+            return {
+                "verified":           False,
+                "distance_meters":    None,
+                "accuracy_meters":    student_accuracy,
+                "flagged_suspicious": True,
+                "reason": (
+                    f"Impossible movement detected ({speed:.0f} m/s). "
+                    "Your location moved too far too quickly — possible GPS spoofing."
+                ),
+            }
+
+    flagged = False
 
     # ── b) Distance check ─────────────────────────────────────────────
     distance = calculate_distance(
@@ -166,7 +229,7 @@ def verify_gps_proximity(
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 3. Bluetooth proximity verification
+# 3. Bluetooth proximity verification (HMAC, rotating per 30-second window)
 # ═══════════════════════════════════════════════════════════════════════
 
 def verify_bluetooth_proximity(
@@ -174,34 +237,42 @@ def verify_bluetooth_proximity(
     student_detected_token: str,
 ) -> dict:
     """
-    Verify that the student's app detected the teacher's BLE beacon.
+    HMAC-rotating BLE check.
 
-    The security model relies on physical proximity:
-      • The teacher's app advertises bluetooth_token as a BLE beacon payload.
-      • Only a device within ~10 m can detect the broadcast.
-      • The token is never shown on screen, in the QR code, or in the API
-        response — it is transmitted exclusively over Bluetooth.
-      • Random per-session tokens prevent token replay from a previous class.
+    `bluetooth_token` here is the per-session *secret seed* stored in
+    `attendance_sessions.bluetooth_token` (NEVER broadcast on the air).
+    `student_detected_token` is what the student's phone captured over BLE
+    from the teacher's beacon, which is the SHA-256 HMAC of the current
+    30-second time window computed against that seed.
 
-    Backend validation is a simple constant-time string comparison;
-    the security guarantee comes from BLE range constraints on the mobile side.
+    We accept the current, previous, and next windows (±30 s) to absorb
+    clock skew and the BLE scan/advertise latency window.
 
     Returns:
-      {verified: True}                                  — token matched
-      {verified: False, reason: str}                    — mismatch
+      {verified: True}                                  — match found
+      {verified: False, reason: str}                    — no window matched
     """
-    if bluetooth_token and student_detected_token:
-        if bluetooth_token == student_detected_token:
-            logger.info("📶 BLE verified — token matched ✓ (first 8 chars: %s)", bluetooth_token[:8])
-            return {"verified": True}
-        else:
-            logger.warning("📶 BLE MISMATCH — session_token=%s... │ student_detected=%s...",
-                           bluetooth_token[:8], student_detected_token[:8])
-    else:
-        logger.warning("📶 BLE check failed — session_token=%s │ student_detected=%s",
+    # Local import avoids circular dependency at module-load time
+    from utils.bluetooth_utils import verify_bluetooth_token  # type: ignore
+
+    if not bluetooth_token or not student_detected_token:
+        logger.warning("📶 BLE check failed — seed=%s │ student_detected=%s",
                        "present" if bluetooth_token else "EMPTY",
                        "present" if student_detected_token else "EMPTY")
+        return {
+            "verified": False,
+            "reason": (
+                "Bluetooth beacon not detected. "
+                "Ensure you are in the classroom and Bluetooth is enabled."
+            ),
+        }
 
+    if verify_bluetooth_token(bluetooth_token, student_detected_token):
+        logger.info("📶 BLE verified — HMAC window matched ✓")
+        return {"verified": True}
+
+    logger.warning("📶 BLE MISMATCH — seed=%s… │ student_detected=%s…",
+                   bluetooth_token[:8], student_detected_token[:8])
     return {
         "verified": False,
         "reason": (

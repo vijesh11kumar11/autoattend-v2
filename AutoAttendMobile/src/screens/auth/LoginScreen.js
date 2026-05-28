@@ -155,7 +155,7 @@ export default function LoginScreen({ navigation }) {
       }
 
       // ── Normal success ───────────────────────────────────────────────────
-      await login(data.access_token);
+      await login(data.access_token, data.refresh_token);
       // AppNavigator switches to role-based tabs automatically.
 
     } catch (err) {

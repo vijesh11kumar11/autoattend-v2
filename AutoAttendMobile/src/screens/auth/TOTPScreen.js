@@ -94,7 +94,7 @@ export default function TOTPScreen({ navigation, route }) {
         return;
       }
 
-      await login(data.access_token);
+      await login(data.access_token, data.refresh_token);
       // AppNavigator switches to role tabs automatically.
 
     } catch (err) {

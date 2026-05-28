@@ -2,17 +2,19 @@
  * AutoAttend AI v2.0 — Axios instance
  *
  * • baseURL  = /api  (Vite proxies to FastAPI in dev)
+ * • Auth     = httpOnly cookie `aa_token` (set by /api/auth/login).
+ *              The browser sends it automatically when `withCredentials: true`.
  * • Request interceptor:
- *     - Authorization: Bearer <token>
- *     - X-Device-ID: <stable browser fingerprint>
+ *     - X-Device-ID:  stable browser fingerprint
+ *     - X-Client-Type: "web"  (so backend sets cookie, not body token)
  * • Response interceptor:
- *     - 401 → clear storage → /login
- *     - 403 → /unauthorized
+ *     - 401 → redirect to /login
+ *     - 403 (Device mismatch / Access restricted) → /unauthorized
  *
- * Device fingerprint:
+ * Device fingerprint (NOT auth — only session binding):
  *   Generated once, stored in localStorage under "aa_device_id".
  *   Combines: userAgent + screen WxH + colour depth + timezone +
- *   canvas pixel hash (non-tracking, purely for session binding).
+ *   canvas pixel hash (non-tracking, purely for device-binding).
  */
 
 import axios from 'axios';
@@ -33,7 +35,6 @@ function canvasHash() {
     ctx.fillStyle = 'rgba(102,204,0,0.7)';
     ctx.fillText('AutoAttend🎓', 4, 17);
     const data = c.toDataURL();
-    // FNV-1a 32-bit hash for the data URI
     let hash = 0x811c9dc5;
     for (let i = 0; i < data.length; i++) {
       hash ^= data.charCodeAt(i);
@@ -53,8 +54,6 @@ function generateDeviceFingerprint() {
     Intl.DateTimeFormat().resolvedOptions().timeZone,
     canvasHash(),
   ].join('|');
-
-  // FNV-1a over the combined string
   let hash = 0x811c9dc5;
   for (let i = 0; i < parts.length; i++) {
     hash ^= parts.charCodeAt(i);
@@ -77,23 +76,20 @@ function getDeviceId() {
 // ── Axios instance ────────────────────────────────────────────────────
 
 const api = axios.create({
-  // In dev, Vite proxies /api → localhost:8000.
-  // In production, set VITE_API_BASE_URL=https://your-api.example.com
-  // and requests become https://your-api.example.com/api.
-  // Leave unset when frontend + backend share the same origin (nginx reverse-proxy).
   baseURL: import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
-  // Send the httpOnly aa_token cookie with every cross-origin request.
-  withCredentials: true,
+  withCredentials: true,  // send httpOnly aa_token cookie on every request
 });
+
+// Defence in depth: marks every call as XHR so backend can reject
+// non-XHR cross-origin POST attempts (anti-CSRF heuristic).
+api.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Web clients authenticate via httpOnly cookie — no manual Authorization header needed.
-    // Only inject a ****** for guest live-session calls that use a
-    // short-lived token stored in sessionStorage (no httpOnly cookie for guests).
+    // Guest fallback for live-session endpoints (no cookie/login required)
     const url = config.url || '';
     if (url.includes('/live/')) {
       const guestToken = sessionStorage.getItem('aa_guest_token');
@@ -101,36 +97,68 @@ api.interceptors.request.use(
         config.headers['Authorization'] = `Bearer ${guestToken}`;
       }
     }
+    config.headers['X-Device-ID']  = getDeviceId();
     config.headers['X-Client-Type'] = 'web';
-    config.headers['X-Device-ID']   = getDeviceId();
     return config;
   },
   (error) => Promise.reject(error),
 );
+
 // Response interceptor
+// On 401: try refresh-token rotation ONCE, then retry the original request.
+// If refresh fails or 401 repeats → redirect to /login.
+let _refreshInFlight = null;
+
+function refreshAccessToken() {
+  if (!_refreshInFlight) {
+    _refreshInFlight = axios.post(
+      (import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api') +
+        '/auth/refresh',
+      {},
+      {
+        withCredentials: true,
+        headers: { 'X-Client-Type': 'web', 'X-Device-ID': getDeviceId() },
+      },
+    ).finally(() => { _refreshInFlight = null; });
+  }
+  return _refreshInFlight;
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error.response?.status;
     const url    = error.config?.url || '';
-    // Live-session endpoints must NEVER trigger a global logout-redirect.
-    // Guests legitimately hit these without an aa_token (they use a guest
-    // token in sessionStorage). The page handles its own error states.
     const isPublicLiveCall =
       url.includes('/live/join/') ||
       url.includes('/live/sessions/') ||
       url.includes('/live/doubts') ||
       url.includes('/live/liveness');
+    const isAuthCall =
+      url.includes('/auth/login') ||
+      url.includes('/auth/refresh') ||
+      url.includes('/auth/verify-totp');
+
+    if (status === 401 && !isPublicLiveCall && !isAuthCall && !error.config?._retried) {
+      try {
+        await refreshAccessToken();
+        // Replay original request once
+        const cfg = { ...error.config, _retried: true };
+        return api.request(cfg);
+      } catch {
+        if (window.location.pathname !== '/login') {
+          window.location.replace('/login');
+        }
+        return Promise.reject(error);
+      }
+    }
 
     if (status === 401 && !isPublicLiveCall) {
-      // Cookie expired or invalid — clear client-side user metadata and redirect
-      localStorage.removeItem('aa_user');
-      // Use replace to prevent back navigation to protected page
-      window.location.replace('/login');
+      if (window.location.pathname !== '/login') {
+        window.location.replace('/login');
+      }
     } else if (status === 403 && !isPublicLiveCall) {
       const detail = error.response?.data?.detail || '';
-      // Device mismatch or role-based access → unauthorized page
-      // But NOT for face enrollment issues — let the page handle those
       if (detail.includes('Device mismatch') || detail.includes('Access restricted')) {
         window.location.replace('/unauthorized');
       }

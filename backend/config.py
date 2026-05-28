@@ -10,8 +10,15 @@ class Settings(BaseSettings):
 
     # ── JWT ───────────────────────────────────────────────────────────
     SECRET_KEY: str
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_HOURS: int = 8
+    ALGORITHM: str = "HS256"  # default symmetric; set RS256/ES256/EdDSA + key paths to enable asymmetric
+    # Asymmetric JWT (opt-in). When set + ALGORITHM is RS256/ES256/EdDSA,
+    # encode uses the private PEM and decode uses the public PEM.
+    JWT_PRIVATE_KEY_PATH: str = ""
+    JWT_PUBLIC_KEY_PATH: str = ""
+    # Access token is now short-lived; refresh tokens rotate it.
+    # Roll out the frontend refresh handler BEFORE lowering this value.
+    ACCESS_TOKEN_EXPIRE_HOURS: int = 1
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── Argon2 password hashing ───────────────────────────────────────
     ARGON2_TIME_COST: int = 3
@@ -49,24 +56,27 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str
     TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
 
-    # ── Cookie settings (for httpOnly JWT on web clients) ─────────────
-    # Production cross-site deployment (e.g. Vercel + Render):
-    #   COOKIE_SECURE=True, COOKIE_SAMESITE=none
-    # Same-site / local dev:
-    #   COOKIE_SECURE=False, COOKIE_SAMESITE=lax
-    COOKIE_SECURE: bool = True
-    COOKIE_SAMESITE: str = "strict"
-
-    # ── TOTP secret encryption (Fernet) ──────────────────────────────
-    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    # Empty string = encryption disabled (legacy plaintext mode)
-    TOTP_ENCRYPTION_KEY: str = ""
-
     # ── App settings ──────────────────────────────────────────────────
     APP_NAME: str = "AutoAttend AI"
     DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
     COLLEGE_NAME: str = "Your College Name"
+
+    # ── Auth cookie (web only — mobile keeps Bearer token) ─────────────
+    # In production: COOKIE_SECURE=True, COOKIE_SAMESITE=strict.
+    # For cross-site (vercel frontend + render backend): COOKIE_SAMESITE=none + COOKIE_SECURE=True.
+    # For local dev over plain http: COOKIE_SECURE=False, COOKIE_SAMESITE=lax.
+    COOKIE_SECURE:   bool = True
+    COOKIE_SAMESITE: str  = "strict"
+
+    # ── TOTP secret encryption (Fernet symmetric key) ──────────────────
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Leave blank to disable encryption (legacy plaintext storage).
+    TOTP_ENCRYPTION_KEY: str = ""
+
+    # ── Session secrets at-rest encryption (qr_secret, bluetooth_token) ─
+    # Same Fernet format. May reuse TOTP_ENCRYPTION_KEY value or a separate key.
+    SESSION_SECRET_ENCRYPTION_KEY: str = ""
 
     # ── Attendance rules ──────────────────────────────────────────────
     ATTENDANCE_THRESHOLD: float = 75.0

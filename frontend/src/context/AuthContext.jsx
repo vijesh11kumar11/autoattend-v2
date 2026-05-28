@@ -1,15 +1,19 @@
 /**
  * AutoAttend AI v2.0 — Auth Context
  *
- * Provides: user, loading, isAuthenticated
- * Functions: login(), logout(), hasRole(minRole)
- * Booleans:  isPrincipal, isHOD, isTeacher, isStudent
+ * Web auth model:
+ *   • JWT lives in an httpOnly `aa_token` cookie (set by the backend).
+ *   • JavaScript NEVER sees the token (XSS-safe).
+ *   • Only user metadata (role, name, id, ...) is held in React state.
+ *   • On page refresh we restore state by calling GET /api/auth/me
+ *     (the cookie travels automatically).
  *
- * The JWT is stored exclusively in an httpOnly cookie set by the server —
- * it never touches JavaScript land. User metadata (role, name, id, …) is
- * fetched from GET /api/auth/me and kept in React state only (never
- * written to localStorage) so it disappears on hard-refresh and is
- * restored by the /me call on the next mount.
+ * Public API:
+ *   user, loading, isAuthenticated
+ *   login()           → call AFTER /api/auth/login succeeds; pulls /me and sets user.
+ *   logout()          → calls /api/auth/logout (server clears cookie) and resets state.
+ *   hasRole(minRole)
+ *   isPrincipal, isHOD, isTeacher, isStudent
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
@@ -33,62 +37,56 @@ export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount: restore session by calling /me — the httpOnly cookie is sent
-  // automatically by the browser. If 401, the user is not logged in.
-  useEffect(() => {
-    api.get('/auth/me')
-      .then(({ data }) => {
-        setUser({
-          id:            data.id,
-          name:          data.name  || '',
-          role:          data.role  || 'student',
-          college_id:    data.college_id,
-          department_id: data.department_id,
-          face_enrolled: data.face_enrolled,
-          totp_enabled:  data.totp_enabled,
-        });
-      })
-      .catch(() => {
-        // Not authenticated — leave user as null
-        setUser(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // login() — called after a successful /auth/login or /auth/verify-totp
-  // response. Fetches full user data from /me (cookie is already set by
-  // the server response) and stores it in memory.
-  const login = useCallback(async () => {
-    const { data } = await api.get('/auth/me');
-    const userObj = {
-      id:            data.id,
-      name:          data.name  || '',
-      role:          data.role  || 'student',
-      college_id:    data.college_id,
-      department_id: data.department_id,
-      face_enrolled: data.face_enrolled,
-      totp_enabled:  data.totp_enabled,
-    };
-    setUser(userObj);
-    return userObj;
+  // Fetch the current profile using the httpOnly cookie.
+  // Returns the user object on success, or null on 401/network error.
+  const fetchMe = useCallback(async () => {
+    try {
+      const { data } = await api.get('/auth/me');
+      const userObj = {
+        id:             data.id,
+        name:           data.name,
+        email:          data.email,
+        role:           data.role,
+        college_id:     data.college_id,
+        department_id: data.department_id,
+        face_enrolled: data.face_enrolled,
+        totp_enabled:  data.totp_enabled,
+      };
+      setUser(userObj);
+      return userObj;
+    } catch {
+      setUser(null);
+      return null;
+    }
   }, []);
 
-  // logout() — tells the server to clear the httpOnly cookie, then clears
-  // in-memory state and navigates to /login.
+  // On mount: try to restore session from cookie.
+  useEffect(() => {
+    (async () => {
+      await fetchMe();
+      setLoading(false);
+    })();
+  }, [fetchMe]);
+
+  // login() — call AFTER POST /api/auth/login (or /verify-totp) succeeds.
+  // The cookie is already set; we just pull /me and stash the user.
+  const login = useCallback(async () => {
+    const u = await fetchMe();
+    if (!u) throw new Error('Login succeeded but profile fetch failed.');
+    return u;
+  }, [fetchMe]);
+
+  // logout() — server clears the cookie, then we reset and redirect.
   const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout');
     } catch {
-      // Ignore errors — the cookie will expire naturally
+      // ignore network errors — still log out client-side
     }
-    localStorage.removeItem('aa_user');
     setUser(null);
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  // hasRole(minRole) — true if current user's role >= minRole
   const hasRole = useCallback((minRole) => {
     if (!user) return false;
     return (ROLE_HIERARCHY[user.role] ?? -1) >= (ROLE_HIERARCHY[minRole] ?? 99);
@@ -99,7 +97,6 @@ export function AuthProvider({ children }) {
     loading,
     isAuthenticated: !!user,
 
-    // Convenience booleans
     isPrincipal: user?.role === 'principal',
     isHOD:       user?.role === 'hod',
     isTeacher:   user?.role === 'teacher',

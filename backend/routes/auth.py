@@ -42,15 +42,20 @@ from schemas.auth_schemas import (
     MessageResponse,
     PasswordChangeRequestResponse,
     ProfileResponse,
+    RefreshTokenRequest,
+    RefreshTokenResponse,
     ResetPasswordRequest,
     TOTPConfirmRequest,
     TOTPSetupResponse,
     VerifyTOTPRequest,
 )
 from utils.auth_utils import (
+    REFRESH_COOKIE_NAME,
     any_authenticated,
     clear_auth_cookie,
+    clear_refresh_cookie,
     create_access_token,
+    create_refresh_token,
     create_totp_session_token,
     decode_totp_session_token,
     decrypt_totp_secret,
@@ -60,13 +65,23 @@ from utils.auth_utils import (
     get_totp_uri,
     hash_password,
     is_first_login,
+    is_ip_locked,
+    is_user_locked,
+    log_login_attempt,
     needs_rehash,
     record_login,
+    record_login_failure,
+    record_login_success,
+    revoke_all_refresh_tokens,
+    revoke_refresh_token,
+    rotate_refresh_token,
     set_auth_cookie,
+    set_refresh_cookie,
     staff_only,
     verify_password,
     verify_totp_code,
 )
+from utils.security_logger import SecurityEventType, Severity, sec_logger
 from utils.otp_utils import (
     mask_email,
     mask_phone,
@@ -99,6 +114,37 @@ def _build_jwt(user: User, device_id: str) -> str:
     })
 
 
+def _issue_token(response: Response, user: User, device_id: str, client_type: str) -> str:
+    """
+    Build a JWT and, for web clients, also set it as an httpOnly cookie.
+    Mobile clients (X-Client-Type: mobile) receive the token in the JSON
+    body only — no cookie is set.
+    """
+    token = _build_jwt(user, device_id)
+    if (client_type or "").lower() != "mobile":
+        set_auth_cookie(response, token)
+    return token
+
+
+def _issue_refresh(
+    response:    Response,
+    user:        User,
+    device_id:   str,
+    client_type: str,
+    db:          Session,
+) -> str | None:
+    """
+    Mint a new refresh token. Web clients get it as an httpOnly cookie and
+    receive `None` in the JSON body; mobile clients get the raw token in
+    the JSON body and no cookie is set.
+    """
+    raw = create_refresh_token(user.id, device_id, db)
+    if (client_type or "").lower() == "mobile":
+        return raw
+    set_refresh_cookie(response, raw)
+    return None
+
+
 def _totp_qr_base64(uri: str) -> str:
     img = qrcode.make(uri)
     buf = io.BytesIO()
@@ -122,32 +168,94 @@ def _get_user_by_identifier(identifier: str, db: Session) -> User | None:
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("60/minute")
 def login(
-    request:        Request,
-    response:       Response,
-    body:           LoginRequest,
-    x_device_id:    str     = Header(default=""),
-    x_client_type:  str     = Header(default=""),
-    db:             Session = Depends(get_db),
+    request:       Request,
+    body:          LoginRequest,
+    response:      Response,
+    x_device_id:   str     = Header(default=""),
+    x_client_type: str     = Header(default="web"),
+    db:            Session = Depends(get_db),
 ):
     now            = datetime.now(tz=timezone.utc)
     invalid_creds  = HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+    ip_addr        = request.client.host if request.client else None
+    ua             = request.headers.get("user-agent")
 
     logger.info("🔐 LOGIN attempt │ identifier='%s' │ IP=%s │ device=%s",
-                body.identifier, request.client.host if request.client else "unknown", x_device_id or "none")
+                body.identifier, ip_addr or "unknown", x_device_id or "none")
+
+    # 0. IP-based brute-force lockout (defends against credential-stuffing)
+    ip_locked, ip_lock_secs = is_ip_locked(ip_addr, db)
+    if ip_locked:
+        logger.warning("🔐 LOGIN blocked │ IP=%s │ exceeded %d failed attempts in 15 min",
+                       ip_addr, 20)
+        log_login_attempt(db, ip_address=ip_addr, user_identifier=body.identifier,
+                          success=False, failure_reason="ip_locked", user_agent=ua)
+        sec_logger.log(SecurityEventType.LOGIN_LOCKED, Severity.CRITICAL,
+                       ip_address=ip_addr, user_agent=ua,
+                       details={"ip_lockout": True, "identifier": body.identifier,
+                                "window_minutes": 15},
+                       request_id=getattr(request.state, "request_id", None) if request else None,
+                       db=db)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many failed login attempts from this network. Try again later.",
+        )
 
     # 1. Find user
     user = _get_user_by_identifier(body.identifier, db)
     if not user or not user.is_active:
         logger.warning("🔐 LOGIN failed │ identifier='%s' │ reason=user not found or inactive", body.identifier)
+        log_login_attempt(db, ip_address=ip_addr, user_identifier=body.identifier,
+                          success=False, failure_reason="user_not_found_or_inactive",
+                          user_agent=ua)
         raise invalid_creds
+
+    # 1b. Pre-check password brute-force lockout
+    locked, secs = is_user_locked(user)
+    if locked:
+        minutes = max(1, secs // 60)
+        logger.warning("🔐 LOGIN blocked │ user_id=%d │ password lockout %d s remaining", user.id, secs)
+        log_login_attempt(db, ip_address=ip_addr, user_identifier=body.identifier,
+                          success=False, failure_reason="account_locked", user_agent=ua)
+        sec_logger.log(SecurityEventType.LOGIN_LOCKED, Severity.WARN,
+                       user_id=user.id, ip_address=ip_addr, user_agent=ua,
+                       details={"identifier": body.identifier, "remaining_seconds": secs},
+                       request_id=getattr(request.state, "request_id", None) if request else None,
+                       db=db)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many failed login attempts. Try again in {minutes} minute(s).",
+        )
 
     logger.info("🔐 LOGIN │ user found │ id=%d │ role=%s │ name='%s'",
                 user.id, user.role.value, user.name)
 
     # 2. Verify Argon2 password (constant-time)
     if not verify_password(body.password, user.password_hash):
-        logger.warning("🔐 LOGIN failed │ user_id=%d │ reason=invalid password", user.id)
+        now_locked, lock_secs = record_login_failure(user, db)
+        logger.warning("🔐 LOGIN failed │ user_id=%d │ reason=invalid password │ fail_count=%d",
+                       user.id, user.login_fail_count or 0)
+        log_login_attempt(db, ip_address=ip_addr, user_identifier=body.identifier,
+                          success=False, failure_reason="invalid_password", user_agent=ua)
+        sec_logger.log(SecurityEventType.LOGIN_FAILURE, Severity.WARN,
+                       user_id=user.id, ip_address=ip_addr, user_agent=ua,
+                       details={"identifier": body.identifier, "fail_count": user.login_fail_count or 0},
+                       request_id=getattr(request.state, "request_id", None) if request else None,
+                       db=db)
+        if now_locked:
+            sec_logger.log(SecurityEventType.LOGIN_LOCKED, Severity.CRITICAL,
+                           user_id=user.id, ip_address=ip_addr, user_agent=ua,
+                           details={"lock_seconds": lock_secs},
+                           request_id=getattr(request.state, "request_id", None) if request else None,
+                           db=db)
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"Too many failed attempts. Account locked for {lock_secs // 60} minute(s).",
+            )
         raise invalid_creds
+
+    # Successful password → reset password-lockout counters (TOTP still pending for staff)
+    record_login_success(user, db)
 
     logger.info("🔐 LOGIN │ user_id=%d │ password verified ✓", user.id)
 
@@ -207,14 +315,13 @@ def login(
             logger.info("🎓 STUDENT LOGIN │ student_id=%d │ device matched ✓", user.id)
 
         record_login(user.id, db)
-        token = _build_jwt(user, x_device_id)
-        # Web clients receive token in httpOnly cookie; mobile clients receive it in body
-        if x_client_type.lower() != "mobile":
-            set_auth_cookie(response, token)
+        log_login_attempt(db, ip_address=ip_addr, user_identifier=body.identifier,
+                          success=True, user_agent=ua)
         logger.info("🎓 STUDENT LOGIN success │ student_id=%d │ JWT issued │ face_enrollment_required=%s",
                     user.id, not user.face_enrolled)
         return LoginResponse(
-            access_token=token,
+            access_token=_issue_token(response, user, x_device_id, x_client_type),
+            refresh_token=_issue_refresh(response, user, x_device_id, x_client_type, db),
             role=user.role.value,
             name=user.name,
             face_enrollment_required=not user.face_enrolled,
@@ -233,12 +340,12 @@ def login(
 
     # TOTP not yet set up → issue JWT but flag that setup is required
     record_login(user.id, db)
-    token = _build_jwt(user, x_device_id)
-    if x_client_type.lower() != "mobile":
-        set_auth_cookie(response, token)
+    log_login_attempt(db, ip_address=ip_addr, user_identifier=body.identifier,
+                      success=True, failure_reason="totp_setup_required", user_agent=ua)
     logger.info("👨‍🏫 STAFF LOGIN success │ user_id=%d │ JWT issued │ totp_setup_required=True", user.id)
     return LoginResponse(
-        access_token=token,
+        access_token=_issue_token(response, user, x_device_id, x_client_type),
+        refresh_token=_issue_refresh(response, user, x_device_id, x_client_type, db),
         role=user.role.value,
         name=user.name,
         totp_setup_required=True,
@@ -251,11 +358,11 @@ def login(
 
 @router.post("/verify-totp", response_model=LoginResponse)
 def verify_totp_endpoint(
-    response:       Response,
-    body:           VerifyTOTPRequest,
-    x_device_id:    str     = Header(default=""),
-    x_client_type:  str     = Header(default=""),
-    db:             Session = Depends(get_db),
+    body:          VerifyTOTPRequest,
+    response:      Response,
+    x_device_id:   str     = Header(default=""),
+    x_client_type: str     = Header(default="web"),
+    db:            Session = Depends(get_db),
 ):
     payload = decode_totp_session_token(body.totp_session_token)
     user_id: int = payload["user_id"]
@@ -282,11 +389,8 @@ def verify_totp_endpoint(
             f"Account locked for {remaining} more minute(s). Try again later.",
         )
 
-    # Decrypt TOTP secret before verification (transparently handles legacy plaintext rows)
-    totp_secret = decrypt_totp_secret(user.totp_secret)
-
     # Verify the TOTP code
-    if not verify_totp_code(totp_secret, body.totp_code):
+    if not verify_totp_code(decrypt_totp_secret(user.totp_secret), body.totp_code):
         user.totp_fail_count = (user.totp_fail_count or 0) + 1
         logger.warning("🔑 TOTP verify failed │ user_id=%d │ fail_count=%d/%d",
                        user_id, user.totp_fail_count, _TOTP_MAX_FAIL)
@@ -311,12 +415,10 @@ def verify_totp_endpoint(
     db.commit()
 
     record_login(user.id, db)
-    token = _build_jwt(user, x_device_id)
-    if x_client_type.lower() != "mobile":
-        set_auth_cookie(response, token)
     logger.info("🔑 TOTP verify success │ user_id=%d │ role=%s │ JWT issued ✓", user.id, user.role.value)
     return LoginResponse(
-        access_token=token,
+        access_token=_issue_token(response, user, x_device_id, x_client_type),
+        refresh_token=_issue_refresh(response, user, x_device_id, x_client_type, db),
         role=user.role.value,
         name=user.name,
     )
@@ -412,6 +514,7 @@ def confirm_password_change(
         synchronize_session=False,
     )
     db.commit()
+    revoke_all_refresh_tokens(current_user["id"], db)
     return MessageResponse(message="Password changed successfully. Please login again.")
 
 
@@ -479,6 +582,7 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
         synchronize_session=False,
     )
     db.commit()
+    revoke_all_refresh_tokens(user.id, db)
     logger.info("🔑 RESET PASSWORD success │ user_id=%d │ password changed ✓", user.id)
     return MessageResponse(message="Password reset successfully. Please login with your new password.")
 
@@ -532,17 +636,58 @@ def disable_face(
 
 @router.post("/logout", response_model=MessageResponse)
 def logout(
+    request:      Request,
     response:     Response,
-    current_user: dict = Depends(any_authenticated),
+    body:         RefreshTokenRequest | None = None,
+    current_user: dict    = Depends(any_authenticated),
+    db:           Session = Depends(get_db),
 ):
     """
-    JWTs are stateless. True session invalidation is handled via
-    password_changed_at (checked in get_current_user).
-    Clears the httpOnly auth cookie for web clients.
-    Mobile clients must delete the token from secure storage on their side.
+    Clears the web auth cookie and revokes the refresh token. For mobile
+    (Bearer token) clients, the app must drop the access token from
+    secure storage and pass its refresh_token in the body to revoke it.
     """
+    raw_refresh = (
+        (body.refresh_token if body and body.refresh_token else None)
+        or request.cookies.get(REFRESH_COOKIE_NAME)
+    )
+    if raw_refresh:
+        revoke_refresh_token(raw_refresh, db)
     clear_auth_cookie(response)
+    clear_refresh_cookie(response)
     return MessageResponse(message="Logged out successfully.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# POST /api/auth/refresh  (rotation — web reads cookie, mobile reads body)
+# ═══════════════════════════════════════════════════════════════════════
+
+@router.post("/refresh", response_model=RefreshTokenResponse)
+@limiter.limit("60/minute")
+def refresh_token_endpoint(
+    request:       Request,
+    response:      Response,
+    body:          RefreshTokenRequest | None = None,
+    x_device_id:   str     = Header(default=""),
+    x_client_type: str     = Header(default="web"),
+    db:            Session = Depends(get_db),
+):
+    raw = (
+        (body.refresh_token if body and body.refresh_token else None)
+        or request.cookies.get(REFRESH_COOKIE_NAME)
+    )
+    user, new_raw = rotate_refresh_token(raw, db)
+
+    new_access = _build_jwt(user, x_device_id)
+    is_mobile  = (x_client_type or "").lower() == "mobile"
+    if not is_mobile:
+        set_auth_cookie(response, new_access)
+        set_refresh_cookie(response, new_raw)
+
+    return RefreshTokenResponse(
+        access_token=new_access,
+        refresh_token=new_raw if is_mobile else None,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -21,13 +21,17 @@ class StartSessionRequest(BaseModel):
 
 
 class StartSessionResponse(BaseModel):
-    session_id:       int
-    subject_name:     str
-    subject_code:     str
-    bluetooth_token:  str   # returned to teacher's app for BLE broadcast
-    qr_secret_hint:   str   # first 8 chars of qr_secret (for debug/display)
-    total_students:   int
-    started_at:       datetime
+    session_id:                int
+    subject_name:              str
+    subject_code:              str
+    # The CURRENT 30-second BLE window token to broadcast.
+    # The teacher app must re-fetch via GET /session/{id}/ble-token every
+    # ~30 s and re-advertise.
+    bluetooth_token:           str
+    bluetooth_window_seconds:  int = 30   # seconds until the next rotation
+    qr_secret_hint:            str   # first 8 chars of qr_secret (for debug/display)
+    total_students:            int
+    started_at:                datetime
 
 
 class EndSessionSummary(BaseModel):
@@ -52,6 +56,12 @@ class MarkAttendanceRequest(BaseModel):
     student_gps_accuracy:    float = Field(..., ge=0)
     bluetooth_token_detected: Optional[str] = None
     device_id:               str
+    # Client-supplied anti-spoof flag (Android only; expo-location's
+    # Location.mocked). iOS always reports False — this is a hint, not a
+    # guarantee. Defense-in-depth alongside accuracy + velocity checks.
+    mock_location_detected:  Optional[bool] = False
+    # Mobile root/jailbreak heuristic (best-effort; principal reviews flagged events).
+    is_rooted:               Optional[bool] = False
 
 
 class AttendanceChecks(BaseModel):

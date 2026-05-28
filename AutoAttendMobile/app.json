@@ -60,7 +60,14 @@
           "sounds": []
         }
       ],
-      "expo-build-properties"
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false
+          }
+        }
+      ]
     ],
     "notification": {
       "icon": "./assets/notification-icon.png",

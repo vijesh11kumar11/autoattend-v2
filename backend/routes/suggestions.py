@@ -32,6 +32,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import get_current_user
+from utils.sanitization import clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ def submit_suggestion(
         target_scope=body.target_scope,
         target_subject_id=body.target_subject_id,
         target_department_id=user.department_id,
-        message=body.message,
+        message=clean_text(body.message),
         is_anonymous=body.is_anonymous,
         priority=body.priority,
     )
