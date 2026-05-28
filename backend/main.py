@@ -106,10 +106,14 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIDMiddleware)
 
-# CORS — allow the Vite dev server and production frontend
+# CORS — production list contains ONLY settings.FRONTEND_URL.
+# Vite dev origin (http://localhost:5173) is added only when DEBUG=True.
+_cors_origins = [settings.FRONTEND_URL]
+if settings.DEBUG:
+    _cors_origins += ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:5173"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Device-ID", "X-Client-Type", "X-Request-ID", "X-Requested-With", "Accept"],
@@ -194,12 +198,21 @@ async def live_session_ws(
             subproto_token = parts[1]
             chosen_subproto = "aa-jwt"
 
-    # 3. Query string fallback (deprecated)
+    # 3. Query string fallback — DEBUG ONLY. In production the token would
+    #    appear in proxy/access logs, so reject any client that tries it.
+    query_token = ""
     if not cookie_token and not subproto_token and token:
-        logger.warning("WS auth via ?token= query param (deprecated) │ session=%s user=%s ip=%s",
-                       session_id, user_id, websocket.client.host if websocket.client else "?")
+        if settings.DEBUG:
+            logger.warning("WS auth via ?token= query param (DEBUG fallback) │ session=%s user=%s ip=%s",
+                           session_id, user_id, websocket.client.host if websocket.client else "?")
+            query_token = token
+        else:
+            logger.warning("WS auth via ?token= query param REJECTED in production │ session=%s user=%s ip=%s",
+                           session_id, user_id, websocket.client.host if websocket.client else "?")
+            await websocket.close(code=4401)
+            return
 
-    payload = _verify_ws_token(cookie_token or subproto_token or token)
+    payload = _verify_ws_token(cookie_token or subproto_token or query_token)
     if payload is None:
         await websocket.close(code=4401)
         return

@@ -291,19 +291,26 @@ def login(
         )
 
         if existing_device is None:
-            # First login — auto-register device
-            if x_device_id:
-                db.add(DeviceRegistry(
-                    user_id=user.id,
-                    device_id=x_device_id,
-                    is_active=True,
-                    bound_at=now,
-                ))
-                db.commit()
-                logger.info("🎓 STUDENT LOGIN │ student_id=%d │ first login — device registered: %s",
-                            user.id, x_device_id)
-            else:
-                logger.info("🎓 STUDENT LOGIN │ student_id=%d │ first login — no device_id header", user.id)
+            # First login — MUST present a device_id so we can bind it now.
+            # Without this, a student could attend from any device until the
+            # next login bound one (1st-login binding window bypass).
+            if not x_device_id:
+                logger.warning("🎓 STUDENT LOGIN blocked │ student_id=%d │ first login but no X-Device-ID header", user.id)
+                log_login_attempt(db, ip_address=ip_addr, user_identifier=body.identifier,
+                                  success=False, failure_reason="missing_device_id", user_agent=ua)
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Device identifier required for student login. Reinstall the app or clear site data and try again.",
+                )
+            db.add(DeviceRegistry(
+                user_id=user.id,
+                device_id=x_device_id,
+                is_active=True,
+                bound_at=now,
+            ))
+            db.commit()
+            logger.info("🎓 STUDENT LOGIN │ student_id=%d │ first login — device registered: %s",
+                        user.id, x_device_id)
         elif existing_device.device_id != x_device_id:
             logger.warning("🎓 STUDENT LOGIN blocked │ student_id=%d │ device mismatch │ registered=%s │ got=%s",
                            user.id, existing_device.device_id, x_device_id)
@@ -375,8 +382,10 @@ def verify_totp_endpoint(
         .first()
     )
     if not user:
-        logger.warning("🔑 TOTP verify failed │ user_id=%d │ reason=user not found", user_id)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+        # NEVER differentiate "user not found" from "wrong TOTP" — that
+        # leaks account existence to anyone holding a valid session token.
+        logger.warning("🔑 TOTP verify failed │ user_id=%d │ reason=user not found (returning generic error)", user_id)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid TOTP code.")
 
     now = datetime.now(tz=timezone.utc)
 

@@ -67,12 +67,16 @@ export default function JoinSessionPage() {
       } else if (d.allowed) {
         setInfo(d);
         if (d.guest_token) {
-          // Stash guest data so StudentLiveSession can use it (includes webrtc_config)
-          sessionStorage.setItem('aa_guest_token', d.guest_token);
-          sessionStorage.setItem('aa_guest_session_id', String(d.session.id));
-          sessionStorage.setItem('aa_guest_participant_id', String(d.participant_id));
-          sessionStorage.setItem('aa_guest_name', extra.guest_name || guestName.trim() || 'Guest');
-          sessionStorage.setItem('aa_join_data', JSON.stringify(d));
+          // Stash guest data in module-scope memory (NOT sessionStorage —
+          // XSS can read sessionStorage; module memory dies on reload).
+          const { setGuestSession } = await import('./guestSessionStore.js');
+          setGuestSession({
+            token: d.guest_token,
+            sessionId: d.session.id,
+            participantId: d.participant_id,
+            name: extra.guest_name || guestName.trim() || 'Guest',
+            joinData: d,
+          });
         }
         navigate(`/student/live/${d.session.id}?join=${joinCode}`);
       }

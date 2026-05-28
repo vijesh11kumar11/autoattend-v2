@@ -2392,8 +2392,24 @@ async def serve_signed_capsule(
                     deny_reason=f"signed_{mode}:{deny_reason}")
         raise HTTPException(403, f"Access denied: {deny_reason}")
 
-    if not file_path or not os.path.isfile(file_path):
+    # Path-traversal guard: the file MUST live inside UPLOAD_ROOT even
+    # though the path comes from a signed JWT. Defends against:
+    #   (a) a leaked signing key letting an attacker craft "file_path=/etc/passwd"
+    #   (b) a future bug accidentally signing an absolute path outside uploads
+    if not file_path:
         raise HTTPException(404, "File missing")
+    try:
+        real_fp = os.path.realpath(file_path)
+        real_root = os.path.realpath(UPLOAD_ROOT)
+    except Exception:
+        raise HTTPException(404, "File missing")
+    if not (real_fp == real_root or real_fp.startswith(real_root + os.sep)):
+        logger.warning("signed_url path traversal blocked │ capsule=%s student=%s path=%s",
+                       capsule_id, student_id, file_path)
+        raise HTTPException(403, "Access denied")
+    if not os.path.isfile(real_fp):
+        raise HTTPException(404, "File missing")
+    file_path = real_fp
 
     if mode == "download":
         # Download path — must produce/serve a watermarked copy

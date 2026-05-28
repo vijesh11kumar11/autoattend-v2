@@ -28,6 +28,15 @@ def send_sms(phone: str, message: str) -> dict:
     """
     api_key = settings.FAST2SMS_API_KEY
     if not api_key or api_key == "will_add_later":
+        # In production we MUST log loudly — silent SMS failures were
+        # leaving parent-alert / OTP flows broken with no visibility.
+        if not settings.DEBUG:
+            logger.error(
+                "SMS NOT SENT — FAST2SMS_API_KEY missing/placeholder in production │ to=%s***",
+                phone[:3] if phone else "?",
+            )
+        else:
+            logger.warning("SMS skipped (FAST2SMS_API_KEY not configured) — DEBUG mode")
         return {"ok": False, "error": "FAST2SMS_API_KEY not configured"}
 
     # Normalize to 10-digit Indian number

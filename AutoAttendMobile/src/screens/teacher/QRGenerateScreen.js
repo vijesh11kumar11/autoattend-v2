@@ -364,10 +364,12 @@ export default function QRGenerateScreen() {
     // so students can discover it. True BLE advertising requires a
     // native module — see Corrections/Decisions.
     //
-    // For now, store the token; the session's bluetooth_token is already
-    // served via the API and students can match it from the QR payload.
-    // SECURITY: Never log the raw token. Only emit a redacted dev marker.
-    if (__DEV__) console.log('[BLE] Would broadcast token: <redacted>', token ? `(len=${String(token).length})` : '');
+    // SECURITY: NEVER log the token (even redacted/length metadata).
+    // Length alone can confirm a guess about the token format.
+    // The session's bluetooth_token is served via the API and students
+    // can match it from the QR payload.
+    void ble;
+    void token;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

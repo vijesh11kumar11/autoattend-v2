@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { useAgoraRTC } from '../../hooks/useAgoraRTC';
@@ -448,9 +449,18 @@ function WhiteboardModal({ open, sessionId, onClose }) {
           {diagram && diagramType === 'html' && (
             <div
               className="bg-white border border-slate-200 rounded-lg p-3 overflow-x-auto"
-              // Trusted-source HTML returned by our own AI endpoint
+              // AI-generated HTML — sanitize with DOMPurify before injection.
+              // Even though the source is our own backend, a compromised AI
+              // provider could embed <script>/onerror payloads that would
+              // otherwise execute in the teacher's browser.
               // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: diagram }}
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(diagram, {
+                  USE_PROFILES: { html: true, svg: true, mathMl: true },
+                  FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
+                  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'formaction'],
+                }),
+              }}
             />
           )}
 

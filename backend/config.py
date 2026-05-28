@@ -42,7 +42,10 @@ class Settings(BaseSettings):
     MSG91_EMAIL_DOMAIN: str = ""
 
     # ── Fast2SMS (Quick route SMS for notifications) ─────────────
-    FAST2SMS_API_KEY: str = "will_add_later"
+    # REQUIRED in production. Empty string keeps SMS disabled but startup
+    # validator + send_sms log an ERROR every time SMS is attempted so the
+    # outage is visible (was previously silently swallowed).
+    FAST2SMS_API_KEY: str = ""
     # ── News Feed ─────────────────────────────────────────────────────
     NEWS_API_KEY: str = ""
     FEED_CACHE_MINUTES: int = 60

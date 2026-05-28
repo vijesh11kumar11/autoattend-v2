@@ -1425,7 +1425,25 @@ def approve_device_request(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Student not in your department.")
 
     reg.approved_by = current_user["id"]
+
+    # Session-fixation defense: when HOD approves a new device, revoke ALL
+    # existing refresh tokens for that user so any session living on the
+    # old device cannot continue silently.
+    from database import RefreshToken
+    from datetime import datetime as _dt, timezone as _tz
+    _now = _dt.now(tz=_tz.utc)
+    revoked_n = (
+        db.query(RefreshToken)
+        .filter(
+            RefreshToken.user_id == reg.user_id,
+            RefreshToken.revoked == False,  # noqa: E712
+        )
+        .update({"revoked": True, "revoked_at": _now}, synchronize_session=False)
+    )
     db.commit()
+    if revoked_n:
+        logger.info("🔐 DEVICE APPROVED │ student=%s │ revoked %d active refresh tokens",
+                    reg.user_id, revoked_n)
 
     # Notify student of approval
     from utils.notification_utils import send_push_notification

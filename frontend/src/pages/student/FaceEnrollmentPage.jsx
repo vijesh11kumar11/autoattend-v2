@@ -163,16 +163,11 @@ export default function FaceEnrollmentPage() {
 
       if (data.liveness_confirmed) {
         setStep('success');
-        // Refresh token to get face_enrolled=true
-        try {
-          const { data: meData } = await api.get('/auth/me');
-          if (meData.face_enrolled) {
-            // Update stored user in localStorage
-            const storedUser = JSON.parse(localStorage.getItem('aa_user') || '{}');
-            storedUser.face_enrolled = true;
-            localStorage.setItem('aa_user', JSON.stringify(storedUser));
-          }
-        } catch { /* best effort */ }
+        // Refresh the auth context so face_enrolled=true is reflected.
+        // We intentionally DO NOT mirror user data into localStorage — it
+        // is XSS-readable; AuthContext / fresh /auth/me calls are the
+        // single source of truth.
+        try { await api.get('/auth/me'); } catch { /* best effort */ }
 
         setTimeout(() => navigate('/student/dashboard', { replace: true }), 2000);
       } else {

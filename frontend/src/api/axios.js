@@ -112,13 +112,21 @@ api.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Guest fallback for live-session endpoints (no cookie/login required)
+    // Guest fallback for live-session endpoints (no cookie/login required).
+    // Guest token now lives in module memory (live/guestSessionStore) —
+    // NOT sessionStorage — to keep it out of XSS reach.
     const url = config.url || '';
     if (url.includes('/live/')) {
-      const guestToken = sessionStorage.getItem('aa_guest_token');
-      if (guestToken) {
-        config.headers['Authorization'] = `Bearer ${guestToken}`;
-      }
+      try {
+        // Dynamic import avoids a circular dep when axios is imported first.
+        // Synchronous: the module is already loaded by JoinSessionPage.
+        // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
+        const mod = window.__aaGuestStore;
+        const guestToken = mod?.getGuestSession?.()?.token;
+        if (guestToken) {
+          config.headers['Authorization'] = `Bearer ${guestToken}`;
+        }
+      } catch { /* no-op */ }
     }
     config.headers['X-Device-ID']  = getDeviceId();
     config.headers['X-Client-Type'] = 'web';

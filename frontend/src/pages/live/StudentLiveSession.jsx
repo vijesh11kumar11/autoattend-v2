@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAgoraRTC } from '../../hooks/useAgoraRTC';
 import { VideoGrid } from '../../components/live/VideoGrid';
 import { MermaidRenderer } from '../../components/live/MermaidRenderer';
+import { getGuestSession } from './guestSessionStore.js';
 
 const VIOLET = 'from-violet-600 via-purple-600 to-fuchsia-600';
 
@@ -82,16 +83,13 @@ export default function StudentLiveSession() {
 
   // ─── Step 1: fetch join info (use guest token if present) ───────────
   useEffect(() => {
-    const guestToken = sessionStorage.getItem('aa_guest_token');
-    const guestSid = sessionStorage.getItem('aa_guest_session_id');
-
-    if (guestToken && guestSid === String(sessionId)) {
-      // Use full join data stored by JoinSessionPage (includes webrtc_config)
-      const stored = sessionStorage.getItem('aa_join_data');
-      const joinData = stored ? JSON.parse(stored) : null;
+    // Guest session lives in module memory now — NOT sessionStorage.
+    const guest = getGuestSession(sessionId);
+    if (guest && guest.token) {
+      const joinData = guest.joinData;
       setInfo(joinData
         ? { ...joinData, guest: true }
-        : { guest_token: guestToken, participant_id: Number(sessionStorage.getItem('aa_guest_participant_id') || 0), guest: true }
+        : { guest_token: guest.token, participant_id: guest.participantId, guest: true }
       );
       return;
     }
@@ -147,11 +145,11 @@ export default function StudentLiveSession() {
   // ─── Step 3: WebSocket connect ──────────────────────────────────────
   useEffect(() => {
     if (!info) return;
-    const guestToken = sessionStorage.getItem('aa_guest_token');
+    const guest = getGuestSession(sessionId);
     // For logged-in users we rely on the httpOnly aa_token cookie
     // (sent automatically on the WS handshake). Guests pass their token
     // explicitly because they have no login cookie.
-    const wsToken = guestToken || '';
+    const wsToken = guest?.token || '';
     const userId = info.guest ? info.participant_id : (user?.id || 0);
     if (!userId) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -223,7 +221,7 @@ export default function StudentLiveSession() {
           try { leaveChannel(); } catch (_) {}
           setSessionEnded(true);
           setTimeout(() => {
-            const isGuest = !!sessionStorage.getItem('aa_guest_token');
+            const isGuest = !!getGuestSession(sessionId);
             navigate(isGuest ? '/session-ended' : '/student/dashboard', { replace: true });
           }, 3000);
           break;
@@ -329,7 +327,8 @@ export default function StudentLiveSession() {
   const leave = async () => {
     try { await leaveChannel(); } catch {}
     try { await api.post('/live/leave', { session_id: Number(sessionId) }); } catch {}
-    sessionStorage.removeItem('aa_guest_token');
+    const { clearGuestSession } = await import('./guestSessionStore.js');
+    clearGuestSession();
     navigate('/');
   };
 
@@ -451,7 +450,7 @@ export default function StudentLiveSession() {
                   <VideoGrid
                     participants={enrichedRemote}
                     localUid={agoraCfg.uid}
-                    localName={user?.name || sessionStorage.getItem('aa_guest_name') || info.session?.guest_name || 'You'}
+                    localName={user?.name || getGuestSession(sessionId)?.name || info.session?.guest_name || 'You'}
                     localVideoTrack={localVideoTrackRef.current}
                     localVideoEnabled={localVideoEnabled}
                     localAudioEnabled={localAudioEnabled}

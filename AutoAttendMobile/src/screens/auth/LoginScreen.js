@@ -5,7 +5,7 @@
  *  • Full-screen gradient #1a237e → #3b82f6
  *  • White card with shake animation on credential errors
  *  • Password show/hide toggle
- *  • Remember Me (AsyncStorage)
+ *  • Remember Me (SecureStore — encrypted on device)
  *  • Device-binding modal (403 response)
  *  • Navigates to TOTPScreen if requires_totp
  *  • Navigates to FaceSetupScreen if face_enrollment_required
@@ -132,11 +132,13 @@ export default function LoginScreen({ navigation }) {
         password,
       });
 
-      // Persist / clear remembered identifier
+      // Persist / clear remembered identifier (SecureStore — NOT
+      // AsyncStorage). The previous code referenced an unimported
+      // AsyncStorage which would crash on "remember me" tick.
       if (rememberMe) {
-        await AsyncStorage.setItem(REMEMBER_KEY, identifier.trim());
+        await SecureStore.setItemAsync(REMEMBER_KEY, identifier.trim());
       } else {
-        await AsyncStorage.removeItem(REMEMBER_KEY);
+        await SecureStore.deleteItemAsync(REMEMBER_KEY);
       }
 
       // ── TOTP required ────────────────────────────────────────────────────
