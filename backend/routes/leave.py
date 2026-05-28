@@ -35,7 +35,7 @@ from database import (
     UserRole,
     get_db,
 )
-from utils.auth_utils import any_authenticated, student_only, teacher_or_above
+from utils.auth_utils import any_authenticated, require_recent_auth, student_only, teacher_or_above
 from utils.audit_helpers import audit_admin_action
 from utils.notification_utils import send_push_to_many
 
@@ -359,6 +359,7 @@ def approve_leave(
     body: ReviewNoteBody,
     request: Request,
     current_user: dict = Depends(teacher_or_above),
+    _recent: dict = Depends(require_recent_auth(15)),
     db: Session = Depends(get_db),
 ):
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_id).first()
@@ -453,6 +454,7 @@ def reject_leave(
     body: ReviewNoteBody,
     request: Request,
     current_user: dict = Depends(teacher_or_above),
+    _recent: dict = Depends(require_recent_auth(15)),
     db: Session = Depends(get_db),
 ):
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_id).first()

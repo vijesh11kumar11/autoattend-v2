@@ -59,10 +59,12 @@ from schemas.attendance_schemas import (
 )
 from utils.auth_utils import (
     any_authenticated,
+    require_recent_auth,
     student_only,
     teacher_or_above,
     validate_face_verify_token,
 )
+from utils.audit_helpers import audit_admin_action
 from utils.bluetooth_utils import (
     compute_ble_window_token,
     generate_bluetooth_token,
@@ -972,7 +974,9 @@ def student_attendance_summary(
 @router.post("/manual-override")
 def manual_override(
     body:         ManualOverrideRequest,
+    request:      Request,
     current_user: dict    = Depends(teacher_or_above),
+    _recent:      dict    = Depends(require_recent_auth(15)),
     db:           Session = Depends(get_db),
 ):
     """
@@ -1049,6 +1053,20 @@ def manual_override(
         "✍️ MANUAL OVERRIDE │ session_id=%d │ student_id=%d │ %s → %s │ by user_id=%d │ reason='%s'",
         body.session_id, body.student_id,
         old_status.value, new_status.value, current_user["id"], body.reason,
+    )
+
+    audit_admin_action(
+        "attendance.manual_override",
+        request=request,
+        current_user=current_user,
+        db=db,
+        target_id=record.id,
+        before={"status": old_status.value},
+        after={"status": new_status.value,
+               "session_id": body.session_id,
+               "student_id": body.student_id,
+               "reason": (body.reason or "")[:200]},
+        severity=Severity.WARN,
     )
 
     return {
