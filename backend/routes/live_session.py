@@ -89,6 +89,7 @@ from utils.auth_utils import (
     teacher_or_above,
 )
 from utils.classpulse_ai import auto_answer_doubt
+from utils.sanitization import clean_text
 from utils.agora_token import generate_agora_token
 from utils.session_manager import manager as live_ws_manager
 from utils.live_session_ai import (
@@ -2056,7 +2057,7 @@ async def post_doubt(
         student_id=current_user["id"],
         capsule_id=sess.capsule_id,
         live_session_id=sess.id,
-        content=body.question_text.strip(),
+        content=clean_text(body.question_text.strip()),
         status=WallPostStatus.open,
         is_anonymous_to_peers=True,
     )

@@ -16,7 +16,7 @@ import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -40,7 +40,8 @@ from database import (
     UserRole,
     get_db,
 )
-from utils.auth_utils import student_only, teacher_or_above
+from utils.auth_utils import require_recent_auth, student_only, teacher_or_above
+from utils.audit_helpers import audit_admin_action
 
 logger = logging.getLogger(__name__)
 
@@ -560,7 +561,9 @@ class ResolveDisputeRequest(BaseModel):
 def resolve_dispute(
     dispute_id: int,
     body: ResolveDisputeRequest,
+    request: Request,
     current_user: dict = Depends(teacher_or_above),
+    _recent: dict = Depends(require_recent_auth(15)),
     db: Session = Depends(get_db),
 ):
     tid = current_user["id"]
@@ -610,6 +613,19 @@ def resolve_dispute(
     dispute.resolved_at = datetime.now(tz=timezone.utc)
 
     db.commit()
+
+    audit_admin_action(
+        f"dispute.{body.action}",
+        request=request,
+        current_user=current_user,
+        db=db,
+        target_id=dispute.id,
+        before={"status": "pending"},
+        after={"status": dispute.status.value,
+               "student_id": dispute.student_id,
+               "session_id": dispute.session_id,
+               "note": (body.note or "")[:200]},
+    )
 
     # Notify student
     try:

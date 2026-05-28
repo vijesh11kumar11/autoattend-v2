@@ -19,7 +19,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -60,7 +60,9 @@ from database import (
     UserRole,
     get_db,
 )
-from utils.auth_utils import hash_password, hod_or_above, principal_only, teacher_or_above
+from utils.auth_utils import hash_password, hod_or_above, principal_only, require_recent_auth, teacher_or_above
+from utils.audit_helpers import audit_admin_action
+from utils.security_logger import Severity
 from utils.classpulse_access import classpulse_summary_for_dept
 from utils.whatsapp import send_whatsapp_message
 
@@ -1820,9 +1822,11 @@ def hod_pending_disputes(
 @router.post("/hod/disputes/{dispute_id}/escalate")
 def hod_escalate_dispute(
     dispute_id:   int,
+    request:      Request,
     action:       str  = Query(..., regex="^(approve|reject)$"),
     resolution_note: Optional[str] = Query(None),
     current_user: dict    = Depends(hod_or_above),
+    _recent:      dict    = Depends(require_recent_auth(15)),
     db:           Session = Depends(get_db),
 ):
     """HOD can resolve a dispute that the teacher hasn't acted on."""
@@ -1874,6 +1878,20 @@ def hod_escalate_dispute(
             sess.present_count = new_present
 
     db.commit()
+
+    audit_admin_action(
+        f"dispute.escalate.{action}",
+        request=request,
+        current_user=current_user,
+        db=db,
+        target_id=dispute.id,
+        before={"status": "pending"},
+        after={"status": dispute.status.value,
+               "student_id": dispute.student_id,
+               "session_id": dispute.session_id,
+               "note": (resolution_note or "")[:200]},
+        severity=Severity.WARN,
+    )
 
     # Notify student
     from utils.notification_utils import send_push_notification
@@ -2294,7 +2312,9 @@ class AddTeacherRequest(BaseModel):
 @router.post("/hod/add-teacher", status_code=201)
 def add_teacher(
     body:         AddTeacherRequest,
+    request:      Request,
     current_user: dict    = Depends(hod_or_above),
+    _recent:      dict    = Depends(require_recent_auth(15)),
     db:           Session = Depends(get_db),
 ):
     # Check email uniqueness
@@ -2320,6 +2340,20 @@ def add_teacher(
 
     logger.info("🎓 HOD ADD TEACHER │ id=%d │ name=%s │ email=%s │ by user_id=%d",
                 teacher.id, teacher.name, teacher.email, current_user["id"])
+
+    audit_admin_action(
+        "user.create_teacher",
+        request=request,
+        current_user=current_user,
+        db=db,
+        target_id=teacher.id,
+        after={"name": teacher.name,
+               "email": teacher.email,
+               "role": "teacher",
+               "department_id": teacher.department_id,
+               "default_password_assigned": True},
+        severity=Severity.WARN,
+    )
 
     return {
         "id": teacher.id,

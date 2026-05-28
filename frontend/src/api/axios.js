@@ -12,7 +12,11 @@
  *     - 403 (Device mismatch / Access restricted) → /unauthorized
  *
  * Device fingerprint (NOT auth — only session binding):
- *   Generated once, stored in localStorage under "aa_device_id".
+ *   Persisted in the `aa_device` cookie (Secure, SameSite=Strict, 1-year
+ *   max-age) which is automatically echoed by the browser. The header
+ *   X-Device-ID still carries the value for backwards compatibility, but
+ *   the backend now prefers the cookie. Cookie storage tightens scope
+ *   compared to localStorage (cookie attributes + auto-expiry).
  *   Combines: userAgent + screen WxH + colour depth + timezone +
  *   canvas pixel hash (non-tracking, purely for device-binding).
  */
@@ -62,14 +66,33 @@ function generateDeviceFingerprint() {
   return hash.toString(16).padStart(8, '0');
 }
 
-const DEVICE_KEY = 'aa_device_id';
+const DEVICE_KEY = 'aa_device_id';        // legacy localStorage key (read-only migration)
+const DEVICE_COOKIE = 'aa_device';        // new canonical store
+
+function readCookie(name) {
+  const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function writeDeviceCookie(value) {
+  // 1 year, root path, Secure on HTTPS, SameSite=Strict.
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  const maxAge = 60 * 60 * 24 * 365;
+  document.cookie = `${DEVICE_COOKIE}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Strict${secure}`;
+}
 
 function getDeviceId() {
-  let id = localStorage.getItem(DEVICE_KEY);
+  // 1. Prefer cookie (preferred by backend, scoped + auto-expires).
+  let id = readCookie(DEVICE_COOKIE);
+  if (id) return id;
+  // 2. Migrate from legacy localStorage if present.
+  id = localStorage.getItem(DEVICE_KEY);
   if (!id) {
     id = generateDeviceFingerprint();
-    localStorage.setItem(DEVICE_KEY, id);
   }
+  writeDeviceCookie(id);
+  // Best-effort clean-up of legacy storage.
+  try { localStorage.removeItem(DEVICE_KEY); } catch (_) { /* ignore */ }
   return id;
 }
 

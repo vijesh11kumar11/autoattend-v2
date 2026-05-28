@@ -600,6 +600,12 @@ def get_current_user(
 
     payload = decode_access_token(token)
 
+    # Prefer aa_device cookie over X-Device-Id header. Cookies have
+    # tighter scope (SameSite=Strict, Secure, Max-Age) and survive XSS
+    # writes of arbitrary localStorage. Header fallback preserves
+    # backwards compatibility with mobile + older web clients.
+    device_id = request.cookies.get("aa_device") or x_device_id
+
     user: User | None = db.query(User).filter(User.id == payload.get("id")).first()
 
     if user is None or not user.is_active:
@@ -633,7 +639,7 @@ def get_current_user(
             )
             .first()
         )
-        if device and device.device_id != x_device_id:
+        if device and device.device_id != device_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Device mismatch — attendance must be marked from your registered device",
@@ -649,7 +655,7 @@ def get_current_user(
         "face_enrolled":    user.face_enrolled,
         "totp_enabled":     user.totp_enabled,
         "face_auth_enabled": user.face_auth_enabled,
-        "device_id":        x_device_id,
+        "device_id":        device_id,
         "iat":              payload.get("iat"),
     }
 
