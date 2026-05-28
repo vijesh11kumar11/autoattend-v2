@@ -7,6 +7,7 @@ import sys
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -25,6 +26,7 @@ from routes import suggestions
 from routes import classpulse
 from routes import live_session
 
+
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
 # configure a dedicated handler on the root logger in a startup event
@@ -41,23 +43,79 @@ Base.metadata.create_all(bind=engine)
 # ── Rate limiter ───────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
 
+
+# ── Security headers middleware ────────────────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to every HTTP response."""
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        h = response.headers
+        # HSTS — tell browsers to always use HTTPS for the next year
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        # Prevent MIME-type sniffing
+        h.setdefault("X-Content-Type-Options", "nosniff")
+        # Disallow embedding in iframes (clickjacking protection)
+        h.setdefault("X-Frame-Options", "DENY")
+        # Legacy XSS filter (belt-and-suspenders for older browsers)
+        h.setdefault("X-XSS-Protection", "1; mode=block")
+        # Don't send Referer to cross-origin destinations
+        h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # Restrict browser feature APIs
+        h.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=()",
+        )
+        # Content-Security-Policy — restrict where resources can be loaded from
+        h.setdefault(
+            "Content-Security-Policy",
+            (
+                "default-src 'self'; "
+                "script-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob:; "
+                "connect-src 'self'; "
+                "frame-ancestors 'none';"
+            ),
+        )
+        return response
+
+
+# ── FastAPI application ────────────────────────────────────────────────
+# Docs endpoints are only enabled in DEBUG mode to avoid leaking the
+# API schema in production environments.
+_docs_url    = "/api/docs"  if settings.DEBUG else None
+_redoc_url   = "/api/redoc" if settings.DEBUG else None
+_openapi_url = "/openapi.json" if settings.DEBUG else None
+
 app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Security headers — must be added BEFORE CORSMiddleware so that CORS
+# pre-flight responses also receive the security headers.
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS — allow the Vite dev server and production frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL, "http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Device-Id",
+        "X-Client-Type",
+        "Accept",
+    ],
 )
 
 # ── register routers ───────────────────────────────────────────────────
@@ -115,11 +173,15 @@ async def live_session_ws(
 ):
     """Real-time channel for a live session.
 
-    Auth: query-param `?token=<JWT>` (issued by /api/auth/login or
-    `_create_guest_token` from the join endpoint). The token's `id` (or
-    `participant_id` for guests) must match the URL `user_id`.
+    Auth: prefers the httpOnly cookie ``aa_token`` set by the web login flow.
+    Falls back to the ``?token=<JWT>`` query-param for mobile clients and
+    unauthenticated guests whose token is issued by the join endpoint.
+    The token's ``id`` (or ``participant_id`` for guests) must match the URL
+    ``user_id``.
     """
-    payload = _verify_ws_token(token)
+    # Prefer cookie (avoids token in server access-log URL)
+    ws_token = websocket.cookies.get("aa_token") or token
+    payload = _verify_ws_token(ws_token)
     if payload is None:
         await websocket.close(code=4401)
         return

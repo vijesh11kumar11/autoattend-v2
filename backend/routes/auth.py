@@ -25,7 +25,7 @@ import io
 from datetime import datetime, timedelta, timezone
 
 import qrcode
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
@@ -49,9 +49,12 @@ from schemas.auth_schemas import (
 )
 from utils.auth_utils import (
     any_authenticated,
+    clear_auth_cookie,
     create_access_token,
     create_totp_session_token,
     decode_totp_session_token,
+    decrypt_totp_secret,
+    encrypt_totp_secret,
     generate_totp_secret,
     get_current_user,
     get_totp_uri,
@@ -59,6 +62,7 @@ from utils.auth_utils import (
     is_first_login,
     needs_rehash,
     record_login,
+    set_auth_cookie,
     staff_only,
     verify_password,
     verify_totp_code,
@@ -118,10 +122,12 @@ def _get_user_by_identifier(identifier: str, db: Session) -> User | None:
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("60/minute")
 def login(
-    request:     Request,
-    body:        LoginRequest,
-    x_device_id: str     = Header(default=""),
-    db:          Session = Depends(get_db),
+    request:        Request,
+    response:       Response,
+    body:           LoginRequest,
+    x_device_id:    str     = Header(default=""),
+    x_client_type:  str     = Header(default=""),
+    db:             Session = Depends(get_db),
 ):
     now            = datetime.now(tz=timezone.utc)
     invalid_creds  = HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
@@ -201,10 +207,14 @@ def login(
             logger.info("🎓 STUDENT LOGIN │ student_id=%d │ device matched ✓", user.id)
 
         record_login(user.id, db)
+        token = _build_jwt(user, x_device_id)
+        # Web clients receive token in httpOnly cookie; mobile clients receive it in body
+        if x_client_type.lower() != "mobile":
+            set_auth_cookie(response, token)
         logger.info("🎓 STUDENT LOGIN success │ student_id=%d │ JWT issued │ face_enrollment_required=%s",
                     user.id, not user.face_enrolled)
         return LoginResponse(
-            access_token=_build_jwt(user, x_device_id),
+            access_token=token,
             role=user.role.value,
             name=user.name,
             face_enrollment_required=not user.face_enrolled,
@@ -223,9 +233,12 @@ def login(
 
     # TOTP not yet set up → issue JWT but flag that setup is required
     record_login(user.id, db)
+    token = _build_jwt(user, x_device_id)
+    if x_client_type.lower() != "mobile":
+        set_auth_cookie(response, token)
     logger.info("👨‍🏫 STAFF LOGIN success │ user_id=%d │ JWT issued │ totp_setup_required=True", user.id)
     return LoginResponse(
-        access_token=_build_jwt(user, x_device_id),
+        access_token=token,
         role=user.role.value,
         name=user.name,
         totp_setup_required=True,
@@ -238,9 +251,11 @@ def login(
 
 @router.post("/verify-totp", response_model=LoginResponse)
 def verify_totp_endpoint(
-    body:        VerifyTOTPRequest,
-    x_device_id: str     = Header(default=""),
-    db:          Session = Depends(get_db),
+    response:       Response,
+    body:           VerifyTOTPRequest,
+    x_device_id:    str     = Header(default=""),
+    x_client_type:  str     = Header(default=""),
+    db:             Session = Depends(get_db),
 ):
     payload = decode_totp_session_token(body.totp_session_token)
     user_id: int = payload["user_id"]
@@ -267,8 +282,11 @@ def verify_totp_endpoint(
             f"Account locked for {remaining} more minute(s). Try again later.",
         )
 
+    # Decrypt TOTP secret before verification (transparently handles legacy plaintext rows)
+    totp_secret = decrypt_totp_secret(user.totp_secret)
+
     # Verify the TOTP code
-    if not verify_totp_code(user.totp_secret, body.totp_code):
+    if not verify_totp_code(totp_secret, body.totp_code):
         user.totp_fail_count = (user.totp_fail_count or 0) + 1
         logger.warning("🔑 TOTP verify failed │ user_id=%d │ fail_count=%d/%d",
                        user_id, user.totp_fail_count, _TOTP_MAX_FAIL)
@@ -293,9 +311,12 @@ def verify_totp_endpoint(
     db.commit()
 
     record_login(user.id, db)
+    token = _build_jwt(user, x_device_id)
+    if x_client_type.lower() != "mobile":
+        set_auth_cookie(response, token)
     logger.info("🔑 TOTP verify success │ user_id=%d │ role=%s │ JWT issued ✓", user.id, user.role.value)
     return LoginResponse(
-        access_token=_build_jwt(user, x_device_id),
+        access_token=token,
         role=user.role.value,
         name=user.name,
     )
@@ -338,7 +359,7 @@ def totp_confirm(
         )
 
     db.query(User).filter(User.id == current_user["id"]).update(
-        {"totp_secret": body.secret, "totp_enabled": True},
+        {"totp_secret": encrypt_totp_secret(body.secret), "totp_enabled": True},
         synchronize_session=False,
     )
     db.commit()
@@ -510,12 +531,17 @@ def disable_face(
 # ═══════════════════════════════════════════════════════════════════════
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(current_user: dict = Depends(any_authenticated)):
+def logout(
+    response:     Response,
+    current_user: dict = Depends(any_authenticated),
+):
     """
     JWTs are stateless. True session invalidation is handled via
     password_changed_at (checked in get_current_user).
-    The frontend must delete the token from secure storage on logout.
+    Clears the httpOnly auth cookie for web clients.
+    Mobile clients must delete the token from secure storage on their side.
     """
+    clear_auth_cookie(response)
     return MessageResponse(message="Logged out successfully.")
 
 

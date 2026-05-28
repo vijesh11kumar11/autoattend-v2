@@ -23,7 +23,7 @@ export default function StudentLiveSession() {
   const [search] = useSearchParams();
   const joinCode = search.get('join');
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
 
   const [info, setInfo] = useState(null);
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -148,7 +148,9 @@ export default function StudentLiveSession() {
   useEffect(() => {
     if (!info) return;
     const guestToken = sessionStorage.getItem('aa_guest_token');
-    const wsToken = guestToken || token || localStorage.getItem('aa_token') || '';
+    // Logged-in users auth via httpOnly cookie (no query-param needed).
+    // Guests must pass their short-lived token as a query param.
+    const wsToken = guestToken || '';
     const userId = info.guest ? info.participant_id : (user?.id || 0);
     if (!userId) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -226,7 +228,7 @@ export default function StudentLiveSession() {
     ws.onerror = () => setBandwidth('poor');
     ws.onclose  = () => { wsRef.current = null; };
     return () => { try { ws.close(); } catch {} };
-  }, [info?.session?.id, info?.guest, sessionId, token, user?.id]);
+  }, [info?.session?.id, info?.guest, sessionId, user?.id]);
 
   // ─── Session timer ──────────────────────────────────────────────────
   useEffect(() => {

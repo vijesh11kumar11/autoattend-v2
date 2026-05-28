@@ -49,9 +49,22 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str
     TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
 
+    # ── Cookie settings (for httpOnly JWT on web clients) ─────────────
+    # Production cross-site deployment (e.g. Vercel + Render):
+    #   COOKIE_SECURE=True, COOKIE_SAMESITE=none
+    # Same-site / local dev:
+    #   COOKIE_SECURE=False, COOKIE_SAMESITE=lax
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "strict"
+
+    # ── TOTP secret encryption (Fernet) ──────────────────────────────
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Empty string = encryption disabled (legacy plaintext mode)
+    TOTP_ENCRYPTION_KEY: str = ""
+
     # ── App settings ──────────────────────────────────────────────────
     APP_NAME: str = "AutoAttend AI"
-    DEBUG: bool = True
+    DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
     COLLEGE_NAME: str = "Your College Name"
 

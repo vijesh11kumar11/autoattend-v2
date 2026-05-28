@@ -84,31 +84,29 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
+  // Send the httpOnly aa_token cookie with every cross-origin request.
+  withCredentials: true,
 });
 
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('aa_token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      // Guest fallback for live-session endpoints — use the guest token
-      // stored by JoinSessionPage so heartbeat/details/etc work.
-      const url = config.url || '';
-      if (url.includes('/live/')) {
-        const guestToken = sessionStorage.getItem('aa_guest_token');
-        if (guestToken) {
-          config.headers['Authorization'] = `Bearer ${guestToken}`;
-        }
+    // Web clients authenticate via httpOnly cookie — no manual Authorization header needed.
+    // Only inject a ****** for guest live-session calls that use a
+    // short-lived token stored in sessionStorage (no httpOnly cookie for guests).
+    const url = config.url || '';
+    if (url.includes('/live/')) {
+      const guestToken = sessionStorage.getItem('aa_guest_token');
+      if (guestToken) {
+        config.headers['Authorization'] = `******;
       }
     }
-    config.headers['X-Device-ID'] = getDeviceId();
+    config.headers['X-Client-Type'] = 'web';
+    config.headers['X-Device-ID']   = getDeviceId();
     return config;
   },
   (error) => Promise.reject(error),
 );
-
 // Response interceptor
 api.interceptors.response.use(
   (response) => response,
@@ -125,8 +123,7 @@ api.interceptors.response.use(
       url.includes('/live/liveness');
 
     if (status === 401 && !isPublicLiveCall) {
-      // Token expired or invalid — force logout
-      localStorage.removeItem('aa_token');
+      // Cookie expired or invalid — clear client-side user metadata and redirect
       localStorage.removeItem('aa_user');
       // Use replace to prevent back navigation to protected page
       window.location.replace('/login');
