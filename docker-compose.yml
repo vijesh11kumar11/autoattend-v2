@@ -1,0 +1,61 @@
+# ──────────────────────────────────────────────────────────────────────
+# AutoAttend AI — local dev compose stack
+# ──────────────────────────────────────────────────────────────────────
+# Brings up:
+#   - Postgres 16            (port 5432)
+#   - FastAPI backend        (port 8000)
+#   - React frontend (nginx) (port 8080 -> 80)
+#
+# Usage:
+#   cp backend/.env.example backend/.env  (and fill secrets)
+#   docker compose up --build
+# ──────────────────────────────────────────────────────────────────────
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-autoattend}
+      POSTGRES_USER:     ${POSTGRES_USER:-autoattend}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autoattend_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-autoattend} -d ${POSTGRES_DB:-autoattend}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      # Force the in-container DB URL regardless of what's in .env so the
+      # local stack always points at the bundled Postgres service.
+      DATABASE_URL:      postgresql+asyncpg://${POSTGRES_USER:-autoattend}:${POSTGRES_PASSWORD:-autoattend_dev}@db:5432/${POSTGRES_DB:-autoattend}
+      DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-autoattend}:${POSTGRES_PASSWORD:-autoattend_dev}@db:5432/${POSTGRES_DB:-autoattend}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Points the SPA at the backend container exposed on the host network.
+        VITE_API_BASE_URL: "http://localhost:8000"
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:

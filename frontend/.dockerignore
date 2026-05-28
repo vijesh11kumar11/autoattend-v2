@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+.vite
+.cache
+*.log
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.idea
+.vscode
+Dockerfile
+.dockerignore
+coverage

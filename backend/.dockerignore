@@ -1,0 +1,25 @@
+# AutoAttend backend container ignore list
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+env
+.env
+.env.*
+!.env.example
+*.log
+*.sqlite3
+uploads/classpulse/*
+!uploads/classpulse/.gitkeep
+alembic/versions/__pycache__
+.git
+.gitignore
+.idea
+.vscode
+Dockerfile
+.dockerignore

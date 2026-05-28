@@ -15,6 +15,10 @@ const _FALLBACK = 'http://192.168.1.100:8000';
 
 export const API_BASE_URL         = _ENV_URL ?? _FALLBACK;
 export const API_TIMEOUT          = 15_000;
+// STARTUP_PING_TIMEOUT is intentionally SHORTER than API_TIMEOUT (#89):
+// the startup health-check should fail fast so we can show "server
+// unreachable" before the user blames the next real request. Long-running
+// in-flight requests still get the full API_TIMEOUT window.
 export const STARTUP_PING_TIMEOUT = 10_000;
 export const IS_USING_FALLBACK    = !_ENV_URL;
 

@@ -505,9 +505,30 @@ def _configure_logging():
         uvi_logger = logging.getLogger(uvi_name)
         uvi_logger.handlers.clear()
         uvi_logger.propagate = True  # let them use root handler
-    # Add our single handler
+    # Add our single handler.
+    # When LOG_FORMAT_MODE='json', emit one JSON object per record so log
+    # aggregators (Datadog/CloudWatch/ELK) can parse without regex rules.
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
+    if getattr(settings, "LOG_FORMAT_MODE", "text").lower() == "json":
+        import json as _json
+        class _JsonFormatter(logging.Formatter):
+            def format(self, record):  # noqa: D401
+                payload = {
+                    "ts":       self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+                    "level":    record.levelname,
+                    "logger":   record.name,
+                    "msg":      record.getMessage(),
+                }
+                if record.exc_info:
+                    payload["exc"] = self.formatException(record.exc_info)
+                # Surface request_id when our middleware attached it.
+                rid = getattr(record, "request_id", None)
+                if rid:
+                    payload["request_id"] = rid
+                return _json.dumps(payload, default=str)
+        handler.setFormatter(_JsonFormatter())
+    else:
+        handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
     root.addHandler(handler)
     root.setLevel(logging.INFO)
     # Silence noisy libraries

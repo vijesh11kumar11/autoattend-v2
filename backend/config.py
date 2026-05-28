@@ -98,6 +98,18 @@ class Settings(BaseSettings):
     # Same Fernet format. May reuse TOTP_ENCRYPTION_KEY value or a separate key.
     SESSION_SECRET_ENCRYPTION_KEY: str = ""
 
+    # ── DB connection pool (tunable per deployment scale) ────────────
+    # Defaults match the previous hardcoded values in database.py.
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_RECYCLE_SECONDS: int = 1800   # recycle stale conns hourly-ish
+    DB_POOL_TIMEOUT_SECONDS: int = 30     # wait for free conn before failing
+
+    # ── Logging ──────────────────────────────────────────────────────
+    # 'text' (default human-readable pipe-separated lines) or 'json'
+    # (one JSON object per log record — ready for Datadog/ELK/CloudWatch).
+    LOG_FORMAT_MODE: str = "text"
+
     # ── Attendance rules ──────────────────────────────────────────────
     ATTENDANCE_THRESHOLD: float = 75.0
 

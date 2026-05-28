@@ -17,6 +17,7 @@
  */
 
 import React, {
+  memo,
   useCallback,
   useEffect,
   useRef,
@@ -62,6 +63,38 @@ function getBle() {
   if (!_ble) _ble = new BleManager();
   return _ble;
 }
+
+// ─── Memoized student chip (#74) ────────────────────────────────────────────
+// The attendance list polls every 5s; without memoization every chip
+// re-renders on every tick. We compare only the fields that affect output.
+const StudentChip = memo(
+  function StudentChip({ item, onPress }) {
+    const isPresent = item.status === 'present' || item.status === 'late';
+    return (
+      <TouchableOpacity
+        style={[styles.chip, isPresent ? styles.chipPresent : styles.chipAbsent]}
+        activeOpacity={0.7}
+        onPress={() => onPress(item)}
+      >
+        <Ionicons
+          name={isPresent ? 'checkmark-circle' : 'ellipse-outline'}
+          size={14}
+          color={isPresent ? '#15803d' : '#94a3b8'}
+        />
+        <Text
+          style={[styles.chipText, isPresent && styles.chipTextPresent]}
+          numberOfLines={1}
+        >
+          {item.name ?? item.student_name ?? item.roll_number ?? '—'}
+        </Text>
+      </TouchableOpacity>
+    );
+  },
+  (prev, next) =>
+    prev.item.status === next.item.status &&
+    (prev.item.id ?? prev.item.student_id) === (next.item.id ?? next.item.student_id) &&
+    (prev.item.name ?? prev.item.student_name) === (next.item.name ?? next.item.student_name),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function QRGenerateScreen() {
@@ -553,31 +586,18 @@ export default function QRGenerateScreen() {
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(s) => String(s.id ?? s.student_id ?? s.roll_number)}
                 contentContainerStyle={styles.chipList}
-                renderItem={({ item }) => {
-                  const isPresent = item.status === 'present' || item.status === 'late';
-                  return (
-                    <TouchableOpacity
-                      style={[styles.chip, isPresent ? styles.chipPresent : styles.chipAbsent]}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setOverrideStudent(item);
-                        setOverrideStatus(null);
-                      }}
-                    >
-                      <Ionicons
-                        name={isPresent ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={14}
-                        color={isPresent ? '#15803d' : '#94a3b8'}
-                      />
-                      <Text
-                        style={[styles.chipText, isPresent && styles.chipTextPresent]}
-                        numberOfLines={1}
-                      >
-                        {item.name ?? item.student_name ?? item.roll_number ?? '—'}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                }}
+                renderItem={({ item }) => (
+                  <StudentChip
+                    item={item}
+                    onPress={(it) => {
+                      setOverrideStudent(it);
+                      setOverrideStatus(null);
+                    }}
+                  />
+                )}
+                initialNumToRender={12}
+                windowSize={5}
+                removeClippedSubviews
               />
             </View>
           )}
