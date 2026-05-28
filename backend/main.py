@@ -61,10 +61,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         h.setdefault("X-XSS-Protection", "1; mode=block")
         # Don't send Referer to cross-origin destinations
         h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        # Restrict browser feature APIs
+        # Restrict browser feature APIs — allow camera for face verification (same-origin only)
         h.setdefault(
             "Permissions-Policy",
-            "camera=(), microphone=(), geolocation=(), payment=()",
+            "camera=(self), microphone=(), geolocation=(), payment=()",
         )
         # Content-Security-Policy — restrict where resources can be loaded from
         h.setdefault(

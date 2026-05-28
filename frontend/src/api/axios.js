@@ -98,7 +98,7 @@ api.interceptors.request.use(
     if (url.includes('/live/')) {
       const guestToken = sessionStorage.getItem('aa_guest_token');
       if (guestToken) {
-        config.headers['Authorization'] = `******;
+        config.headers['Authorization'] = `Bearer ${guestToken}`;
       }
     }
     config.headers['X-Client-Type'] = 'web';
