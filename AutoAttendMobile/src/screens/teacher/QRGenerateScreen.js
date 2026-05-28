@@ -161,17 +161,28 @@ export default function QRGenerateScreen() {
   useEffect(() => {
     if (phase !== 'active' || !sessionId) return;
     let alive = true;
+    let consecutiveFailures = 0;
 
     async function fetchQR() {
       try {
         const { data } = await client.get(`/qr/token/${sessionId}`);
         if (!alive) return;
+        consecutiveFailures = 0;
         // Crossfade
         Animated.timing(qrOpacity, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
           setQrValue(data.qr_token ?? data.token ?? JSON.stringify(data));
           Animated.timing(qrOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
         });
-      } catch { /* retry next cycle */ }
+      } catch (err) {
+        // #68 surface failure instead of silently freezing the QR.
+        consecutiveFailures += 1;
+        if (alive && consecutiveFailures === 3) {
+          Alert.alert(
+            'QR Refresh Stalled',
+            'Could not fetch a new QR token from the server. Check your connection — the QR may be stale.',
+          );
+        }
+      }
     }
 
     fetchQR(); // initial
@@ -207,23 +218,50 @@ export default function QRGenerateScreen() {
     return () => { clearInterval(qrCountdownRef.current); clearInterval(cdId); };
   }, [phase, progressAnim]);
 
-  // Poll attendance list every 5s
+  // Poll attendance list with re-entrancy guard + exponential backoff (#67).
+  // Original code used a fixed 5s setInterval which stacked concurrent requests
+  // against a slow server. We now self-schedule with setTimeout so the next
+  // poll never starts until the previous one settles, and back off on failure.
   useEffect(() => {
     if (phase !== 'active' || !sessionId) return;
 
+    let cancelled = false;
+    let timer     = null;
+    let inflight  = false;
+    let backoffMs = 5000;
+    const MIN_MS  = 5000;
+    const MAX_MS  = 30000;
+
     async function poll() {
+      if (cancelled || inflight) return;
+      inflight = true;
       try {
         const { data } = await client.get(`/attendance/session/${sessionId}/students`);
+        if (cancelled) return;
         const list = Array.isArray(data) ? data : (data.students ?? []);
         setStudents(list);
         const present = list.filter((s) => s.status === 'present' || s.status === 'late').length;
         setPresentCount(present);
         setTotalCount(list.length);
-      } catch { /* retry */ }
+        backoffMs = MIN_MS;
+      } catch {
+        // Slow / failing server: back off so we don't pile on.
+        backoffMs = Math.min(MAX_MS, Math.round(backoffMs * 1.7));
+      } finally {
+        inflight = false;
+        if (!cancelled) {
+          timer = setTimeout(poll, backoffMs);
+          attendPollRef.current = timer;
+        }
+      }
     }
     poll();
-    attendPollRef.current = setInterval(poll, 5000);
-    return () => clearInterval(attendPollRef.current);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (attendPollRef.current) clearTimeout(attendPollRef.current);
+      attendPollRef.current = null;
+    };
   }, [phase, sessionId]);
 
   // BLE beacon broadcast

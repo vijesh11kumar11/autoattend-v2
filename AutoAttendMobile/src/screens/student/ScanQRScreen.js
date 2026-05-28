@@ -120,6 +120,24 @@ export default function ScanQRScreen({ navigation }) {
   const livenessFrames    = useRef([]);
   const livenessIntervals = useRef([]);
 
+  // ── Unmount cleanup (#64) ─────────────────────────────────────────────────
+  // The liveness flow pushes a mix of setInterval + setTimeout IDs into
+  // `livenessIntervals.current`. If the user navigates away mid-capture,
+  // any still-pending timers fire setState on an unmounted component.
+  // We clear everything (both clearInterval + clearTimeout are safe on
+  // either ID type in React Native) on unmount.
+  useEffect(() => {
+    return () => {
+      try {
+        livenessIntervals.current.forEach((id) => {
+          clearInterval(id);
+          clearTimeout(id);
+        });
+      } catch { /* ignore */ }
+      livenessIntervals.current = [];
+    };
+  }, []);
+
   // ── QR scan ───────────────────────────────────────────────────────────────
   const [qrScanned, setQrScanned] = useState(false);
 

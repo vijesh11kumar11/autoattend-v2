@@ -156,6 +156,17 @@ export default function LoginPage() {
   });
   const [loading,    setLoading]     = useState(false);
   const [error,      setError]       = useState('');
+  const [notice,     setNotice]      = useState(() => {
+    // Pick up reason set by axios interceptor on forced redirect (#60).
+    try {
+      const reason = sessionStorage.getItem('aa_login_reason');
+      sessionStorage.removeItem('aa_login_reason');
+      if (reason === 'session_expired') {
+        return 'Your session expired. Please sign in again.';
+      }
+    } catch { /* private mode */ }
+    return '';
+  });
 
   // TOTP modal state
   const [showTotp,      setShowTotp]     = useState(false);
@@ -202,13 +213,16 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = (err.response?.data?.detail || '').toString();
+      const d      = detail.toLowerCase();
+      // Be tolerant of backend wording drift (#63): match by substring,
+      // not exact equality, so a copy-edit on the backend doesn't break UX.
       setError(
-        detail === 'Invalid credentials'
+        d.includes('invalid credential') || d.includes('wrong password') || d.includes('incorrect')
           ? 'Wrong identifier or password.'
-          : detail === 'Account is inactive'
+          : d.includes('inactive') || d.includes('disabled')
           ? 'Your account is inactive. Contact the administrator.'
-          : detail === 'Device not registered'
+          : d.includes('device') && (d.includes('not registered') || d.includes('mismatch'))
           ? 'This device is not registered. Log in from your registered device.'
           : detail || 'Login failed. Please try again.',
       );
@@ -317,6 +331,23 @@ export default function LoginPage() {
             <h2 className="text-2xl font-bold text-slate-900">Welcome back</h2>
             <p className="text-slate-500 text-sm">Sign in to your account to continue.</p>
           </div>
+
+          {/* Session-expired / forced-redirect notice (#60) */}
+          {notice && !error && (
+            <div role="status" className="bg-amber-50 border border-amber-200 text-amber-800
+                                          rounded-lg px-4 py-3 text-sm flex items-start gap-2">
+              <span className="text-base leading-none mt-0.5">🔒</span>
+              <span className="flex-1">{notice}</span>
+              <button
+                type="button"
+                onClick={() => setNotice('')}
+                className="text-amber-700/70 hover:text-amber-900 text-xs"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Error banner */}
           {error && (

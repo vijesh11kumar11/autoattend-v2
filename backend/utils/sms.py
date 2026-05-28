@@ -39,11 +39,14 @@ def send_sms(phone: str, message: str) -> dict:
             logger.warning("SMS skipped (FAST2SMS_API_KEY not configured) — DEBUG mode")
         return {"ok": False, "error": "FAST2SMS_API_KEY not configured"}
 
-    # Normalize to 10-digit Indian number
+    # Normalize to 10-digit Indian number.
+    # Reject inputs that are absurdly long up-front (defence vs payload abuse).
+    if not isinstance(phone, str) or len(phone) > 32:
+        return {"ok": False, "error": "Invalid phone: too long or not a string"}
     cleaned = phone.strip().replace(" ", "").replace("-", "").lstrip("+")
     if cleaned.startswith("91") and len(cleaned) == 12:
         cleaned = cleaned[2:]
-    if len(cleaned) != 10:
+    if len(cleaned) != 10 or not cleaned.isdigit():
         return {"ok": False, "error": f"Invalid phone: {phone}"}
 
     try:

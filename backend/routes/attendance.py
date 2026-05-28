@@ -341,7 +341,15 @@ def mark_attendance(
     logger.info("✅ STEP 1a │ Session found │ id=%d │ status=%s │ subject_id=%d",
                 session.id, session.status.value, session.subject_id)
 
-    subject: Subject = db.query(Subject).filter(Subject.id == session.subject_id).first()
+    subject: Optional[Subject] = db.query(Subject).filter(Subject.id == session.subject_id).first()
+    if subject is None:
+        # Subject deleted/renamed while session was live — bail safely instead of NoneType deref.
+        logger.error("❌ STEP 1a │ session_id=%d │ subject_id=%d missing — refusing to mark",
+                     session.id, session.subject_id)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Subject for this session is no longer available. Contact your teacher.",
+        )
 
     # ── STEP 1b — Enrolled? ───────────────────────────────────────────
     student: User = db.query(User).filter(User.id == student_id).first()
@@ -367,13 +375,24 @@ def mark_attendance(
         )
         .first()
     )
-    if record and record.status == AttendanceStatus.present:
+    # Block re-mark when the record is any "finalized" status set by a teacher
+    # (present, late, excused). Only `absent` records — created at session start —
+    # may be promoted by a successful scan. This prevents a student from
+    # overwriting a teacher's manual override.
+    _finalized = {
+        AttendanceStatus.present,
+        AttendanceStatus.late,
+        AttendanceStatus.medical_leave,
+        AttendanceStatus.duty_leave,
+    }
+    if record and record.status in _finalized:
         checks["already_marked"] = True
-        logger.info("ℹ️ STEP 1c │ student_id=%d │ already marked present — skipping", student_id)
+        logger.info("ℹ️ STEP 1c │ student_id=%d │ already finalised as %s — skipping",
+                    student_id, record.status.value)
         return AttendanceResultResponse(
             success      = False,
             status       = "failed",
-            message      = "Attendance already marked as present for this session.",
+            message      = f"Attendance already marked as {record.status.value} for this session.",
             subject_name = subject.name,
             marked_at    = record.marked_at,
             checks       = AttendanceChecks(**checks),
@@ -503,11 +522,13 @@ def mark_attendance(
         logger.info("✅ STEP 5 │ GPS VERIFIED │ distance=%.1f m │ accuracy=%.1f m │ suspicious=%s",
                     gps_distance or 0.0, body.student_gps_accuracy or 0.0, gps_flagged)
 
-        # Upsert most-recent GPS snapshot for next velocity check
+        # Upsert most-recent GPS snapshot for next velocity check.
+        # with_for_update() locks the row so two concurrent scans for the same
+        # student don't both read a stale row and both insert duplicates.
         try:
             snap = db.query(StudentGPSSnapshot).filter(
                 StudentGPSSnapshot.user_id == student_id
-            ).first()
+            ).with_for_update().first()
             if snap:
                 snap.latitude    = body.student_latitude
                 snap.longitude   = body.student_longitude

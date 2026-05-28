@@ -178,6 +178,9 @@ api.interceptors.response.use(
         return api.request(cfg);
       } catch {
         if (window.location.pathname !== '/login') {
+          // Tell LoginPage why we got bounced so we can surface a banner
+          // instead of a silent redirect.
+          try { sessionStorage.setItem('aa_login_reason', 'session_expired'); } catch { /* ignore */ }
           window.location.replace('/login');
         }
         return Promise.reject(error);
@@ -186,6 +189,7 @@ api.interceptors.response.use(
 
     if (status === 401 && !isPublicLiveCall) {
       if (window.location.pathname !== '/login') {
+        try { sessionStorage.setItem('aa_login_reason', 'session_expired'); } catch { /* ignore */ }
         window.location.replace('/login');
       }
     } else if (status === 403 && !isPublicLiveCall) {

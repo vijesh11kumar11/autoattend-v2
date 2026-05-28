@@ -9,6 +9,7 @@ Rules enforced here:
 """
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -24,6 +25,8 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import DeviceRegistry, FaceVerifyToken, LoginAttemptLog, RefreshToken, User, UserRole, get_db
+
+logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════
 # Auth cookie helpers (web only — mobile uses Bearer)
@@ -198,11 +201,14 @@ def log_login_attempt(
             user_agent      = (user_agent or "")[:500] or None,
         ))
         db.commit()
-    except Exception:
+    except Exception as exc:
+        # Best-effort SIEM row — never crash login on logging failure,
+        # but DO surface the error so real DB bugs aren't invisible.
+        logger.warning("log_login_attempt failed: %s", exc)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as rb_exc:
+            logger.warning("log_login_attempt rollback failed: %s", rb_exc)
 
 
 # ── IP-based brute-force lockout (defends against credential-stuffing) ──
