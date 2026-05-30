@@ -1,0 +1,9 @@
+# Normalize line endings across platforms.
+* text=auto
+
+# Shell scripts MUST use LF — CRLF breaks the shebang inside Linux containers.
+*.sh text eol=lf
+
+# Dockerfiles / entrypoints are consumed by Linux tooling.
+Dockerfile text eol=lf
+docker-entrypoint.sh text eol=lf
