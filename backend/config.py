@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str
     TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
 
+    # ── Multi-tenancy ─────────────────────────────────────────────────
+    # Set True only after ops has backfilled college_id on all legacy rows.
+    # Safe to deploy with False — isolation logic is plumbed but dormant.
+    ENFORCE_TENANT_ISOLATION: bool = False
+
     # ── App settings ──────────────────────────────────────────────────
     APP_NAME: str = "AutoAttend AI"
     DEBUG: bool = False

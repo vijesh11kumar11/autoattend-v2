@@ -645,6 +645,12 @@ def get_current_user(
                 detail="Device mismatch — attendance must be marked from your registered device",
             )
 
+    # Stamp session info for the ORM listener (tenant isolation + audit).
+    # super_admin bypasses tenant filtering even when enforcement is on.
+    db.info["college_id"] = user.college_id
+    db.info["user_role"]  = user.role.value
+    db.info["skip_tenant_filter"] = (user.role == UserRole.super_admin)
+
     return {
         "id":               user.id,
         "name":             user.name,
@@ -711,6 +717,29 @@ teacher_or_above   = _require_role({"principal", "hod", "teacher"})
 staff_only         = _require_role({"principal", "hod", "teacher"})
 any_authenticated  = _require_role({"principal", "hod", "teacher", "student"})
 student_only       = _require_role({"student"})
+
+
+def require_super_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI dependency — allows only super_admin users."""
+    if current_user["role"] != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-admin access required",
+        )
+    return current_user
+
+
+def college_scoped(current_user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI dependency — ensures the caller has a college_id in their token.
+    super_admin users without a college_id may still call college-scoped
+    endpoints but tenant filtering is skipped for them.
+    """
+    if current_user["role"] != "super_admin" and not current_user.get("college_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="College-scoped access required — no college assigned to your account",
+        )
+    return current_user
 
 
 # ═══════════════════════════════════════════════════════════════════════

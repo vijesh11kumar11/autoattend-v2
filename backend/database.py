@@ -23,10 +23,11 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     create_engine,
+    event,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker, with_loader_criteria
 
 from config import settings
 
@@ -36,6 +37,7 @@ from config import settings
 # ═══════════════════════════════════════════════════════════════════════
 
 class UserRole(str, enum.Enum):
+    super_admin = "super_admin"
     principal = "principal"
     hod       = "hod"
     teacher   = "teacher"
@@ -203,6 +205,32 @@ class Base(DeclarativeBase):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Mixins — soft-delete and multi-tenancy
+# ═══════════════════════════════════════════════════════════════════════
+
+class SoftDeleteMixin:
+    """Adds is_deleted / deleted_at to a mapped model.
+    A do_orm_execute listener (registered below) injects
+    ``WHERE is_deleted = false`` on every ORM SELECT automatically.
+    """
+    is_deleted = Column(Boolean, nullable=False, default=False, server_default="false")
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TenantMixin:
+    """Adds college_id FK to tenant-scoped models.
+    Declared nullable so legacy rows are unaffected until ops backfills.
+    Tenant isolation is toggled via ENFORCE_TENANT_ISOLATION in config.
+    """
+    college_id = Column(
+        Integer,
+        ForeignKey("colleges.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Engine & Session
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -221,11 +249,58 @@ SessionLocal = sessionmaker(
 )
 
 
+# ── Global ORM listener: soft-delete + tenant isolation ─────────────────
+# Registered after SessionLocal is defined so the factory exists.
+# Injects criteria on every ORM SELECT that touches a mixin model.
+@event.listens_for(SessionLocal, "do_orm_execute")
+def _autotenant_and_softdelete(orm_execute_state):  # type: ignore[misc]
+    if not orm_execute_state.is_select:
+        return
+
+    # Always filter out soft-deleted rows
+    orm_execute_state.statement = orm_execute_state.statement.options(
+        with_loader_criteria(
+            SoftDeleteMixin,
+            lambda cls: cls.is_deleted == False,  # noqa: E712
+            include_aliases=True,
+        )
+    )
+
+    # Tenant isolation — off by default; ops enables per environment
+    if settings.ENFORCE_TENANT_ISOLATION:
+        college_id = orm_execute_state.session.info.get("college_id")
+        skip = orm_execute_state.session.info.get("skip_tenant_filter", False)
+        if college_id and not skip:
+            _cid = college_id  # capture for closure
+            orm_execute_state.statement = orm_execute_state.statement.options(
+                with_loader_criteria(
+                    TenantMixin,
+                    lambda cls, cid=_cid: cls.college_id == cid,
+                    include_aliases=True,
+                )
+            )
+
+
+def active_query(session, model_cls):
+    """Convenience helper: return a query pre-filtered to non-deleted rows.
+    Prefer using the ORM listener directly; this is for explicit callsites.
+    """
+    return session.query(model_cls).filter(model_cls.is_deleted == False)  # noqa: E712
+
+
+def tenant_query(session, model_cls, college_id: int):
+    """Return a query scoped to a specific college (and non-deleted)."""
+    q = active_query(session, model_cls)
+    if hasattr(model_cls, "college_id"):
+        q = q.filter(model_cls.college_id == college_id)
+    return q
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # TABLE 1 — colleges
 # ═══════════════════════════════════════════════════════════════════════
 
-class College(Base):
+class College(SoftDeleteMixin, Base):
     __tablename__ = "colleges"
 
     id         = Column(Integer, primary_key=True, index=True)
@@ -245,7 +320,7 @@ class College(Base):
 # TABLE 2 — departments
 # ═══════════════════════════════════════════════════════════════════════
 
-class Department(Base):
+class Department(SoftDeleteMixin, Base):
     __tablename__ = "departments"
     __table_args__ = (
         UniqueConstraint("college_id", "code", name="uq_department_college_code"),
@@ -268,7 +343,7 @@ class Department(Base):
 # TABLE 3 — courses
 # ═══════════════════════════════════════════════════════════════════════
 
-class Course(Base):
+class Course(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "courses"
     __table_args__ = (
         UniqueConstraint("department_id", "code", name="uq_course_department_code"),
@@ -293,7 +368,7 @@ class Course(Base):
 # TABLE 4b — sections  (A, B, C subdivisions of course+semester)
 # ═══════════════════════════════════════════════════════════════════════
 
-class Section(Base):
+class Section(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "sections"
     __table_args__ = (
         UniqueConstraint("course_id", "semester", "name", name="uq_section_course_semester_name"),
@@ -320,7 +395,7 @@ class Section(Base):
 # TABLE 5 — users  (defined before Subject to allow FK ref in Subject)
 # ═══════════════════════════════════════════════════════════════════════
 
-class User(Base):
+class User(SoftDeleteMixin, Base):
     __tablename__ = "users"
     __table_args__ = (
         Index("ix_users_college_id",    "college_id"),
@@ -392,7 +467,7 @@ class User(Base):
 # TABLE 4 — subjects
 # ═══════════════════════════════════════════════════════════════════════
 
-class Subject(Base):
+class Subject(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "subjects"
     __table_args__ = (
         UniqueConstraint("course_id", "code", "semester", name="uq_subject_course_code_semester"),
@@ -422,7 +497,7 @@ class Subject(Base):
 # TABLE 6 — device_registry
 # ═══════════════════════════════════════════════════════════════════════
 
-class DeviceRegistry(Base):
+class DeviceRegistry(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "device_registry"
     __table_args__ = (
         UniqueConstraint("user_id", name="uq_device_registry_user"),
@@ -473,7 +548,7 @@ class OTPLog(Base):
 # TABLE 8 — timetable
 # ═══════════════════════════════════════════════════════════════════════
 
-class Timetable(Base):
+class Timetable(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "timetable"
     __table_args__ = (
         UniqueConstraint("subject_id", "day_of_week", "start_time", name="uq_timetable_subject_day_start"),
@@ -508,7 +583,7 @@ class Timetable(Base):
 # TABLE 9 — attendance_sessions
 # ═══════════════════════════════════════════════════════════════════════
 
-class AttendanceSession(Base):
+class AttendanceSession(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "attendance_sessions"
     __table_args__ = (
         UniqueConstraint("subject_id", "date", "section_id", name="uq_attendance_session_subject_date_section"),
@@ -606,7 +681,7 @@ class FaceVerifyToken(Base):
 # TABLE 12 — attendance_records
 # ═══════════════════════════════════════════════════════════════════════
 
-class AttendanceRecord(Base):
+class AttendanceRecord(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "attendance_records"
     __table_args__ = (
         UniqueConstraint("session_id", "student_id", name="uq_attendance_record_session_student"),
@@ -638,7 +713,7 @@ class AttendanceRecord(Base):
 # TABLE 13 — attendance_audit
 # ═══════════════════════════════════════════════════════════════════════
 
-class AttendanceAudit(Base):
+class AttendanceAudit(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "attendance_audit"
     __table_args__ = (
         Index("ix_attendance_audit_session_id",  "session_id"),
@@ -668,7 +743,7 @@ class AttendanceAudit(Base):
 # TABLE 14 — alerts_log
 # ═══════════════════════════════════════════════════════════════════════
 
-class AlertsLog(Base):
+class AlertsLog(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "alerts_log"
     __table_args__ = (
         Index("ix_alerts_log_student_id", "student_id"),
@@ -693,7 +768,7 @@ class AlertsLog(Base):
 # TABLE 15 — face_change_log
 # ═══════════════════════════════════════════════════════════════════════
 
-class FaceChangeLog(Base):
+class FaceChangeLog(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "face_change_log"
     __table_args__ = (
         Index("ix_face_change_log_student_id",  "student_id"),
@@ -741,7 +816,7 @@ class LivenessChallenge(Base):
 # TABLE 17 — tutor_assignments
 # ═══════════════════════════════════════════════════════════════════════
 
-class TutorAssignment(Base):
+class TutorAssignment(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "tutor_assignments"
     __table_args__ = (
         UniqueConstraint("student_id", "academic_year", name="uq_student_tutor_year"),
@@ -769,7 +844,7 @@ class TutorAssignment(Base):
 # TABLE 18 — twm_sessions
 # ═══════════════════════════════════════════════════════════════════════
 
-class TWMSession(Base):
+class TWMSession(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "twm_sessions"
     __table_args__ = (
         Index("ix_twm_sessions_tutor_id", "tutor_id"),
@@ -796,7 +871,7 @@ class TWMSession(Base):
 # TABLE 19 — twm_attendance
 # ═══════════════════════════════════════════════════════════════════════
 
-class TWMAttendance(Base):
+class TWMAttendance(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "twm_attendance"
     __table_args__ = (
         UniqueConstraint("session_id", "student_id", name="uq_twm_attendance_session_student"),
@@ -820,7 +895,7 @@ class TWMAttendance(Base):
 # TABLE 20 — leave_requests
 # ═══════════════════════════════════════════════════════════════════════
 
-class LeaveRequest(Base):
+class LeaveRequest(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "leave_requests"
     __table_args__ = (
         Index("ix_leave_requests_student_id", "student_id"),
@@ -859,7 +934,7 @@ class DisputeStatus(str, enum.Enum):
     rejected = "rejected"
 
 
-class AttendanceDispute(Base):
+class AttendanceDispute(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "attendance_disputes"
 
     id              = Column(Integer, primary_key=True, index=True)
@@ -883,7 +958,7 @@ class AttendanceDispute(Base):
 # TABLE — career_roadmaps
 # ═══════════════════════════════════════════════════════════════════════
 
-class CareerRoadmap(Base):
+class CareerRoadmap(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "career_roadmaps"
     __table_args__ = (
         Index("ix_career_roadmaps_user_id", "user_id"),
@@ -904,7 +979,7 @@ class CareerRoadmap(Base):
 # TABLE — suggestions  (Smart Suggestion Box)
 # ═══════════════════════════════════════════════════════════════════════
 
-class Suggestion(Base):
+class Suggestion(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "suggestions"
     __table_args__ = (
         Index("ix_suggestions_user_id", "submitted_by_user_id"),
@@ -938,7 +1013,7 @@ class Suggestion(Base):
 # TABLE — suggestion_ai_reports
 # ═══════════════════════════════════════════════════════════════════════
 
-class SuggestionAIReport(Base):
+class SuggestionAIReport(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "suggestion_ai_reports"
     __table_args__ = (
         Index("ix_suggestion_reports_scope", "scope", "scope_id"),
@@ -998,7 +1073,7 @@ class WallPostStatus(str, enum.Enum):
 # TABLE — capsules  (ClassPulse content units)
 # ═══════════════════════════════════════════════════════════════════════
 
-class Capsule(Base):
+class Capsule(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "capsules"
     __table_args__ = (
         Index("ix_capsules_subject_id",  "subject_id"),
@@ -1057,7 +1132,7 @@ class Capsule(Base):
 # TABLE — capsule_interactions
 # ═══════════════════════════════════════════════════════════════════════
 
-class CapsuleInteraction(Base):
+class CapsuleInteraction(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "capsule_interactions"
     __table_args__ = (
         UniqueConstraint("capsule_id", "student_id", name="uq_capsule_interaction_capsule_student"),
@@ -1096,7 +1171,7 @@ class CapsuleInteraction(Base):
 # TABLE — class_wall_posts
 # ═══════════════════════════════════════════════════════════════════════
 
-class ClassWallPost(Base):
+class ClassWallPost(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "class_wall_posts"
     __table_args__ = (
         Index("ix_class_wall_posts_subject_id", "subject_id"),
@@ -1140,7 +1215,7 @@ class ClassWallPost(Base):
 # TABLE — class_wall_resonances
 # ═══════════════════════════════════════════════════════════════════════
 
-class ClassWallResonance(Base):
+class ClassWallResonance(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "class_wall_resonances"
     __table_args__ = (
         UniqueConstraint("post_id", "student_id", name="uq_class_wall_resonance_post_student"),
@@ -1162,7 +1237,7 @@ class ClassWallResonance(Base):
 # TABLE — capsule_access_logs
 # ═══════════════════════════════════════════════════════════════════════
 
-class CapsuleAccessLog(Base):
+class CapsuleAccessLog(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "capsule_access_logs"
     __table_args__ = (
         Index("ix_capsule_access_logs_capsule_id", "capsule_id"),
@@ -1189,7 +1264,7 @@ class CapsuleAccessLog(Base):
 # ClassPulse Live — live_sessions
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveSession(Base):
+class LiveSession(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_sessions"
     __table_args__ = (
         Index("ix_live_sessions_join_link",  "join_link"),
@@ -1241,7 +1316,7 @@ class LiveSession(Base):
 # ClassPulse Live — live_session_participants
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveSessionParticipant(Base):
+class LiveSessionParticipant(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_session_participants"
     __table_args__ = (
         Index("ix_lsp_live_session_id", "live_session_id"),
@@ -1277,7 +1352,7 @@ class LiveSessionParticipant(Base):
 # ClassPulse Live — live_session_events
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveSessionEvent(Base):
+class LiveSessionEvent(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_session_events"
     __table_args__ = (
         Index("ix_lse_live_session_id", "live_session_id"),
@@ -1302,7 +1377,7 @@ class LiveSessionEvent(Base):
 # ClassPulse Live — pulse_checks
 # ═══════════════════════════════════════════════════════════════════════
 
-class PulseCheck(Base):
+class PulseCheck(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "pulse_checks"
     __table_args__ = (
         Index("ix_pulse_checks_live_session_id", "live_session_id"),
@@ -1336,7 +1411,7 @@ class PulseCheck(Base):
 # participant_id and is broadcast over the live WebSocket.
 # ═══════════════════════════════════════════════════════════════════════
 
-class LivePulseCheck(Base):
+class LivePulseCheck(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_pulse_checks"
     __table_args__ = (
         Index("ix_live_pulse_checks_session_id", "live_session_id"),
@@ -1364,7 +1439,7 @@ class LivePulseCheck(Base):
     option_d_count  = Column(Integer, default=0, nullable=False)
 
 
-class LivePulseResponse(Base):
+class LivePulseResponse(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_pulse_responses"
     __table_args__ = (
         UniqueConstraint("pulse_id", "participant_id", name="uq_live_pulse_participant"),
@@ -1386,7 +1461,7 @@ class LivePulseResponse(Base):
 # Live Session Observation (F01) — AI Brain panel observations
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveSessionObservation(Base):
+class LiveSessionObservation(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_session_observations"
     __table_args__ = (
         Index("ix_live_session_observations_session_id", "live_session_id"),
@@ -1408,7 +1483,7 @@ class LiveSessionObservation(Base):
 # Updated after each live session from pulse-check accuracy + capsule topics.
 # ═══════════════════════════════════════════════════════════════════════
 
-class StudentTopicMastery(Base):
+class StudentTopicMastery(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "student_topic_mastery"
     __table_args__ = (
         UniqueConstraint("student_id", "subject_id", "topic", name="uq_student_topic"),
@@ -1429,7 +1504,7 @@ class StudentTopicMastery(Base):
 # Student Pre-class Warmup (F13) — personalised warmup per student per session.
 # ═══════════════════════════════════════════════════════════════════════
 
-class StudentPreclassWarmup(Base):
+class StudentPreclassWarmup(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "student_preclass_warmups"
     __table_args__ = (
         UniqueConstraint("student_id", "session_id", name="uq_student_preclass_warmup"),
@@ -1452,7 +1527,7 @@ class StudentPreclassWarmup(Base):
 # F02 — live engagement snapshots + per-student engagement
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveEngagementSnapshot(Base):
+class LiveEngagementSnapshot(SoftDeleteMixin, TenantMixin, Base):
     """Recorded every ~5 minutes during a live session.
 
     Tracks the engagement level of the whole class at that moment so the
@@ -1474,7 +1549,7 @@ class LiveEngagementSnapshot(Base):
     event_label     = Column(String(120), nullable=True)
 
 
-class LiveStudentEngagement(Base):
+class LiveStudentEngagement(SoftDeleteMixin, TenantMixin, Base):
     """Per-student engagement counters during a live session (F02)."""
     __tablename__ = "live_student_engagement"
     __table_args__ = (
@@ -1499,7 +1574,7 @@ class LiveStudentEngagement(Base):
 # F03 — AI raises hand (interventions)
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveAIIntervention(Base):
+class LiveAIIntervention(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_ai_interventions"
     __table_args__ = (
         Index("ix_lai_session_id",   "session_id"),
@@ -1521,7 +1596,7 @@ class LiveAIIntervention(Base):
 # F09 — smart recording bookmarks / chapters
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveSessionBookmark(Base):
+class LiveSessionBookmark(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_session_bookmarks"
     __table_args__ = (
         Index("ix_lsb_session_id",   "session_id"),
@@ -1544,7 +1619,7 @@ class LiveSessionBookmark(Base):
 # ClassPulse Live — student_knowledge_graphs
 # ═══════════════════════════════════════════════════════════════════════
 
-class StudentKnowledgeGraph(Base):
+class StudentKnowledgeGraph(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "student_knowledge_graphs"
     __table_args__ = (
         UniqueConstraint("student_id", "subject_id", "topic_name", name="uq_skg_student_subject_topic"),
@@ -1574,7 +1649,7 @@ class StudentKnowledgeGraph(Base):
 # ClassPulse Live — live_session_breakout_rooms
 # ═══════════════════════════════════════════════════════════════════════
 
-class LiveSessionBreakoutRoom(Base):
+class LiveSessionBreakoutRoom(SoftDeleteMixin, TenantMixin, Base):
     __tablename__ = "live_session_breakout_rooms"
     __table_args__ = (
         Index("ix_lsbr_live_session_id", "live_session_id"),
