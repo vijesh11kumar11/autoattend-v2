@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
     COLLEGE_NAME: str = "Your College Name"
+    # Additional browser origins allowed by CORS, beyond FRONTEND_URL.
+    # Comma-separated (e.g. multi-tenant college domains):
+    #   CORS_ALLOW_ORIGINS=https://a.example.edu,https://b.example.edu
+    # Empty by default — production allows only FRONTEND_URL (plus the Vite
+    # dev origins when DEBUG=True). Use the cors_allow_origins property to
+    # read the parsed list.
+    CORS_ALLOW_ORIGINS: str = ""
     # ── Production hardening ──────────────────────────────
     # Expose /api/docs, /api/redoc, /api/openapi.json. Independent of
     # DEBUG so an operator can disable them in dev too. Defaults to the
@@ -241,6 +248,16 @@ class Settings(BaseSettings):
         if v not in ("strict", "lax", "none"):
             raise ValueError("COOKIE_SAMESITE must be one of: strict, lax, none")
         return v
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        """Parsed, de-duplicated CORS origins from the comma-separated env var."""
+        seen: dict[str, None] = {}
+        for raw in self.CORS_ALLOW_ORIGINS.split(","):
+            origin = raw.strip().rstrip("/")
+            if origin:
+                seen.setdefault(origin, None)
+        return list(seen)
 
 
 settings = Settings()

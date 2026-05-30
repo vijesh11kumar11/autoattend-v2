@@ -279,11 +279,15 @@ if settings.FORCE_HTTPS and not settings.DEBUG:
     app.add_middleware(HTTPSRedirectMiddleware)
     logger.info("🔒 HTTPSRedirectMiddleware enabled")
 
-# CORS — production list contains ONLY settings.FRONTEND_URL.
-# Vite dev origin (http://localhost:5173) is added only when DEBUG=True.
-_cors_origins = [settings.FRONTEND_URL]
+# CORS — production list contains settings.FRONTEND_URL plus any extra origins
+# configured via CORS_ALLOW_ORIGINS (comma-separated, e.g. multi-tenant college
+# domains). The Vite dev origins (http://localhost:5173) are added only when
+# DEBUG=True.
+_cors_origins = [settings.FRONTEND_URL, *settings.cors_allow_origins]
 if settings.DEBUG:
     _cors_origins += ["http://localhost:5173", "http://127.0.0.1:5173"]
+# De-duplicate while preserving order.
+_cors_origins = list(dict.fromkeys(o for o in _cors_origins if o))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
