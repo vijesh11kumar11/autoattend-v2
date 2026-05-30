@@ -8,6 +8,7 @@ Endpoints:
   POST /api/uploads/leave-document       — multipart upload, returns s3_key
   GET  /api/uploads/signed-url/{key:path} — short-lived GET URL for download
 """
+
 from __future__ import annotations
 
 from typing import Optional

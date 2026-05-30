@@ -25,8 +25,7 @@ from database import (
     AttendanceStatus,
     SessionStatus,
 )
-from tests.conftest import auth_headers, TEST_DEVICE_ID
-
+from tests.conftest import TEST_DEVICE_ID, auth_headers
 
 TEACHER_LAT, TEACHER_LON = 12.9716, 77.5946
 
@@ -68,13 +67,25 @@ def test_teacher_can_start_session(client, seed, get_user):
 def _all_checks_pass():
     """Make every attendance security check pass for the duration of the block."""
     with ExitStack() as stack:
-        stack.enter_context(patch("routes.attendance.validate_face_verify_token", return_value=True))
-        stack.enter_context(patch("routes.attendance.validate_qr_token", return_value={"valid": True}))
-        stack.enter_context(patch(
-            "routes.attendance.verify_gps_proximity",
-            return_value={"verified": True, "distance_meters": 10.0, "flagged_suspicious": False},
-        ))
-        stack.enter_context(patch("routes.attendance.verify_bluetooth_proximity", return_value={"verified": True}))
+        stack.enter_context(
+            patch("routes.attendance.validate_face_verify_token", return_value=True)
+        )
+        stack.enter_context(
+            patch("routes.attendance.validate_qr_token", return_value={"valid": True})
+        )
+        stack.enter_context(
+            patch(
+                "routes.attendance.verify_gps_proximity",
+                return_value={
+                    "verified": True,
+                    "distance_meters": 10.0,
+                    "flagged_suspicious": False,
+                },
+            )
+        )
+        stack.enter_context(
+            patch("routes.attendance.verify_bluetooth_proximity", return_value={"verified": True})
+        )
         yield
 
 

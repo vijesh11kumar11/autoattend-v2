@@ -21,7 +21,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -38,12 +38,14 @@ TRANSCRIPT_CHAR_LIMIT = 6000
 # Provider calls (Gemini → Groq → DeepSeek)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _call_gemini_sync(prompt: str, system: Optional[str] = None) -> Optional[str]:
     api_key = settings.GEMINI_API_KEY
     if not api_key:
         return None
     try:
         from google import genai
+
         client = genai.Client(api_key=api_key)
         contents = prompt if not system else f"{system}\n\n{prompt}"
         response = client.models.generate_content(
@@ -60,18 +62,21 @@ def _call_gemini_sync(prompt: str, system: Optional[str] = None) -> Optional[str
         return None
 
 
-def _call_groq_sync(prompt: str, system: str = "You are an expert teaching assistant. Return only valid JSON.") -> Optional[str]:
+def _call_groq_sync(
+    prompt: str, system: str = "You are an expert teaching assistant. Return only valid JSON."
+) -> Optional[str]:
     api_key = settings.GROQ_API_KEY
     if not api_key:
         return None
     try:
         from groq import Groq
+
         client = Groq(api_key=api_key)
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user",   "content": prompt},
+                {"role": "user", "content": prompt},
             ],
             temperature=0.5,
             max_tokens=2048,
@@ -83,22 +88,25 @@ def _call_groq_sync(prompt: str, system: str = "You are an expert teaching assis
         return None
 
 
-def _call_deepseek_sync(prompt: str, system: str = "You are an expert teaching assistant. Return only valid JSON.") -> Optional[str]:
+def _call_deepseek_sync(
+    prompt: str, system: str = "You are an expert teaching assistant. Return only valid JSON."
+) -> Optional[str]:
     api_key = settings.DEEPSEEK_API_KEY
     if not api_key:
         return None
     try:
         import httpx
+
         url = f"{settings.DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type":  "application/json",
+            "Content-Type": "application/json",
         }
         payload = {
             "model": "deepseek-chat",
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user",   "content": prompt},
+                {"role": "user", "content": prompt},
             ],
             "temperature": 0.5,
             "max_tokens": 2048,
@@ -142,7 +150,8 @@ async def _ai_json(prompt: str, system: Optional[str] = None) -> Optional[dict |
 
     logger.info("⚡ LiveAI: Gemini failed → Groq")
     raw = await asyncio.to_thread(
-        _call_groq_sync, prompt,
+        _call_groq_sync,
+        prompt,
         system or "You are an expert teaching assistant. Return only valid JSON.",
     )
     parsed = _parse_json(raw) if raw else None
@@ -152,7 +161,8 @@ async def _ai_json(prompt: str, system: Optional[str] = None) -> Optional[dict |
 
     logger.info("⚡ LiveAI: Groq failed → DeepSeek")
     raw = await asyncio.to_thread(
-        _call_deepseek_sync, prompt,
+        _call_deepseek_sync,
+        prompt,
         system or "You are an expert teaching assistant. Return only valid JSON.",
     )
     parsed = _parse_json(raw) if raw else None
@@ -170,7 +180,9 @@ async def _call_ai_text(prompt: str, system: Optional[str] = None) -> str:
     empty string when all providers fail. Used for narrative blurbs,
     Mermaid diagrams, warmups, etc.
     """
-    sys_txt = system or "You are an expert, concise teaching assistant. Plain text only — no markdown."
+    sys_txt = (
+        system or "You are an expert, concise teaching assistant. Plain text only — no markdown."
+    )
     raw = await asyncio.to_thread(_call_gemini_sync, prompt, sys_txt)
     if raw:
         return raw
@@ -185,6 +197,7 @@ async def _call_ai_text(prompt: str, system: Optional[str] = None) -> str:
 # 1. AI Observation (every ~2 min during a live session)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 async def generate_ai_observation(transcript_chunk: str, context: dict) -> dict:
     """
     Returns:
@@ -193,7 +206,7 @@ async def generate_ai_observation(transcript_chunk: str, context: dict) -> dict:
     """
     text = (transcript_chunk or "").strip()[:TRANSCRIPT_CHAR_LIMIT]
     subject = str(context.get("subject", "")).strip() or "the subject"
-    topic   = str(context.get("topic_being_taught", "")).strip() or "the current topic"
+    topic = str(context.get("topic_being_taught", "")).strip() or "the current topic"
     responses = context.get("student_responses") or []
     time_in_session = context.get("time_in_session", "")
     prev_obs = context.get("previous_observations") or []
@@ -233,7 +246,12 @@ Return ONLY valid JSON (no markdown fences):
 
     result = await _ai_json(prompt, system="You are an empathetic AI TA. Return only valid JSON.")
     if not isinstance(result, dict):
-        return {"observation": None, "type": "engagement", "affected_students": [], "confidence": 0.0}
+        return {
+            "observation": None,
+            "type": "engagement",
+            "affected_students": [],
+            "confidence": 0.0,
+        }
 
     obs = result.get("observation")
     obs_text = str(obs).strip() if obs else None
@@ -271,6 +289,7 @@ Return ONLY valid JSON (no markdown fences):
 # 2. Intervention suggestion
 # ═══════════════════════════════════════════════════════════════════════
 
+
 async def generate_intervention_suggestion(observation: str, session_context: dict) -> dict:
     """
     Returns:
@@ -305,7 +324,9 @@ Session context: {json.dumps(session_context)[:1500]}
 Return ONLY valid JSON (no markdown fences):
 {schema}"""
 
-    result = await _ai_json(prompt, system="You are a concise teaching coach. Return only valid JSON.")
+    result = await _ai_json(
+        prompt, system="You are a concise teaching coach. Return only valid JSON."
+    )
     if not isinstance(result, dict):
         return {"suggestion": "", "action_type": "pulse_check", "urgency": "low"}
 
@@ -324,7 +345,10 @@ Return ONLY valid JSON (no markdown fences):
 # 3. Pulse-check MCQ generator
 # ═══════════════════════════════════════════════════════════════════════
 
-async def generate_pulse_check_question(topic: str, difficulty: str, recent_transcript: str) -> dict:
+
+async def generate_pulse_check_question(
+    topic: str, difficulty: str, recent_transcript: str
+) -> dict:
     """
     Returns:
       {question, option_a, option_b, option_c, option_d, correct_answer (A-D), explanation}
@@ -335,8 +359,13 @@ async def generate_pulse_check_question(topic: str, difficulty: str, recent_tran
     topic_str = (topic or "the current topic").strip()
 
     empty = {
-        "question": "", "option_a": "", "option_b": "", "option_c": "",
-        "option_d": "", "correct_answer": "A", "explanation": "",
+        "question": "",
+        "option_a": "",
+        "option_b": "",
+        "option_c": "",
+        "option_d": "",
+        "correct_answer": "A",
+        "explanation": "",
     }
 
     schema = """{
@@ -368,18 +397,20 @@ Return ONLY valid JSON (no markdown fences):
         return empty
 
     out = dict(empty)
-    out["question"]    = str(result.get("question", "")).strip()[:500]
-    out["option_a"]    = str(result.get("option_a", "")).strip()[:300]
-    out["option_b"]    = str(result.get("option_b", "")).strip()[:300]
-    out["option_c"]    = str(result.get("option_c", "")).strip()[:300]
-    out["option_d"]    = str(result.get("option_d", "")).strip()[:300]
+    out["question"] = str(result.get("question", "")).strip()[:500]
+    out["option_a"] = str(result.get("option_a", "")).strip()[:300]
+    out["option_b"] = str(result.get("option_b", "")).strip()[:300]
+    out["option_c"] = str(result.get("option_c", "")).strip()[:300]
+    out["option_d"] = str(result.get("option_d", "")).strip()[:300]
     ans = str(result.get("correct_answer", "A")).strip().upper()
     if ans not in ("A", "B", "C", "D"):
         ans = "A"
     out["correct_answer"] = ans
     out["explanation"] = str(result.get("explanation", "")).strip()[:500]
 
-    if not all([out["question"], out["option_a"], out["option_b"], out["option_c"], out["option_d"]]):
+    if not all(
+        [out["question"], out["option_a"], out["option_b"], out["option_c"], out["option_d"]]
+    ):
         return empty
     return out
 
@@ -452,27 +483,40 @@ Return ONLY valid JSON (no markdown fences):
 {payload}
 === END ==="""
 
-    result = await _ai_json(prompt, system="You are an academic analytics expert. Return only valid JSON.")
+    result = await _ai_json(
+        prompt, system="You are an academic analytics expert. Return only valid JSON."
+    )
     if not isinstance(result, dict):
         return dict(_DEFAULT_HEALTH)
 
     out = dict(_DEFAULT_HEALTH)
-    for k in ("health_score", "attendance_score", "engagement_score", "comprehension_score", "pace_score"):
+    for k in (
+        "health_score",
+        "attendance_score",
+        "engagement_score",
+        "comprehension_score",
+        "pace_score",
+    ):
         out[k] = _clamp_score(result.get(k, 0))
     out["summary"] = str(result.get("summary", ""))[:1500]
     for list_key in ("key_observations", "next_class_suggestions", "students_needing_attention"):
         v = result.get(list_key) or []
         out[list_key] = [str(x)[:300] for x in v[:10]] if isinstance(v, list) else []
     cm = result.get("confusion_moments") or []
-    out["confusion_moments"] = [m for m in cm if isinstance(m, dict)][:20] if isinstance(cm, list) else []
+    out["confusion_moments"] = (
+        [m for m in cm if isinstance(m, dict)][:20] if isinstance(cm, list) else []
+    )
     pm = result.get("positive_moments") or []
-    out["positive_moments"] = [m for m in pm if isinstance(m, dict)][:20] if isinstance(pm, list) else []
+    out["positive_moments"] = (
+        [m for m in pm if isinstance(m, dict)][:20] if isinstance(pm, list) else []
+    )
     return out
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 5. Pre-class brief
 # ═══════════════════════════════════════════════════════════════════════
+
 
 async def generate_pre_class_brief(
     teacher_id: int,
@@ -487,15 +531,21 @@ async def generate_pre_class_brief(
     """
     # Local imports (avoid circular)
     from database import (
-        StudentKnowledgeGraph, KnowledgeLevel,
-        LiveSession, CapsuleInteraction, Capsule, User,
+        Capsule,
+        CapsuleInteraction,
+        KnowledgeLevel,
+        LiveSession,
+        StudentKnowledgeGraph,
+        User,
     )
 
     weak_topics_q = (
         db.query(StudentKnowledgeGraph)
         .filter(
             StudentKnowledgeGraph.subject_id == subject_id,
-            StudentKnowledgeGraph.understanding_level.in_([KnowledgeLevel.weak, KnowledgeLevel.moderate]),
+            StudentKnowledgeGraph.understanding_level.in_(
+                [KnowledgeLevel.weak, KnowledgeLevel.moderate]
+            ),
         )
         .order_by(StudentKnowledgeGraph.confidence_score.asc())
         .limit(50)
@@ -504,12 +554,18 @@ async def generate_pre_class_brief(
     weak_topics_summary: list[dict] = []
     for r in weak_topics_q:
         student_name = r.student.name if r.student else f"Student {r.student_id}"
-        weak_topics_summary.append({
-            "student": student_name,
-            "topic": r.topic_name,
-            "level": r.understanding_level.value if hasattr(r.understanding_level, "value") else str(r.understanding_level),
-            "confidence": round(r.confidence_score, 2),
-        })
+        weak_topics_summary.append(
+            {
+                "student": student_name,
+                "topic": r.topic_name,
+                "level": (
+                    r.understanding_level.value
+                    if hasattr(r.understanding_level, "value")
+                    else str(r.understanding_level)
+                ),
+                "confidence": round(r.confidence_score, 2),
+            }
+        )
 
     last_session = (
         db.query(LiveSession)
@@ -526,11 +582,11 @@ async def generate_pre_class_brief(
     failed_quizzes_q = (
         db.query(CapsuleInteraction, Capsule, User)
         .join(Capsule, Capsule.id == CapsuleInteraction.capsule_id)
-        .join(User,    User.id    == CapsuleInteraction.student_id)
+        .join(User, User.id == CapsuleInteraction.student_id)
         .filter(
             Capsule.subject_id == subject_id,
             CapsuleInteraction.quiz_attempted == True,  # noqa: E712
-            CapsuleInteraction.quiz_passed == False,    # noqa: E712
+            CapsuleInteraction.quiz_passed == False,  # noqa: E712
         )
         .order_by(CapsuleInteraction.last_quiz_at.desc().nullslast())
         .limit(20)
@@ -570,7 +626,9 @@ a warmup_suggestion, and predicted_difficult_concepts.
 Return ONLY valid JSON (no markdown fences):
 {schema}"""
 
-    result = await _ai_json(prompt, system="You are a concise teaching coach. Return only valid JSON.")
+    result = await _ai_json(
+        prompt, system="You are a concise teaching coach. Return only valid JSON."
+    )
     default_brief = {
         "readiness_score": 0,
         "students_needing_attention": [],
@@ -677,7 +735,7 @@ Return ONLY valid JSON (no markdown fences):
         return dict(_DEFAULT_AUTO_CAPSULE)
 
     out = dict(_DEFAULT_AUTO_CAPSULE)
-    out["title"]   = str(result.get("title", ""))[:120]
+    out["title"] = str(result.get("title", ""))[:120]
     out["summary"] = str(result.get("summary", ""))[:4000]
     kp = result.get("key_points") or []
     if isinstance(kp, list):
@@ -707,6 +765,7 @@ Return ONLY valid JSON (no markdown fences):
 # ═══════════════════════════════════════════════════════════════════════
 # 7. Low-bandwidth text summary
 # ═══════════════════════════════════════════════════════════════════════
+
 
 async def generate_low_bandwidth_summary(transcript_chunk: str) -> dict:
     """
@@ -740,13 +799,14 @@ Return ONLY valid JSON (no markdown fences):
         return {"summary_text": "", "key_term": ""}
     return {
         "summary_text": str(result.get("summary_text", ""))[:1000],
-        "key_term":     str(result.get("key_term", ""))[:120],
+        "key_term": str(result.get("key_term", ""))[:120],
     }
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 8. Update student knowledge graph (post-session)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _level_from_signals(correct_pct: float, confused: int, understood: int) -> tuple[str, float]:
     """Heuristic mapping: returns (level_str, confidence_score 0..1)."""
@@ -781,7 +841,7 @@ def update_student_knowledge_graph(
 
     Returns: number of knowledge-graph rows touched.
     """
-    from database import StudentKnowledgeGraph, KnowledgeLevel
+    from database import KnowledgeLevel, StudentKnowledgeGraph
 
     # Aggregate per-topic signals
     per_topic: dict[str, dict] = {}
@@ -790,9 +850,7 @@ def update_student_knowledge_graph(
         t = (topic or "").strip()[:200]
         if not t:
             return None  # type: ignore[return-value]
-        return per_topic.setdefault(
-            t, {"correct": 0, "total": 0, "confused": 0, "understood": 0}
-        )
+        return per_topic.setdefault(t, {"correct": 0, "total": 0, "confused": 0, "understood": 0})
 
     # Pulse-check signals
     for pr in pulse_results or []:
@@ -823,12 +881,10 @@ def update_student_knowledge_graph(
         return 0
 
     touched = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for topic, sig in per_topic.items():
         correct_pct = (sig["correct"] / sig["total"] * 100.0) if sig["total"] else 0.0
-        level_str, confidence = _level_from_signals(
-            correct_pct, sig["confused"], sig["understood"]
-        )
+        level_str, confidence = _level_from_signals(correct_pct, sig["confused"], sig["understood"])
         try:
             level_enum = KnowledgeLevel(level_str)
         except ValueError:
@@ -878,6 +934,7 @@ def update_student_knowledge_graph(
 # 9. Session Health Narrative (F08) — short paragraph for the report card
 # ═══════════════════════════════════════════════════════════════════════
 
+
 async def generate_session_narrative(
     subject_name: str,
     overall_score: int,
@@ -920,15 +977,14 @@ Max 60 words. Plain text, no markdown."""
 # 10. Code → Mermaid Diagram (F14)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 async def generate_diagram_from_code(
     code_snippet: str,
     language: str = "python",
     diagram_type: str = "auto",
 ) -> str:
     """Given a code snippet, return a Mermaid diagram that visualises it."""
-    diagram_hint = (
-        diagram_type if diagram_type and diagram_type != "auto" else "appropriate"
-    )
+    diagram_hint = diagram_type if diagram_type and diagram_type != "auto" else "appropriate"
     prompt = f"""You are an expert at creating Mermaid diagrams from code.
 
 Analyze this {language} code and generate a {diagram_hint} Mermaid diagram.
@@ -968,6 +1024,7 @@ Mermaid diagram:"""
 # 11. Update per-student topic mastery after a session (F06)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 async def update_student_topic_mastery(session_id: int, db: Session) -> int:
     """
     After a session ends: walk pulse responses + capsule topic list and
@@ -975,8 +1032,12 @@ async def update_student_topic_mastery(session_id: int, db: Session) -> int:
     pairs touched. Safe to call repeatedly (idempotent within a session).
     """
     from database import (
-        LiveSession, LiveSessionParticipant, LiveParticipantType,
-        LivePulseResponse, StudentTopicMastery, Capsule,
+        Capsule,
+        LiveParticipantType,
+        LivePulseResponse,
+        LiveSession,
+        LiveSessionParticipant,
+        StudentTopicMastery,
     )
 
     sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
@@ -1049,13 +1110,15 @@ async def update_student_topic_mastery(session_id: int, db: Session) -> int:
                 row.mastery_pct = round(row.mastery_pct * 0.6 + student_comp * 0.4, 1)
                 row.sessions_seen = (row.sessions_seen or 0) + 1
             else:
-                db.add(StudentTopicMastery(
-                    student_id=sid,
-                    subject_id=sess.subject_id,
-                    topic=topic,
-                    mastery_pct=student_comp,
-                    sessions_seen=1,
-                ))
+                db.add(
+                    StudentTopicMastery(
+                        student_id=sid,
+                        subject_id=sess.subject_id,
+                        topic=topic,
+                        mastery_pct=student_comp,
+                        sessions_seen=1,
+                    )
+                )
             touched += 1
     try:
         db.commit()
@@ -1065,7 +1128,10 @@ async def update_student_topic_mastery(session_id: int, db: Session) -> int:
         return 0
     logger.info(
         "📊 Topic mastery updated for session %d — %d students, %d topics, %d rows",
-        session_id, len(participants), len(topics_covered), touched,
+        session_id,
+        len(participants),
+        len(topics_covered),
+        touched,
     )
     return touched
 
@@ -1073,6 +1139,7 @@ async def update_student_topic_mastery(session_id: int, db: Session) -> int:
 # ════════════════════════════════════════════════════════════════════════
 # F03 — AI raises hand: decides whether to interrupt the teacher
 # ════════════════════════════════════════════════════════════════════════
+
 
 async def generate_ai_intervention(
     session_id: int,
@@ -1087,12 +1154,12 @@ async def generate_ai_intervention(
 
     Pure rule-based — no LLM call required so it is cheap and stable.
     """
-    elapsed_mins      = int(session_data.get("elapsed_mins", 0) or 0)
-    silent_count      = int(session_data.get("silent_count", 0) or 0)
-    total_students    = int(session_data.get("total_students", 1) or 1) or 1
-    hot_doubts        = int(session_data.get("hot_doubts", 0) or 0)
-    pulse_comp_avg    = session_data.get("pulse_comp_avg")
-    mins_since_pulse  = int(session_data.get("mins_since_pulse", 999) or 999)
+    elapsed_mins = int(session_data.get("elapsed_mins", 0) or 0)
+    silent_count = int(session_data.get("silent_count", 0) or 0)
+    total_students = int(session_data.get("total_students", 1) or 1) or 1
+    hot_doubts = int(session_data.get("hot_doubts", 0) or 0)
+    pulse_comp_avg = session_data.get("pulse_comp_avg")
+    mins_since_pulse = int(session_data.get("mins_since_pulse", 999) or 999)
     last_intervention = int(session_data.get("last_intervention_mins", 0) or 0)
 
     # 7-minute cooldown between interventions
@@ -1102,63 +1169,61 @@ async def generate_ai_intervention(
     # TYPE 1 — Confusion alert (reactive)
     if silent_count >= 4 and (silent_count / total_students) > 0.25:
         return {
-            "type":        "confusion_alert",
-            "title":       "⚠️ Confusion Detected",
-            "message":     f"{silent_count} students have gone quiet after the last explanation.",
-            "suggestion":  "Consider a quick recap or ask if anyone needs help.",
-            "actions":     ["Send recap", "Take pulse check", "Dismiss"],
+            "type": "confusion_alert",
+            "title": "⚠️ Confusion Detected",
+            "message": f"{silent_count} students have gone quiet after the last explanation.",
+            "suggestion": "Consider a quick recap or ask if anyone needs help.",
+            "actions": ["Send recap", "Take pulse check", "Dismiss"],
             "action_type": "confusion",
-            "severity":    "high",
+            "severity": "high",
         }
 
     # TYPE 5 — Low comprehension (act early when present)
     if pulse_comp_avg is not None and float(pulse_comp_avg) < 55:
         return {
-            "type":        "low_comprehension",
-            "title":       "📉 Low Comprehension",
-            "message":     f"Average pulse score is {pulse_comp_avg}% — less than half the class understands.",
-            "suggestion":  "Slow down and revisit the last concept with a different explanation.",
-            "actions":     ["Revisit concept", "Try analogy", "Dismiss"],
+            "type": "low_comprehension",
+            "title": "📉 Low Comprehension",
+            "message": f"Average pulse score is {pulse_comp_avg}% — less than half the class understands.",
+            "suggestion": "Slow down and revisit the last concept with a different explanation.",
+            "actions": ["Revisit concept", "Try analogy", "Dismiss"],
             "action_type": "revisit",
-            "severity":    "high",
+            "severity": "high",
         }
 
     # TYPE 3 — Hot doubt
     if hot_doubts > 0:
         return {
-            "type":        "hot_doubt",
-            "title":       "🔥 Hot Doubt Detected",
-            "message":     f"{hot_doubts} doubt(s) have multiple students resonating — many share this confusion.",
-            "suggestion":  "Address the most resonated doubt on the wall now.",
-            "actions":     ["View doubt", "Address now", "Dismiss"],
+            "type": "hot_doubt",
+            "title": "🔥 Hot Doubt Detected",
+            "message": f"{hot_doubts} doubt(s) have multiple students resonating — many share this confusion.",
+            "suggestion": "Address the most resonated doubt on the wall now.",
+            "actions": ["View doubt", "Address now", "Dismiss"],
             "action_type": "doubt",
-            "severity":    "high",
+            "severity": "high",
         }
 
     # TYPE 2 — Pace alert
     if mins_since_pulse > 20 and elapsed_mins > 25:
         return {
-            "type":        "pace_alert",
-            "title":       "⚡ Pace Check",
-            "message":     f"You're {elapsed_mins} minutes in with no comprehension check.",
-            "suggestion":  "A quick pulse check helps ensure students are following.",
-            "actions":     ["Send pulse check", "Continue", "Dismiss"],
+            "type": "pace_alert",
+            "title": "⚡ Pace Check",
+            "message": f"You're {elapsed_mins} minutes in with no comprehension check.",
+            "suggestion": "A quick pulse check helps ensure students are following.",
+            "actions": ["Send pulse check", "Continue", "Dismiss"],
             "action_type": "pulse",
-            "severity":    "medium",
+            "severity": "medium",
         }
 
     # TYPE 4 — Energy check (every ~45 min, narrow window)
     if elapsed_mins > 45 and (elapsed_mins % 45) < 6:
         return {
-            "type":        "energy_check",
-            "title":       "🔋 Energy Check",
-            "message":     f"{elapsed_mins} minutes into the session. Student focus naturally dips after 45 mins.",
-            "suggestion":  "A 3-minute stretch break can improve retention for the second half.",
-            "actions":     ["Take a break", "Continue", "Dismiss"],
+            "type": "energy_check",
+            "title": "🔋 Energy Check",
+            "message": f"{elapsed_mins} minutes into the session. Student focus naturally dips after 45 mins.",
+            "suggestion": "A 3-minute stretch break can improve retention for the second half.",
+            "actions": ["Take a break", "Continue", "Dismiss"],
             "action_type": "break",
-            "severity":    "low",
+            "severity": "low",
         }
 
     return None
-
-

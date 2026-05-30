@@ -71,18 +71,22 @@ def send_bulk_whatsapp(recipients: list[dict], message: str) -> list[dict]:
     for r in recipients:
         phone = r.get("phone")
         if not phone:
-            results.append({
-                "student_id": r.get("student_id"),
-                "status": "skipped",
-                "reason": "No phone number",
-            })
+            results.append(
+                {
+                    "student_id": r.get("student_id"),
+                    "status": "skipped",
+                    "reason": "No phone number",
+                }
+            )
             continue
 
         wa = send_whatsapp_message(phone, message)
-        results.append({
-            "student_id": r.get("student_id"),
-            "status": "sent" if wa["ok"] else "failed",
-            "sid": wa.get("sid"),
-            "reason": wa.get("error"),
-        })
+        results.append(
+            {
+                "student_id": r.get("student_id"),
+                "status": "sent" if wa["ok"] else "failed",
+                "sid": wa.get("sid"),
+                "reason": wa.get("error"),
+            }
+        )
     return results

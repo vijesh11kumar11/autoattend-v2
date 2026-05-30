@@ -9,13 +9,13 @@ Covers:
 * Super-admin login works and the token has no college_id.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import jwt
 
 from config import settings
+from tests.conftest import TEST_DEVICE_ID, TEST_PASSWORD
 from utils.auth_utils import decode_access_token
-from tests.conftest import TEST_PASSWORD, TEST_DEVICE_ID
 
 
 def _teacher(seed, get_user):
@@ -86,7 +86,7 @@ def test_jwt_contains_role_and_college_id(client, seed, get_user):
 
 def test_expired_token_is_rejected(client, seed, get_user):
     teacher = _teacher(seed, get_user)
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     expired = jwt.encode(
         {
             "sub": teacher.email,

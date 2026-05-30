@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import Generic, List, Optional, TypeVar
+from typing import Generic, Optional, TypeVar
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
@@ -43,15 +43,15 @@ T = TypeVar("T")
 
 # ── Default page sizes (issue #72 spec) ────────────────────────────────
 DEFAULT_PAGE_SIZES = {
-    "students":     20,
-    "teachers":     20,
-    "attendance":   30,
-    "leave":        20,
-    "disputes":     20,
-    "alerts":       20,
-    "reports":      10,
-    "audit":        25,
-    "default":      20,
+    "students": 20,
+    "teachers": 20,
+    "attendance": 30,
+    "leave": 20,
+    "disputes": 20,
+    "alerts": 20,
+    "reports": 10,
+    "audit": 25,
+    "default": 20,
 }
 MAX_LIMIT = 100
 
@@ -65,10 +65,11 @@ class CursorPage(BaseModel, Generic[T]):
     * ``has_more``    – ``True`` when ``next_cursor`` is non-null
     * ``total``       – always ``None`` (counting is expensive; intentional)
     """
-    items:       List[T]
+
+    items: list[T]
     next_cursor: Optional[str] = None
-    has_more:    bool = False
-    total:       Optional[int] = None  # kept for API stability; never populated
+    has_more: bool = False
+    total: Optional[int] = None  # kept for API stability; never populated
 
 
 # ── Cursor codec ───────────────────────────────────────────────────────
@@ -113,9 +114,7 @@ def paginate(
 
     if cursor:
         last_id = decode_cursor(cursor)
-        query = query.filter(
-            order_column < last_id if descending else order_column > last_id
-        )
+        query = query.filter(order_column < last_id if descending else order_column > last_id)
 
     query = query.order_by(order_column.desc() if descending else order_column.asc())
     rows = query.limit(limit + 1).all()
@@ -148,7 +147,9 @@ def paginate_or_list(
     ``list`` capped at ``limit`` — preserving the legacy ``list[...]``
     response shape so existing frontend ``.map(...)`` calls keep working.
     """
-    page = paginate(query, limit=limit, cursor=cursor, order_column=order_column, descending=descending)
+    page = paginate(
+        query, limit=limit, cursor=cursor, order_column=order_column, descending=descending
+    )
     if cursor or paginated:
         return page
     return page.items

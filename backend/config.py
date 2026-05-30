@@ -1,6 +1,5 @@
-from pydantic_settings import BaseSettings
 from pydantic import field_validator
-from typing import Optional
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -11,7 +10,9 @@ class Settings(BaseSettings):
 
     # ── JWT ───────────────────────────────────────────────────────────
     SECRET_KEY: str
-    ALGORITHM: str = "HS256"  # default symmetric; set RS256/ES256/EdDSA + key paths to enable asymmetric
+    ALGORITHM: str = (
+        "HS256"  # default symmetric; set RS256/ES256/EdDSA + key paths to enable asymmetric
+    )
     # Asymmetric JWT (opt-in). When set + ALGORITHM is RS256/ES256/EdDSA,
     # encode uses the private PEM and decode uses the public PEM.
     JWT_PRIVATE_KEY_PATH: str = ""
@@ -87,8 +88,8 @@ class Settings(BaseSettings):
     # In production: COOKIE_SECURE=True, COOKIE_SAMESITE=strict.
     # For cross-site (vercel frontend + render backend): COOKIE_SAMESITE=none + COOKIE_SECURE=True.
     # For local dev over plain http: COOKIE_SECURE=False, COOKIE_SAMESITE=lax.
-    COOKIE_SECURE:   bool = True
-    COOKIE_SAMESITE: str  = "strict"
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "strict"
 
     # ── TOTP secret encryption (Fernet symmetric key) ──────────────────
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -103,8 +104,8 @@ class Settings(BaseSettings):
     # Defaults match the previous hardcoded values in database.py.
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
-    DB_POOL_RECYCLE_SECONDS: int = 1800   # recycle stale conns hourly-ish
-    DB_POOL_TIMEOUT_SECONDS: int = 30     # wait for free conn before failing
+    DB_POOL_RECYCLE_SECONDS: int = 1800  # recycle stale conns hourly-ish
+    DB_POOL_TIMEOUT_SECONDS: int = 30  # wait for free conn before failing
 
     # ── Logging ──────────────────────────────────────────────────────
     # 'text' (default human-readable pipe-separated lines) or 'json'

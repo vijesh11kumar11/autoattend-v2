@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -46,9 +46,9 @@ from database import (
     User,
     get_db,
 )
+from utils import s3_utils
 from utils.auth_utils import get_current_user
 from utils.live_session_ai import _ai_json
-from utils import s3_utils
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ _RECORDING_KEY_PREFIX = "session-recordings/"
 # ═══════════════════════════════════════════════════════════════════════
 # Pydantic schemas
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class ClipRequestBody(BaseModel):
     topic: str = Field(..., min_length=2, max_length=300)
@@ -80,6 +81,7 @@ class RecordingUploadUrlBody(BaseModel):
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _get_session_or_404(session_id: int, db: Session) -> LiveSession:
     sess = db.query(LiveSession).filter(LiveSession.id == session_id).first()
     if not sess:
@@ -97,8 +99,8 @@ def _require_completed_replay(sess: LiveSession) -> None:
     ended = sess.ended_at
     if ended is not None:
         if ended.tzinfo is None:
-            ended = ended.replace(tzinfo=timezone.utc)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=REPLAY_RETENTION_DAYS)
+            ended = ended.replace(tzinfo=UTC)
+        cutoff = datetime.now(UTC) - timedelta(days=REPLAY_RETENTION_DAYS)
         if ended < cutoff:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND,
@@ -135,7 +137,7 @@ def _ensure_can_view_timeline(sess: LiveSession, current_user: dict, db: Session
 def _session_start(sess: LiveSession) -> Optional[datetime]:
     start = sess.started_at or sess.created_at
     if start is not None and start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
+        start = start.replace(tzinfo=UTC)
     return start
 
 
@@ -143,7 +145,7 @@ def _offset_seconds(start: Optional[datetime], ts: Optional[datetime]) -> Option
     if start is None or ts is None:
         return None
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
+        ts = ts.replace(tzinfo=UTC)
     return max(0, int((ts - start).total_seconds()))
 
 
@@ -161,7 +163,7 @@ def _build_timeline(db: Session, sess: LiveSession) -> list[dict]:
     # Resolve affected-student names in a single batch.
     student_ids: set[int] = set()
     for ev in events:
-        for sid in (ev.affected_student_ids or []):
+        for sid in ev.affected_student_ids or []:
             if isinstance(sid, int):
                 student_ids.add(sid)
     name_map: dict[int, str] = {}
@@ -205,9 +207,7 @@ def _build_timeline(db: Session, sess: LiveSession) -> list[dict]:
 def _session_meta(db: Session, sess: LiveSession) -> dict:
     teacher = db.query(User).filter(User.id == sess.teacher_id).first()
     subject = (
-        db.query(Subject).filter(Subject.id == sess.subject_id).first()
-        if sess.subject_id
-        else None
+        db.query(Subject).filter(Subject.id == sess.subject_id).first() if sess.subject_id else None
     )
     participant_count = (
         db.query(LiveSessionParticipant.id)
@@ -317,6 +317,7 @@ def _serialize_clip(clip: SmartReplayClip) -> dict:
 # 1. Full timeline
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/{session_id}")
 def get_replay_timeline(
     session_id: int,
@@ -338,6 +339,7 @@ def get_replay_timeline(
 # ═══════════════════════════════════════════════════════════════════════
 # 2. Clip request (student doubt → AI clip)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.post("/{session_id}/clip-request")
 async def request_clip(
@@ -390,6 +392,7 @@ async def request_clip(
 # 3. Student's own clips
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/{session_id}/my-clips")
 def my_clips(
     session_id: int,
@@ -415,6 +418,7 @@ def my_clips(
 # ═══════════════════════════════════════════════════════════════════════
 # 4. All clips (staff)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/{session_id}/all-clips")
 def all_clips(
@@ -451,6 +455,7 @@ def all_clips(
 # ═══════════════════════════════════════════════════════════════════════
 # 5-7. Recording (video) storage on S3
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _require_owner(sess: LiveSession, current_user: dict) -> None:
     role = current_user["role"]
@@ -524,13 +529,14 @@ def get_recording(
 # Retention cleanup — invoked by the weekly APScheduler job in main.py
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def purge_old_clips(db: Session, retention_days: int = REPLAY_RETENTION_DAYS) -> int:
     """Hard-delete SmartReplayClip rows older than ``retention_days``.
 
     Returns the number of rows removed. Uses ``include_deleted`` so the
     soft-delete listener does not hide rows from the purge.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
     rows = (
         db.query(SmartReplayClip)
         .filter(SmartReplayClip.created_at < cutoff)

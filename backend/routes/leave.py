@@ -15,10 +15,10 @@ Tutor / HOD endpoints:
 """
 
 import logging
-from datetime import date, datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -36,8 +36,8 @@ from database import (
     UserRole,
     get_db,
 )
-from utils.auth_utils import any_authenticated, require_recent_auth, student_only, teacher_or_above
 from utils.audit_helpers import audit_admin_action
+from utils.auth_utils import require_recent_auth, student_only, teacher_or_above
 from utils.notification_utils import send_push_to_many
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ router = APIRouter(prefix="/api/leave", tags=["leave"])
 
 
 # ── Pydantic schemas ────────────────────────────────────────────────
+
 
 class ApplyLeaveRequest(BaseModel):
     leave_type: str
@@ -64,8 +65,9 @@ class ReviewNoteBody(BaseModel):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+
 def _current_academic_year() -> str:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     y = now.year
     if now.month < 6:
         return f"{y - 1}-{str(y)[-2:]}"
@@ -146,11 +148,13 @@ def _get_ward_student_ids(tutor_id: int, db: Session) -> list[int]:
     year = _current_academic_year()
     return [
         a.student_id
-        for a in db.query(TutorAssignment).filter(
+        for a in db.query(TutorAssignment)
+        .filter(
             TutorAssignment.tutor_id == tutor_id,
             TutorAssignment.academic_year == year,
             TutorAssignment.is_active.is_(True),
-        ).all()
+        )
+        .all()
     ]
 
 
@@ -160,16 +164,20 @@ def _get_dept_student_ids(hod_id: int, db: Session) -> list[int]:
     if not hod or not hod.department_id:
         return []
     return [
-        u.id for u in db.query(User.id).filter(
+        u.id
+        for u in db.query(User.id)
+        .filter(
             User.department_id == hod.department_id,
             User.role == UserRole.student,
-        ).all()
+        )
+        .all()
     ]
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # STUDENT ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.post("/apply")
 def apply_leave(
@@ -273,10 +281,14 @@ def cancel_leave(
     current_user: dict = Depends(student_only),
     db: Session = Depends(get_db),
 ):
-    lr = db.query(LeaveRequest).filter(
-        LeaveRequest.id == leave_id,
-        LeaveRequest.student_id == current_user["id"],
-    ).first()
+    lr = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.id == leave_id,
+            LeaveRequest.student_id == current_user["id"],
+        )
+        .first()
+    )
     if not lr:
         raise HTTPException(404, "Leave request not found.")
     if lr.status != LeaveRequestStatus.pending:
@@ -290,6 +302,7 @@ def cancel_leave(
 # ═══════════════════════════════════════════════════════════════════════
 # TUTOR / HOD ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _get_manageable_student_ids(current_user: dict, db: Session) -> list[int]:
     """Student IDs this user can manage leave for (ward students or dept students)."""
@@ -319,6 +332,7 @@ def pending_requests(
         dept_ids = _get_dept_student_ids(current_user["id"], db)
         if dept_ids:
             from sqlalchemy import or_
+
             q = db.query(LeaveRequest).filter(
                 or_(
                     LeaveRequest.tutor_id == current_user["id"],
@@ -343,8 +357,8 @@ def leave_history(
     manageable_ids = _get_manageable_student_ids(current_user, db)
     # Also include requests assigned to this user directly
     q = db.query(LeaveRequest).filter(
-        (LeaveRequest.student_id.in_(manageable_ids)) |
-        (LeaveRequest.tutor_id == current_user["id"])
+        (LeaveRequest.student_id.in_(manageable_ids))
+        | (LeaveRequest.tutor_id == current_user["id"])
     )
 
     if student_id:
@@ -404,9 +418,10 @@ def approve_leave(
         while current_date <= lr.to_date:
             # Find attendance sessions on this date
             session_ids = [
-                s.id for s in db.query(AttendanceSession.id).filter(
-                    AttendanceSession.date == current_date
-                ).all()
+                s.id
+                for s in db.query(AttendanceSession.id)
+                .filter(AttendanceSession.date == current_date)
+                .all()
             ]
             if session_ids:
                 updated = (
@@ -434,11 +449,13 @@ def approve_leave(
         db=db,
         target_id=lr.id,
         before={"status": "pending"},
-        after={"status": "approved",
-               "student_id": lr.student_id,
-               "from_date": str(lr.from_date),
-               "to_date": str(lr.to_date),
-               "attendance_updated": updated_count},
+        after={
+            "status": "approved",
+            "student_id": lr.student_id,
+            "from_date": str(lr.from_date),
+            "to_date": str(lr.to_date),
+            "attendance_updated": updated_count,
+        },
     )
 
     # Push notification to student
@@ -448,7 +465,7 @@ def approve_leave(
         user_ids=[lr.student_id],
         title="Leave Approved",
         body=f"✅ Your {lr.leave_type.value} leave ({lr.from_date} to {lr.to_date}) has been approved by {reviewer_name}."
-             + (f" {updated_count} attendance record(s) updated." if updated_count else ""),
+        + (f" {updated_count} attendance record(s) updated." if updated_count else ""),
         db=db,
         data={"type": "leave_approved", "leave_id": lr.id},
     )
@@ -496,9 +513,7 @@ def reject_leave(
         db=db,
         target_id=lr.id,
         before={"status": "pending"},
-        after={"status": "rejected",
-               "student_id": lr.student_id,
-               "note": (body.note or "")[:200]},
+        after={"status": "rejected", "student_id": lr.student_id, "note": (body.note or "")[:200]},
     )
 
     # Push notification to student
@@ -525,13 +540,18 @@ def leave_summary(
 
     manageable_ids = _get_manageable_student_ids(current_user, db)
     if not manageable_ids:
-        return {"academic_year": academic_year, "total_pending": 0, "total_approved": 0,
-                "total_rejected": 0, "per_student": []}
+        return {
+            "academic_year": academic_year,
+            "total_pending": 0,
+            "total_approved": 0,
+            "total_rejected": 0,
+            "per_student": [],
+        }
 
     # Build base query for leave requests of manageable students OR assigned to this user
     base_q = db.query(LeaveRequest).filter(
-        (LeaveRequest.student_id.in_(manageable_ids)) |
-        (LeaveRequest.tutor_id == current_user["id"])
+        (LeaveRequest.student_id.in_(manageable_ids))
+        | (LeaveRequest.tutor_id == current_user["id"])
     )
 
     pending = base_q.filter(LeaveRequest.status == LeaveRequestStatus.pending).count()
@@ -549,18 +569,28 @@ def leave_summary(
         if not u:
             continue
         student_leaves = base_q.filter(LeaveRequest.student_id == sid)
-        per_student.append({
-            "student_id": sid,
-            "name": u.name,
-            "roll_number": u.roll_number,
-            "pending": student_leaves.filter(LeaveRequest.status == LeaveRequestStatus.pending).count(),
-            "approved": student_leaves.filter(LeaveRequest.status == LeaveRequestStatus.approved).count(),
-            "rejected": student_leaves.filter(LeaveRequest.status == LeaveRequestStatus.rejected).count(),
-            "total_days_approved": sum(
-                (lr.to_date - lr.from_date).days + 1
-                for lr in student_leaves.filter(LeaveRequest.status == LeaveRequestStatus.approved).all()
-            ),
-        })
+        per_student.append(
+            {
+                "student_id": sid,
+                "name": u.name,
+                "roll_number": u.roll_number,
+                "pending": student_leaves.filter(
+                    LeaveRequest.status == LeaveRequestStatus.pending
+                ).count(),
+                "approved": student_leaves.filter(
+                    LeaveRequest.status == LeaveRequestStatus.approved
+                ).count(),
+                "rejected": student_leaves.filter(
+                    LeaveRequest.status == LeaveRequestStatus.rejected
+                ).count(),
+                "total_days_approved": sum(
+                    (lr.to_date - lr.from_date).days + 1
+                    for lr in student_leaves.filter(
+                        LeaveRequest.status == LeaveRequestStatus.approved
+                    ).all()
+                ),
+            }
+        )
 
     return {
         "academic_year": academic_year,
@@ -584,22 +614,31 @@ def attendance_impact(
 
     att_status = _leave_to_attendance_status(lr.leave_type)
     if not att_status:
-        return {"leave_id": leave_id, "records_affected": 0, "note": "This leave type does not auto-update attendance."}
+        return {
+            "leave_id": leave_id,
+            "records_affected": 0,
+            "note": "This leave type does not auto-update attendance.",
+        }
 
     count = 0
     current_date = lr.from_date
     while current_date <= lr.to_date:
         session_ids = [
-            s.id for s in db.query(AttendanceSession.id).filter(
-                AttendanceSession.date == current_date
-            ).all()
+            s.id
+            for s in db.query(AttendanceSession.id)
+            .filter(AttendanceSession.date == current_date)
+            .all()
         ]
         if session_ids:
-            count += db.query(AttendanceRecord).filter(
-                AttendanceRecord.student_id == lr.student_id,
-                AttendanceRecord.session_id.in_(session_ids),
-                AttendanceRecord.status == AttendanceStatus.absent,
-            ).count()
+            count += (
+                db.query(AttendanceRecord)
+                .filter(
+                    AttendanceRecord.student_id == lr.student_id,
+                    AttendanceRecord.session_id.in_(session_ids),
+                    AttendanceRecord.status == AttendanceStatus.absent,
+                )
+                .count()
+            )
         current_date += timedelta(days=1)
 
     return {"leave_id": leave_id, "records_affected": count}

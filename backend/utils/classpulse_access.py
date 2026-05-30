@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Tuple
 
 from sqlalchemy.orm import Session
 
@@ -40,9 +39,7 @@ ATTENDANCE_READ_ONLY_FLOOR = 65.0
 
 
 # ── Subject enrollment guard ────────────────────────────────────────────
-def verify_student_subject_access(
-    student_id: int, subject_id: int, db: Session
-) -> bool:
+def verify_student_subject_access(student_id: int, subject_id: int, db: Session) -> bool:
     """
     Return True iff a student is allowed to interact with this subject:
       * student exists, role=student, active
@@ -59,11 +56,19 @@ def verify_student_subject_access(
             return False
         if not getattr(student, "is_active", True):
             return False
-        if getattr(student, "role", None) and str(student.role.value if hasattr(student.role, "value") else student.role) != "student":
+        if (
+            getattr(student, "role", None)
+            and str(student.role.value if hasattr(student.role, "value") else student.role)
+            != "student"
+        ):
             return False
         if not student.course_id or subj.course_id != student.course_id:
             return False
-        if student.semester is not None and subj.semester is not None and student.semester != subj.semester:
+        if (
+            student.semester is not None
+            and subj.semester is not None
+            and student.semester != subj.semester
+        ):
             return False
         return True
     except Exception as e:
@@ -74,27 +79,33 @@ def verify_student_subject_access(
 # ── Attendance helper ───────────────────────────────────────────────────
 def attendance_pct_for_subject(
     db: Session, student_id: int, subject_id: int
-) -> Tuple[float, int, int]:
+) -> tuple[float, int, int]:
     """
     Return (pct, present_count, total_sessions) for a student on a subject.
     Only counts ENDED sessions. Returns (0.0, 0, 0) if no sessions.
     """
     try:
         sess_ids = [
-            sid for (sid,) in db.query(AttendanceSession.id)
+            sid
+            for (sid,) in db.query(AttendanceSession.id)
             .filter(
                 AttendanceSession.subject_id == subject_id,
                 AttendanceSession.status == SessionStatus.ended,
-            ).all()
+            )
+            .all()
         ]
         total = len(sess_ids)
         if total == 0:
             return 0.0, 0, 0
-        present = db.query(AttendanceRecord).filter(
-            AttendanceRecord.session_id.in_(sess_ids),
-            AttendanceRecord.student_id == student_id,
-            AttendanceRecord.status == AttendanceStatus.present,
-        ).count()
+        present = (
+            db.query(AttendanceRecord)
+            .filter(
+                AttendanceRecord.session_id.in_(sess_ids),
+                AttendanceRecord.student_id == student_id,
+                AttendanceRecord.status == AttendanceStatus.present,
+            )
+            .count()
+        )
         pct = round((present / total) * 100, 1) if total else 0.0
         return pct, present, total
     except Exception as e:
@@ -108,7 +119,7 @@ async def check_capsule_access(
     student: User,
     db: Session,
     require_mode: str = "view",
-) -> Tuple[bool, str, dict]:
+) -> tuple[bool, str, dict]:
     """
     Decide whether ``student`` may access ``capsule`` in ``require_mode``.
 
@@ -174,21 +185,25 @@ async def check_capsule_access(
             )
             if not sess:
                 return False, "locked_attend_first", {}
-            rec = db.query(AttendanceRecord).filter(
-                AttendanceRecord.session_id == sess.id,
-                AttendanceRecord.student_id == student.id,
-                AttendanceRecord.status == AttendanceStatus.present,
-            ).first()
+            rec = (
+                db.query(AttendanceRecord)
+                .filter(
+                    AttendanceRecord.session_id == sess.id,
+                    AttendanceRecord.student_id == student.id,
+                    AttendanceRecord.status == AttendanceStatus.present,
+                )
+                .first()
+            )
             if not rec:
                 return False, "locked_attend_first", {}
             access_status, ctx = "accessible", {"session_id": sess.id}
         elif mode == CapsuleUnlockMode.attendance_gated:
-            pct, present, total = attendance_pct_for_subject(
-                db, student.id, capsule.subject_id
-            )
+            pct, present, total = attendance_pct_for_subject(db, student.id, capsule.subject_id)
             ctx = {
-                "attendance_pct": pct, "present": present,
-                "total_sessions": total, "min_required": capsule.min_attendance_pct,
+                "attendance_pct": pct,
+                "present": present,
+                "total_sessions": total,
+                "min_required": capsule.min_attendance_pct,
             }
             if total == 0:
                 return False, "locked_no_attendance", ctx
@@ -240,7 +255,7 @@ async def check_capsule_access(
 # Department-level KPI helpers (used by HOD dashboard widget)
 # ═══════════════════════════════════════════════════════════════════════
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 CONTENT_GAP_DAYS = 14
 
@@ -248,7 +263,8 @@ CONTENT_GAP_DAYS = 14
 def _dept_subject_ids(dept_id: int, db: Session) -> list[int]:
     try:
         return [
-            s.id for s in db.query(Subject)
+            s.id
+            for s in db.query(Subject)
             .join(Subject.course)
             .filter(Subject.course.has(department_id=dept_id))
             .all()
@@ -268,21 +284,34 @@ def calculate_dept_engagement(dept_id: int, db: Session) -> float:
             subj = db.query(Subject).filter(Subject.id == sid).first()
             if not subj:
                 continue
-            cap_ids = [c.id for c in db.query(Capsule).filter(
-                Capsule.subject_id == sid, Capsule.is_active == True  # noqa: E712
-            ).all()]
+            cap_ids = [
+                c.id
+                for c in db.query(Capsule)
+                .filter(Capsule.subject_id == sid, Capsule.is_active == True)  # noqa: E712
+                .all()
+            ]
             if not cap_ids:
                 continue
-            total_students = db.query(User).filter(
-                User.role == UserRole.student, User.is_active == True,  # noqa: E712
-                User.course_id == subj.course_id, User.semester == subj.semester,
-            ).count()
+            total_students = (
+                db.query(User)
+                .filter(
+                    User.role == UserRole.student,
+                    User.is_active == True,  # noqa: E712
+                    User.course_id == subj.course_id,
+                    User.semester == subj.semester,
+                )
+                .count()
+            )
             if not total_students:
                 continue
-            opened = db.query(CapsuleInteraction).filter(
-                CapsuleInteraction.capsule_id.in_(cap_ids),
-                CapsuleInteraction.first_opened_at.isnot(None),
-            ).count()
+            opened = (
+                db.query(CapsuleInteraction)
+                .filter(
+                    CapsuleInteraction.capsule_id.in_(cap_ids),
+                    CapsuleInteraction.first_opened_at.isnot(None),
+                )
+                .count()
+            )
             possible = len(cap_ids) * total_students
             sums.append((opened / possible) * 100 if possible else 0.0)
         return round(sum(sums) / len(sums), 1) if sums else 0.0
@@ -297,15 +326,22 @@ def calculate_dept_comprehension(dept_id: int, db: Session) -> float:
         subj_ids = _dept_subject_ids(dept_id, db)
         if not subj_ids:
             return 0.0
-        cap_ids = [c.id for c in db.query(Capsule).filter(
-            Capsule.subject_id.in_(subj_ids), Capsule.is_active == True  # noqa: E712
-        ).all()]
+        cap_ids = [
+            c.id
+            for c in db.query(Capsule)
+            .filter(Capsule.subject_id.in_(subj_ids), Capsule.is_active == True)  # noqa: E712
+            .all()
+        ]
         if not cap_ids:
             return 0.0
-        attempted = db.query(CapsuleInteraction).filter(
-            CapsuleInteraction.capsule_id.in_(cap_ids),
-            CapsuleInteraction.quiz_attempted == True,  # noqa: E712
-        ).all()
+        attempted = (
+            db.query(CapsuleInteraction)
+            .filter(
+                CapsuleInteraction.capsule_id.in_(cap_ids),
+                CapsuleInteraction.quiz_attempted == True,  # noqa: E712
+            )
+            .all()
+        )
         if not attempted:
             return 0.0
         passed = sum(1 for i in attempted if i.quiz_passed)
@@ -321,12 +357,15 @@ def count_content_gaps(dept_id: int, db: Session) -> int:
         subj_ids = _dept_subject_ids(dept_id, db)
         if not subj_ids:
             return 0
-        cutoff = datetime.now(tz=timezone.utc) - timedelta(days=CONTENT_GAP_DAYS)
+        cutoff = datetime.now(tz=UTC) - timedelta(days=CONTENT_GAP_DAYS)
         gaps = 0
         for sid in subj_ids:
-            last = db.query(Capsule).filter(
-                Capsule.subject_id == sid, Capsule.is_active == True  # noqa: E712
-            ).order_by(Capsule.created_at.desc()).first()
+            last = (
+                db.query(Capsule)
+                .filter(Capsule.subject_id == sid, Capsule.is_active == True)  # noqa: E712
+                .order_by(Capsule.created_at.desc())
+                .first()
+            )
             if not last or (last.created_at and last.created_at < cutoff):
                 gaps += 1
         return gaps
@@ -341,16 +380,18 @@ def count_at_risk_students(dept_id: int, db: Session) -> int:
         subj_ids = _dept_subject_ids(dept_id, db)
         if not subj_ids:
             return 0
-        cap_ids = [c.id for c in db.query(Capsule).filter(
-            Capsule.subject_id.in_(subj_ids)
-        ).all()]
+        cap_ids = [c.id for c in db.query(Capsule).filter(Capsule.subject_id.in_(subj_ids)).all()]
         if not cap_ids:
             return 0
-        rows = db.query(CapsuleInteraction).filter(
-            CapsuleInteraction.capsule_id.in_(cap_ids),
-            CapsuleInteraction.quiz_attempted == True,  # noqa: E712
-            CapsuleInteraction.quiz_passed == False,  # noqa: E712
-        ).all()
+        rows = (
+            db.query(CapsuleInteraction)
+            .filter(
+                CapsuleInteraction.capsule_id.in_(cap_ids),
+                CapsuleInteraction.quiz_attempted == True,  # noqa: E712
+                CapsuleInteraction.quiz_passed == False,  # noqa: E712
+            )
+            .all()
+        )
         counter = Counter(r.student_id for r in rows)
         return sum(1 for _sid, n in counter.items() if n > 2)
     except Exception as e:
@@ -362,10 +403,16 @@ def classpulse_summary_for_dept(dept_id: int, db: Session) -> dict:
     """Compact summary used by HOD's main dashboard widget."""
     try:
         subj_ids = _dept_subject_ids(dept_id, db)
-        total = db.query(Capsule).filter(
-            Capsule.subject_id.in_(subj_ids) if subj_ids else False,
-            Capsule.is_active == True,  # noqa: E712
-        ).count() if subj_ids else 0
+        total = (
+            db.query(Capsule)
+            .filter(
+                Capsule.subject_id.in_(subj_ids) if subj_ids else False,
+                Capsule.is_active == True,  # noqa: E712
+            )
+            .count()
+            if subj_ids
+            else 0
+        )
         return {
             "total_capsules": int(total),
             "avg_engagement_pct": calculate_dept_engagement(dept_id, db),
@@ -376,7 +423,9 @@ def classpulse_summary_for_dept(dept_id: int, db: Session) -> dict:
     except Exception as e:
         logger.warning("classpulse_summary_for_dept failed: %s", e)
         return {
-            "total_capsules": 0, "avg_engagement_pct": 0.0,
-            "avg_comprehension_pct": 0.0, "content_gap_alerts": 0,
+            "total_capsules": 0,
+            "avg_engagement_pct": 0.0,
+            "avg_comprehension_pct": 0.0,
+            "content_gap_alerts": 0,
             "students_at_risk": 0,
         }

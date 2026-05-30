@@ -14,17 +14,16 @@ import json
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from config import settings
 from database import (
-    Department,
     Subject,
     Suggestion,
     SuggestionAIReport,
@@ -40,9 +39,17 @@ router = APIRouter(prefix="/api/suggestions", tags=["Suggestions"])
 
 # ── Constants ──────────────────────────────────────────────────────────
 VALID_CATEGORIES = {
-    "teaching_quality", "infrastructure", "syllabus", "administration",
-    "canteen", "hostel", "sports", "library", "other",
-    "class_environment", "student_engagement",
+    "teaching_quality",
+    "infrastructure",
+    "syllabus",
+    "administration",
+    "canteen",
+    "hostel",
+    "sports",
+    "library",
+    "other",
+    "class_environment",
+    "student_engagement",
 }
 VALID_SCOPES = {"department", "institution", "subject", "general"}
 VALID_PRIORITIES = {"low", "medium", "high", "critical"}
@@ -54,6 +61,7 @@ AI_TIMEOUT = 30  # seconds
 # ═══════════════════════════════════════════════════════════════════════
 # Request / Response schemas
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class SubmitRequest(BaseModel):
     category: str = Field(..., min_length=2, max_length=50)
@@ -77,6 +85,7 @@ class GenerateReportRequest(BaseModel):
 # Route 1 — POST /submit
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/submit")
 def submit_suggestion(
     body: SubmitRequest,
@@ -84,20 +93,21 @@ def submit_suggestion(
     db: Session = Depends(get_db),
 ):
     if body.category not in VALID_CATEGORIES:
-        raise HTTPException(400, f"Invalid category. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}")
+        raise HTTPException(
+            400, f"Invalid category. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
+        )
     if body.target_scope not in VALID_SCOPES:
-        raise HTTPException(400, f"Invalid scope. Must be one of: {', '.join(sorted(VALID_SCOPES))}")
+        raise HTTPException(
+            400, f"Invalid scope. Must be one of: {', '.join(sorted(VALID_SCOPES))}"
+        )
     if body.priority not in VALID_PRIORITIES:
-        raise HTTPException(400, f"Invalid priority. Must be one of: {', '.join(sorted(VALID_PRIORITIES))}")
+        raise HTTPException(
+            400, f"Invalid priority. Must be one of: {', '.join(sorted(VALID_PRIORITIES))}"
+        )
 
     user = db.query(User).filter(User.id == current_user["id"]).first()
     if not user:
         raise HTTPException(404, "User not found")
-
-    dept_id = body.target_subject_id and db.query(Subject).filter(
-        Subject.id == body.target_subject_id
-    ).first()
-    target_dept = dept_id.course.department_id if dept_id and hasattr(dept_id, "course") else None
 
     suggestion = Suggestion(
         submitted_by_user_id=user.id,
@@ -124,6 +134,7 @@ def submit_suggestion(
 # ═══════════════════════════════════════════════════════════════════════
 # Route 2 — GET /my-submissions
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/my-submissions")
 def my_submissions(
@@ -165,6 +176,7 @@ def my_submissions(
 # ═══════════════════════════════════════════════════════════════════════
 # Route 3 — GET /department-analysis   (HOD + Principal)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _strip_identity(rows):
     """Return suggestion dicts with identity completely stripped."""
@@ -208,10 +220,16 @@ def department_analysis(
     # All suggestions for this department — identity stripped at query level
     suggestions = (
         db.query(
-            Suggestion.id, Suggestion.category, Suggestion.message,
-            Suggestion.sentiment, Suggestion.priority, Suggestion.status,
-            Suggestion.submitted_at, Suggestion.target_scope,
-            Suggestion.admin_response, Suggestion.submitted_by_role,
+            Suggestion.id,
+            Suggestion.category,
+            Suggestion.message,
+            Suggestion.sentiment,
+            Suggestion.priority,
+            Suggestion.status,
+            Suggestion.submitted_at,
+            Suggestion.target_scope,
+            Suggestion.admin_response,
+            Suggestion.submitted_by_role,
         )
         .filter(Suggestion.target_department_id == dept_id)
         .order_by(desc(Suggestion.submitted_at))
@@ -219,13 +237,17 @@ def department_analysis(
     )
 
     return {
-        "report": {
-            "id": report.id,
-            "report_data": report.report_data,
-            "generated_at": report.generated_at.isoformat() if report.generated_at else None,
-            "total_analysed": report.total_suggestions_analysed,
-            "ai_provider": report.ai_provider,
-        } if report else None,
+        "report": (
+            {
+                "id": report.id,
+                "report_data": report.report_data,
+                "generated_at": report.generated_at.isoformat() if report.generated_at else None,
+                "total_analysed": report.total_suggestions_analysed,
+                "ai_provider": report.ai_provider,
+            }
+            if report
+            else None
+        ),
         "suggestions": _strip_identity(suggestions),
     }
 
@@ -233,6 +255,7 @@ def department_analysis(
 # ═══════════════════════════════════════════════════════════════════════
 # Route 4 — GET /institution-analysis   (Principal only)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/institution-analysis")
 def institution_analysis(
@@ -251,23 +274,33 @@ def institution_analysis(
 
     suggestions = (
         db.query(
-            Suggestion.id, Suggestion.category, Suggestion.message,
-            Suggestion.sentiment, Suggestion.priority, Suggestion.status,
-            Suggestion.submitted_at, Suggestion.target_scope,
-            Suggestion.admin_response, Suggestion.submitted_by_role,
+            Suggestion.id,
+            Suggestion.category,
+            Suggestion.message,
+            Suggestion.sentiment,
+            Suggestion.priority,
+            Suggestion.status,
+            Suggestion.submitted_at,
+            Suggestion.target_scope,
+            Suggestion.admin_response,
+            Suggestion.submitted_by_role,
         )
         .order_by(desc(Suggestion.submitted_at))
         .all()
     )
 
     return {
-        "report": {
-            "id": report.id,
-            "report_data": report.report_data,
-            "generated_at": report.generated_at.isoformat() if report.generated_at else None,
-            "total_analysed": report.total_suggestions_analysed,
-            "ai_provider": report.ai_provider,
-        } if report else None,
+        "report": (
+            {
+                "id": report.id,
+                "report_data": report.report_data,
+                "generated_at": report.generated_at.isoformat() if report.generated_at else None,
+                "total_analysed": report.total_suggestions_analysed,
+                "ai_provider": report.ai_provider,
+            }
+            if report
+            else None
+        ),
         "suggestions": _strip_identity(suggestions),
     }
 
@@ -275,6 +308,7 @@ def institution_analysis(
 # ═══════════════════════════════════════════════════════════════════════
 # Route 5 — GET /teacher-feedback   (Teacher only)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/teacher-feedback")
 def teacher_feedback(
@@ -293,10 +327,16 @@ def teacher_feedback(
 
     suggestions = (
         db.query(
-            Suggestion.id, Suggestion.category, Suggestion.message,
-            Suggestion.sentiment, Suggestion.priority, Suggestion.status,
-            Suggestion.submitted_at, Suggestion.target_scope,
-            Suggestion.admin_response, Suggestion.target_subject_id,
+            Suggestion.id,
+            Suggestion.category,
+            Suggestion.message,
+            Suggestion.sentiment,
+            Suggestion.priority,
+            Suggestion.status,
+            Suggestion.submitted_at,
+            Suggestion.target_scope,
+            Suggestion.admin_response,
+            Suggestion.target_subject_id,
             Suggestion.submitted_by_role,
         )
         .filter(Suggestion.target_subject_id.in_(subject_ids))
@@ -310,17 +350,22 @@ def teacher_feedback(
     for r in suggestions:
         sid = r.target_subject_id
         if sid not in grouped:
-            grouped[sid] = {"subject": subject_map.get(sid, {"id": sid, "name": "Unknown"}), "feedback": []}
-        grouped[sid]["feedback"].append({
-            "id": r.id,
-            "category": r.category,
-            "message": r.message,
-            "sentiment": r.sentiment,
-            "priority": r.priority,
-            "status": r.status,
-            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
-            "admin_response": r.admin_response,
-        })
+            grouped[sid] = {
+                "subject": subject_map.get(sid, {"id": sid, "name": "Unknown"}),
+                "feedback": [],
+            }
+        grouped[sid]["feedback"].append(
+            {
+                "id": r.id,
+                "category": r.category,
+                "message": r.message,
+                "sentiment": r.sentiment,
+                "priority": r.priority,
+                "status": r.status,
+                "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+                "admin_response": r.admin_response,
+            }
+        )
 
     return {
         "subjects": list(subject_map.values()),
@@ -332,6 +377,7 @@ def teacher_feedback(
 # ═══════════════════════════════════════════════════════════════════════
 # Route 6 — PATCH /{suggestion_id}/respond   (HOD + Principal)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.patch("/{suggestion_id}/respond")
 def respond_to_suggestion(
@@ -352,7 +398,7 @@ def respond_to_suggestion(
 
     suggestion.admin_response = body.admin_response
     suggestion.status = body.status
-    suggestion.reviewed_at = datetime.now(timezone.utc)
+    suggestion.reviewed_at = datetime.now(UTC)
     suggestion.reviewed_by_role = current_user["role"]
     db.commit()
 
@@ -362,6 +408,7 @@ def respond_to_suggestion(
 # ═══════════════════════════════════════════════════════════════════════
 # Route 7 — POST /generate-ai-report   (HOD + Principal)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _parse_json(raw: str) -> dict:
     """Strip markdown fences and parse JSON."""
@@ -436,6 +483,7 @@ IMPORTANT RULES:
 def _call_gemini(prompt: str) -> str:
     """Call Gemini 2.0 Flash with timeout."""
     import google.genai as genai
+
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     response = client.models.generate_content(
         model="gemini-2.0-flash",
@@ -448,6 +496,7 @@ def _call_gemini(prompt: str) -> str:
 def _call_groq(prompt: str) -> str:
     """Call Groq Llama 3.3 70b with timeout."""
     import groq
+
     client = groq.Groq(api_key=settings.GROQ_API_KEY, timeout=AI_TIMEOUT)
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -498,7 +547,11 @@ def generate_ai_report(
     raw = None
     t0 = time.time()
 
-    for attempt_provider, caller in [("gemini", _call_gemini), ("groq", _call_groq), ("gemini", _call_gemini)]:
+    for attempt_provider, caller in [
+        ("gemini", _call_gemini),
+        ("groq", _call_groq),
+        ("gemini", _call_gemini),
+    ]:
         try:
             raw = caller(prompt)
             provider = attempt_provider
@@ -508,7 +561,9 @@ def generate_ai_report(
             continue
 
     if not raw:
-        raise HTTPException(502, "AI analysis unavailable. Both Gemini and Groq failed. Please try again later.")
+        raise HTTPException(
+            502, "AI analysis unavailable. Both Gemini and Groq failed. Please try again later."
+        )
 
     generation_time = round(time.time() - t0, 2)
 
@@ -545,8 +600,13 @@ def generate_ai_report(
     db.commit()
     db.refresh(report)
 
-    logger.info("AI report generated — scope=%s, provider=%s, analysed=%d, time=%.1fs",
-                body.scope, provider, len(suggestions), generation_time)
+    logger.info(
+        "AI report generated — scope=%s, provider=%s, analysed=%d, time=%.1fs",
+        body.scope,
+        provider,
+        len(suggestions),
+        generation_time,
+    )
 
     return {
         "report": {

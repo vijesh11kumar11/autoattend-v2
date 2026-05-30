@@ -8,6 +8,7 @@ All credentials are sourced from `settings` (read from env). The module
 is intentionally tolerant of missing credentials so the app keeps
 running in dev — calls that need S3 raise HTTPException(503).
 """
+
 from __future__ import annotations
 
 import logging
@@ -89,10 +90,10 @@ def _validate_upload(file_bytes: bytes, original_filename: str) -> str:
 
 
 _EXT_TO_CONTENT_TYPE = {
-    ".pdf":  "application/pdf",
-    ".jpg":  "image/jpeg",
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".png":  "image/png",
+    ".png": "image/png",
 }
 
 
@@ -162,10 +163,10 @@ def generate_signed_url(s3_key: str, expiry_seconds: int = 3600) -> str:
 
 _ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v"}
 _VIDEO_EXT_TO_CONTENT_TYPE = {
-    ".mp4":  "video/mp4",
+    ".mp4": "video/mp4",
     ".webm": "video/webm",
-    ".mov":  "video/quicktime",
-    ".m4v":  "video/x-m4v",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
 }
 
 

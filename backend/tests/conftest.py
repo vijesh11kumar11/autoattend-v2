@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -67,18 +66,17 @@ from sqlalchemy.engine import make_url
 from starlette.testclient import TestClient
 
 import database as db_module
+from config import settings
 from database import (
     Base,
     College,
     Course,
     Department,
-    DeviceRegistry,
     Section,
     Subject,
     User,
     UserRole,
 )
-from config import settings
 from utils.auth_utils import create_access_token, hash_password
 
 # Never ship test-run telemetry to the real Sentry project. Must happen before
@@ -99,6 +97,7 @@ TEST_DEVICE_ID = "pytest-device-0001"
 # ═══════════════════════════════════════════════════════════════════════
 # Test database engine
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _test_database_url():
     """Resolve the isolated test database URL.
@@ -151,6 +150,7 @@ def test_engine():
 # ═══════════════════════════════════════════════════════════════════════
 # Seed the organisation tree exactly once per session
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _build_org_tree(session) -> SimpleNamespace:
     """Create the deterministic multi-tenant fixture data.
@@ -337,6 +337,7 @@ def seed(test_engine):
 # Per-test transactional session (rolled back after each test)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @pytest.fixture()
 def db_session(test_engine, seed):
     """A SAVEPOINT-backed session shared with the app via dependency override.
@@ -388,6 +389,7 @@ def client(db_session):
 # External-service mocks — nothing leaves the test process
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @pytest.fixture(autouse=True)
 def _mock_external_services(monkeypatch):
     """Stub every outbound integration (SMS, WhatsApp, push, email, OTP, face).
@@ -398,6 +400,7 @@ def _mock_external_services(monkeypatch):
     # Push notifications (leave approve/reject fan-out).
     try:
         import routes.leave as leave_mod
+
         monkeypatch.setattr(leave_mod, "send_push_to_many", lambda *a, **k: None, raising=False)
     except Exception:
         pass
@@ -405,6 +408,7 @@ def _mock_external_services(monkeypatch):
     # Super-admin welcome email (MSG91).
     try:
         import routes.superadmin as sa_mod
+
         monkeypatch.setattr(sa_mod, "_send_welcome_email_safe", lambda *a, **k: True, raising=False)
     except Exception:
         pass
@@ -430,6 +434,7 @@ def _mock_external_services(monkeypatch):
 # ═══════════════════════════════════════════════════════════════════════
 # Auth helpers
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def make_token(user: User, device_id: str = TEST_DEVICE_ID) -> str:
     """Mint a valid access token for ``user`` with the same claims login uses."""
@@ -465,11 +470,14 @@ def tokens():
 
 # ── Convenience accessors for the seeded tree ───────────────────────────
 
+
 @pytest.fixture()
 def get_user(db_session):
     """Return a callable that fetches a fresh ``User`` by id in this session."""
+
     def _get(user_id: int) -> User:
         return db_session.query(User).filter(User.id == user_id).first()
+
     return _get
 
 

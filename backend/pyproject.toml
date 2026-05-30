@@ -1,0 +1,48 @@
+# Tooling configuration for the AutoAttend backend.
+# Linting (ruff) and formatting (black). Install dev tools with:
+#   pip install -r requirements-dev.txt
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+extend-exclude = '''
+/(
+    \.venv
+  | venv
+  | alembic/versions
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Generated migrations and virtualenvs are not hand-maintained code.
+extend-exclude = ["venv", ".venv", "alembic/versions"]
+
+[tool.ruff.lint]
+# A pragmatic, low-noise rule set for an existing large codebase:
+#   E/W  pycodestyle    F  pyflakes    I  isort
+#   B    flake8-bugbear C4 comprehensions  UP pyupgrade
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = [
+    "E501",  # line length is enforced by black, not ruff
+    "B008",  # FastAPI uses `Depends(...)` as default arguments by design
+    "UP007", # keep Optional[X] / Union for readability with pydantic
+    # ── Intentionally left (documented project conventions) ──────────
+    "B904",  # HTTPExceptions are user-facing; we deliberately do not chain
+             # internal exceptions into API error responses.
+    "E701",  # compact single-line `if x: return` guards used throughout.
+    "E702",  # compact `a = 1; b = 2` aligned assignments in PDF/report code.
+    "E741",  # `l` is used as a short loop alias in a couple of helpers.
+]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__ files intentionally re-export names.
+"__init__.py" = ["F401"]
+# These modules import after deliberate early setup (logging/config),
+# lazy-import inside functions to break import cycles, or (Alembic env /
+# pytest conftest) manipulate sys.path before importing the app.
+"main.py" = ["E402"]
+"alembic/env.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
+"utils/classpulse_access.py" = ["E402"]

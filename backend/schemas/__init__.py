@@ -5,4 +5,3 @@ Each module groups the schemas for one domain (``auth_schemas``,
 This ``__init__`` intentionally exposes nothing to avoid import-time
 side effects and circular imports.
 """
-

@@ -9,7 +9,21 @@ from __future__ import annotations
 
 import bleach  # type: ignore[import-untyped]
 
-_RICH_TAGS = ["b", "i", "em", "strong", "p", "br", "ul", "ol", "li", "a", "code", "pre", "blockquote"]
+_RICH_TAGS = [
+    "b",
+    "i",
+    "em",
+    "strong",
+    "p",
+    "br",
+    "ul",
+    "ol",
+    "li",
+    "a",
+    "code",
+    "pre",
+    "blockquote",
+]
 _RICH_ATTRS = {"a": ["href", "title", "rel"]}
 
 

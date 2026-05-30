@@ -15,6 +15,7 @@ work (capsule generation, AI interventions) are reported as informational
 rather than asserted, so a green run requires only the synchronous
 endpoints to be wired up.
 """
+
 import sys
 import time
 
@@ -53,7 +54,8 @@ def main() -> int:
         json={"subject_id": 1, "title": "Smoke Test Session", "session_type": "standalone"},
     )
     if r.status_code not in (200, 201):
-        step("Create live session", False, r.text[:160]);  return 1
+        step("Create live session", False, r.text[:160])
+        return 1
     session_id = r.json().get("session_id") or r.json().get("id")
     step("Create live session", True, f"id={session_id}")
 
@@ -111,21 +113,36 @@ def main() -> int:
         f"{BASE}/live/sessions/{session_id}/engagement-timeline",
         headers=auth(teacher_token),
     )
-    step("Engagement timeline", r.ok, r.text[:160] if not r.ok else f"{len(r.json().get('timeline', []))} pts")
+    step(
+        "Engagement timeline",
+        r.ok,
+        r.text[:160] if not r.ok else f"{len(r.json().get('timeline', []))} pts",
+    )
 
     r = requests.get(
         f"{BASE}/live/sessions/{session_id}/student-attention",
         headers=auth(teacher_token),
     )
-    step("Student attention", r.ok, r.text[:160] if not r.ok else f"{len(r.json().get('students', []))} students")
+    step(
+        "Student attention",
+        r.ok,
+        r.text[:160] if not r.ok else f"{len(r.json().get('students', []))} students",
+    )
 
     # 8. AI intervention check (F03) — informational, may return None
     r = requests.post(
         f"{BASE}/live/sessions/{session_id}/ai/check-intervention",
         headers=auth(teacher_token),
     )
-    step("AI intervention check", r.ok,
-         (r.json().get("intervention") or {}).get("title", "no intervention this cycle") if r.ok else r.text[:160])
+    step(
+        "AI intervention check",
+        r.ok,
+        (
+            (r.json().get("intervention") or {}).get("title", "no intervention this cycle")
+            if r.ok
+            else r.text[:160]
+        ),
+    )
 
     # 9. Breakout rooms (F10) — create + status + end
     r = requests.post(
@@ -135,13 +152,21 @@ def main() -> int:
     )
     # If no participants, backend filters out the empty room — this can
     # legitimately return 200 with an empty rooms list.
-    step("Breakout create", r.ok, f"{len((r.json() or {}).get('rooms', []))} room(s)" if r.ok else r.text[:160])
+    step(
+        "Breakout create",
+        r.ok,
+        f"{len((r.json() or {}).get('rooms', []))} room(s)" if r.ok else r.text[:160],
+    )
 
     r = requests.get(
         f"{BASE}/live/sessions/{session_id}/breakout/status",
         headers=auth(teacher_token),
     )
-    step("Breakout status", r.ok, r.text[:160] if not r.ok else f"{len(r.json().get('rooms', []))} active")
+    step(
+        "Breakout status",
+        r.ok,
+        r.text[:160] if not r.ok else f"{len(r.json().get('rooms', []))} active",
+    )
 
     r = requests.post(
         f"{BASE}/live/sessions/{session_id}/breakout/end",
@@ -159,8 +184,11 @@ def main() -> int:
         f"{BASE}/live/sessions/{session_id}/health-report",
         headers=auth(teacher_token),
     )
-    step("Health report", r.ok,
-         f"overall_score={r.json().get('overall_score')}" if r.ok else r.text[:160])
+    step(
+        "Health report",
+        r.ok,
+        f"overall_score={r.json().get('overall_score')}" if r.ok else r.text[:160],
+    )
 
     # 12. Capsule status — informational only (may still be generating)
     time.sleep(3)
@@ -168,9 +196,15 @@ def main() -> int:
         f"{BASE}/live/sessions/{session_id}/capsule-status",
         headers=auth(teacher_token),
     )
-    step("Capsule status", r.ok,
-         f"is_ready={r.json().get('is_ready')} capsule_id={r.json().get('capsule_id')}"
-         if r.ok else r.text[:160])
+    step(
+        "Capsule status",
+        r.ok,
+        (
+            f"is_ready={r.json().get('is_ready')} capsule_id={r.json().get('capsule_id')}"
+            if r.ok
+            else r.text[:160]
+        ),
+    )
 
     print("\n" + "=" * 60)
     print("SMOKE TEST COMPLETE")

@@ -11,17 +11,30 @@ Safety:
     etc. so the same script works for any tenant without code edits.
 """
 
-import sys, os, secrets
+import os
+import secrets
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from argon2 import PasswordHasher
+
 from config import settings
-from database import SessionLocal, Base, engine
 from database import (
-    College, Department, Course, Subject, User, Timetable,
-    UserRole, DayOfWeek,
-    Capsule, CapsuleType, CapsuleUnlockMode,
+    Capsule,
+    CapsuleType,
+    CapsuleUnlockMode,
+    College,
+    Course,
+    DayOfWeek,
+    Department,
+    SessionLocal,
+    Subject,
+    Timetable,
+    User,
+    UserRole,
 )
 
 # ── Production guard ─────────────────────────────────────────
@@ -31,19 +44,19 @@ if not settings.DEBUG and os.environ.get("ALLOW_SEED_IN_PROD") != "1":
     sys.exit(2)
 
 # ── Tenant-specific values (env-driven — no hard-coded "SVEC") ─────────
-SEED_COLLEGE_NAME    = os.environ.get("SEED_COLLEGE_NAME", settings.COLLEGE_NAME or "Demo College")
-SEED_COLLEGE_CODE    = os.environ.get("SEED_COLLEGE_CODE", "DEMO").lower()
-SEED_COLLEGE_ADDR    = os.environ.get("SEED_COLLEGE_ADDRESS", "123 Example Street")
-SEED_COLLEGE_PHONE   = os.environ.get("SEED_COLLEGE_PHONE", "+910000000000")
-SEED_COLLEGE_EMAIL   = os.environ.get("SEED_COLLEGE_EMAIL", f"admin@{SEED_COLLEGE_CODE}.edu.in")
-SEED_EMAIL_DOMAIN    = os.environ.get("SEED_EMAIL_DOMAIN", f"{SEED_COLLEGE_CODE}.edu.in")
+SEED_COLLEGE_NAME = os.environ.get("SEED_COLLEGE_NAME", settings.COLLEGE_NAME or "Demo College")
+SEED_COLLEGE_CODE = os.environ.get("SEED_COLLEGE_CODE", "DEMO").lower()
+SEED_COLLEGE_ADDR = os.environ.get("SEED_COLLEGE_ADDRESS", "123 Example Street")
+SEED_COLLEGE_PHONE = os.environ.get("SEED_COLLEGE_PHONE", "+910000000000")
+SEED_COLLEGE_EMAIL = os.environ.get("SEED_COLLEGE_EMAIL", f"admin@{SEED_COLLEGE_CODE}.edu.in")
+SEED_EMAIL_DOMAIN = os.environ.get("SEED_EMAIL_DOMAIN", f"{SEED_COLLEGE_CODE}.edu.in")
 
 # ── Password (env override else random) ──────────────────────────
 SEED_PASSWORD = os.environ.get("SEED_PASSWORD") or secrets.token_urlsafe(18)
 if not os.environ.get("SEED_PASSWORD"):
-    print(f"⚠️  SEED_PASSWORD not set — generated random password for this run:")
+    print("⚠️  SEED_PASSWORD not set — generated random password for this run:")
     print(f"   → {SEED_PASSWORD}")
-    print(f"   Save it now; it will NOT be shown again.")
+    print("   Save it now; it will NOT be shown again.")
 
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 PWD_HASH = ph.hash(SEED_PASSWORD)
@@ -54,10 +67,12 @@ try:
     # ── 1. College ───────────────────────────────────────────────
     college = db.query(College).first()
     if not college:
-        college = College(name=SEED_COLLEGE_NAME,
-                          address=SEED_COLLEGE_ADDR,
-                          phone=SEED_COLLEGE_PHONE,
-                          email=SEED_COLLEGE_EMAIL)
+        college = College(
+            name=SEED_COLLEGE_NAME,
+            address=SEED_COLLEGE_ADDR,
+            phone=SEED_COLLEGE_PHONE,
+            email=SEED_COLLEGE_EMAIL,
+        )
         db.add(college)
         db.flush()
         print(f"✅ College created  (id={college.id})")
@@ -77,7 +92,12 @@ try:
     # ── 3. Course ────────────────────────────────────────────────
     course = db.query(Course).filter_by(department_id=dept.id, code="BTECH-CSE").first()
     if not course:
-        course = Course(department_id=dept.id, name="B.Tech Computer Science", code="BTECH-CSE", duration_years=4)
+        course = Course(
+            department_id=dept.id,
+            name="B.Tech Computer Science",
+            code="BTECH-CSE",
+            duration_years=4,
+        )
         db.add(course)
         db.flush()
         print(f"✅ Course created (id={course.id})")
@@ -90,7 +110,7 @@ try:
             "name": "Dr. Rajesh Kumar",
             "email": "principal@svec.edu.in",
             "role": UserRole.principal,
-            "college_id": None,       # filled below
+            "college_id": None,  # filled below
             "department_id": None,
             "course_id": None,
         },
@@ -99,7 +119,7 @@ try:
             "email": "hod.cse@svec.edu.in",
             "role": UserRole.hod,
             "college_id": None,
-            "department_id": None,     # filled below
+            "department_id": None,  # filled below
             "course_id": None,
         },
         {
@@ -171,8 +191,8 @@ try:
     # ── 5. Subjects ──────────────────────────────────────────────
     subjects_data = [
         {"name": "Data Structures & Algorithms", "code": "CS301", "semester": 6},
-        {"name": "Database Management Systems",  "code": "CS302", "semester": 6},
-        {"name": "Computer Networks",            "code": "CS303", "semester": 6},
+        {"name": "Database Management Systems", "code": "CS302", "semester": 6},
+        {"name": "Computer Networks", "code": "CS303", "semester": 6},
     ]
 
     created_subjects = []
@@ -196,8 +216,13 @@ try:
 
     # ── 6. Timetable (Mon-Fri schedule) ──────────────────────────
     if teacher and created_subjects:
-        days = [DayOfWeek.monday, DayOfWeek.tuesday, DayOfWeek.wednesday,
-                DayOfWeek.thursday, DayOfWeek.friday]
+        days = [
+            DayOfWeek.monday,
+            DayOfWeek.tuesday,
+            DayOfWeek.wednesday,
+            DayOfWeek.thursday,
+            DayOfWeek.friday,
+        ]
         slots = [
             ("09:00", "10:00"),
             ("10:00", "11:00"),
@@ -208,10 +233,11 @@ try:
             for i, subj in enumerate(created_subjects):
                 if i >= len(slots):
                     break
-                existing = db.query(Timetable).filter_by(
-                    subject_id=subj.id,
-                    day_of_week=day, start_time=slots[i][0]
-                ).first()
+                existing = (
+                    db.query(Timetable)
+                    .filter_by(subject_id=subj.id, day_of_week=day, start_time=slots[i][0])
+                    .first()
+                )
                 if existing:
                     continue
                 tt = Timetable(
@@ -339,9 +365,14 @@ try:
         ]
         cap_count = 0
         for cs in capsule_seed:
-            existing = db.query(Capsule).filter_by(
-                subject_id=cs["subject"].id, title=cs["title"],
-            ).first()
+            existing = (
+                db.query(Capsule)
+                .filter_by(
+                    subject_id=cs["subject"].id,
+                    title=cs["title"],
+                )
+                .first()
+            )
             if existing:
                 continue
             cap = Capsule(
@@ -357,7 +388,7 @@ try:
                 ai_processed=True,
                 is_active=True,
                 featured=(cap_count == 0),
-                featured_at=datetime.now(timezone.utc) if cap_count == 0 else None,
+                featured_at=datetime.now(UTC) if cap_count == 0 else None,
             )
             db.add(cap)
             cap_count += 1
@@ -370,7 +401,7 @@ try:
     db.commit()
     print("\n🎉 Seed complete!")
     print("─" * 50)
-    print(f"TEST CREDENTIALS (all use password set above)")
+    print("TEST CREDENTIALS (all use password set above)")
     print("─" * 50)
     print("Principal : principal@svec.edu.in")
     print("HOD       : hod.cse@svec.edu.in")
@@ -378,7 +409,9 @@ try:
     print("Student 1 : 21CSE001  (or vijesh@svec.edu.in)")
     print("Student 2 : 21CSE002  (or arun@svec.edu.in)")
     print("─" * 50)
-    print(f"Password  : {'(from SEED_PASSWORD env)' if os.environ.get('SEED_PASSWORD') else SEED_PASSWORD}")
+    print(
+        f"Password  : {'(from SEED_PASSWORD env)' if os.environ.get('SEED_PASSWORD') else SEED_PASSWORD}"
+    )
     print("─" * 50)
 
 except Exception as e:

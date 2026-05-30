@@ -4,6 +4,7 @@ Live-session related parent / tutor notifications  (PROMPT 7).
 Best-effort: any failure inside is logged, never raised, so callers
 running this from a BackgroundTask are safe.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,7 +41,7 @@ def notify_parent_student_missed_live_session(
 
         msg = (
             f"📵 {student.name} missed today's live online session "
-            f"\"{session_title}\" for {subject_name}. "
+            f'"{session_title}" for {subject_name}. '
             f"This is consecutive miss #{consecutive_misses}."
         )
 
@@ -69,7 +70,7 @@ def notify_parent_student_missed_live_session(
         if consecutive_misses >= 3 and getattr(student, "parent_phone", None):
             parent_msg = (
                 f"⚠️ {student.name} has missed {consecutive_misses} live online "
-                f"sessions in a row ({subject_name}). Latest: \"{session_title}\". "
+                f'sessions in a row ({subject_name}). Latest: "{session_title}". '
                 f"Please follow up."
             )
             try:

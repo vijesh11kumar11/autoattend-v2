@@ -10,7 +10,7 @@ Covers:
 
 from unittest.mock import MagicMock, patch
 
-from tests.conftest import auth_headers, TEST_PASSWORD
+from tests.conftest import TEST_PASSWORD, auth_headers
 
 
 def _super_admin(seed, get_user):

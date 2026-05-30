@@ -11,7 +11,7 @@ Rules enforced here:
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pyotp
@@ -24,7 +24,15 @@ from jose import ExpiredSignatureError, JWTError, jwt
 from sqlalchemy.orm import Session
 
 from config import settings
-from database import DeviceRegistry, FaceVerifyToken, LoginAttemptLog, RefreshToken, User, UserRole, get_db
+from database import (
+    DeviceRegistry,
+    FaceVerifyToken,
+    LoginAttemptLog,
+    RefreshToken,
+    User,
+    UserRole,
+    get_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +64,9 @@ def _load_jwt_keys() -> None:
         raise RuntimeError(
             f"ALGORITHM={alg} requires JWT_PRIVATE_KEY_PATH and JWT_PUBLIC_KEY_PATH."
         )
-    with open(settings.JWT_PRIVATE_KEY_PATH, "r", encoding="utf-8") as f:
+    with open(settings.JWT_PRIVATE_KEY_PATH, encoding="utf-8") as f:
         _JWT_PRIVATE_KEY = f.read()
-    with open(settings.JWT_PUBLIC_KEY_PATH, "r", encoding="utf-8") as f:
+    with open(settings.JWT_PUBLIC_KEY_PATH, encoding="utf-8") as f:
         _JWT_PUBLIC_KEY = f.read()
 
 
@@ -135,7 +143,7 @@ def decrypt_totp_secret(stored: str) -> str:
 # Password brute-force lockout
 # ═══════════════════════════════════════════════════════════════════════
 
-LOGIN_MAX_ATTEMPTS    = 5
+LOGIN_MAX_ATTEMPTS = 5
 LOGIN_LOCKOUT_MINUTES = 15
 
 
@@ -145,10 +153,10 @@ def is_user_locked(user: User) -> tuple[bool, int]:
     """
     if not user or not user.login_locked_until:
         return False, 0
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     locked_until = user.login_locked_until
     if locked_until.tzinfo is None:
-        locked_until = locked_until.replace(tzinfo=timezone.utc)
+        locked_until = locked_until.replace(tzinfo=UTC)
     if locked_until <= now:
         return False, 0
     return True, int((locked_until - now).total_seconds())
@@ -163,9 +171,9 @@ def record_login_failure(user: User, db: Session) -> tuple[bool, int]:
         return False, 0
     user.login_fail_count = (user.login_fail_count or 0) + 1
     if user.login_fail_count >= LOGIN_MAX_ATTEMPTS:
-        unlock_at = datetime.now(tz=timezone.utc) + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+        unlock_at = datetime.now(tz=UTC) + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
         user.login_locked_until = unlock_at
-        user.login_fail_count   = 0
+        user.login_fail_count = 0
         db.commit()
         return True, LOGIN_LOCKOUT_MINUTES * 60
     db.commit()
@@ -177,7 +185,7 @@ def record_login_success(user: User, db: Session) -> None:
     if not user:
         return
     if user.login_fail_count or user.login_locked_until:
-        user.login_fail_count   = 0
+        user.login_fail_count = 0
         user.login_locked_until = None
         db.commit()
 
@@ -193,13 +201,15 @@ def log_login_attempt(
 ) -> None:
     """Best-effort SIEM log row. Never raises."""
     try:
-        db.add(LoginAttemptLog(
-            ip_address      = (ip_address or "")[:64] or None,
-            user_identifier = (user_identifier or "")[:255] or None,
-            success         = bool(success),
-            failure_reason  = (failure_reason or "")[:255] or None,
-            user_agent      = (user_agent or "")[:500] or None,
-        ))
+        db.add(
+            LoginAttemptLog(
+                ip_address=(ip_address or "")[:64] or None,
+                user_identifier=(user_identifier or "")[:255] or None,
+                success=bool(success),
+                failure_reason=(failure_reason or "")[:255] or None,
+                user_agent=(user_agent or "")[:500] or None,
+            )
+        )
         db.commit()
     except Exception as exc:
         # Best-effort SIEM row — never crash login on logging failure,
@@ -225,7 +235,7 @@ def is_ip_locked(ip_address: str | None, db: Session) -> tuple[bool, int]:
     if not ip_address:
         return False, 0
     try:
-        window_start = datetime.now(tz=timezone.utc) - timedelta(minutes=IP_LOCKOUT_WINDOW_MIN)
+        window_start = datetime.now(tz=UTC) - timedelta(minutes=IP_LOCKOUT_WINDOW_MIN)
         count = (
             db.query(LoginAttemptLog)
             .filter(
@@ -255,13 +265,13 @@ def _hash_refresh(raw: str) -> str:
 
 def set_refresh_cookie(response: Response, token: str) -> None:
     response.set_cookie(
-        key       = REFRESH_COOKIE_NAME,
-        value     = token,
-        httponly  = True,
-        secure    = settings.COOKIE_SECURE,
-        samesite  = settings.COOKIE_SAMESITE,
-        max_age   = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path      = "/api/auth",   # only sent to /api/auth/* endpoints
+        key=REFRESH_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        path="/api/auth",  # only sent to /api/auth/* endpoints
     )
 
 
@@ -274,14 +284,16 @@ def create_refresh_token(user_id: int, device_id: str | None, db: Session) -> st
     Issue a new refresh token. Only the SHA-256 hash is persisted.
     Returns the raw token (returned once to the caller).
     """
-    raw        = secrets.token_urlsafe(48)
-    expires_at = datetime.now(tz=timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    db.add(RefreshToken(
-        user_id    = user_id,
-        token_hash = _hash_refresh(raw),
-        device_id  = (device_id or "")[:500] or None,
-        expires_at = expires_at,
-    ))
+    raw = secrets.token_urlsafe(48)
+    expires_at = datetime.now(tz=UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    db.add(
+        RefreshToken(
+            user_id=user_id,
+            token_hash=_hash_refresh(raw),
+            device_id=(device_id or "")[:500] or None,
+            expires_at=expires_at,
+        )
+    )
     db.commit()
     return raw
 
@@ -305,10 +317,10 @@ def rotate_refresh_token(raw_token: str, db: Session) -> tuple[User, str]:
     if row is None:
         raise err
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     expires_at = row.expires_at
     if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at = expires_at.replace(tzinfo=UTC)
 
     # Detect reuse of an already-rotated token → revoke entire chain (security best practice)
     if row.revoked:
@@ -325,7 +337,7 @@ def rotate_refresh_token(raw_token: str, db: Session) -> tuple[User, str]:
     if expires_at and expires_at <= now:
         raise err
 
-    user = db.query(User).filter(User.id == row.user_id, User.is_active == True).first()  # noqa: E712
+    user = db.query(User).filter(User.id == row.user_id, User.is_active.is_(True)).first()
     if user is None:
         raise err
 
@@ -333,14 +345,14 @@ def rotate_refresh_token(raw_token: str, db: Session) -> tuple[User, str]:
     new_raw = secrets.token_urlsafe(48)
     new_hash = _hash_refresh(new_raw)
     new_row = RefreshToken(
-        user_id    = row.user_id,
-        token_hash = new_hash,
-        device_id  = row.device_id,
-        expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        user_id=row.user_id,
+        token_hash=new_hash,
+        device_id=row.device_id,
+        expires_at=now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(new_row)
-    row.revoked          = True
-    row.revoked_at       = now
+    row.revoked = True
+    row.revoked_at = now
     row.replaced_by_hash = new_hash
     db.commit()
     return user, new_raw
@@ -351,12 +363,14 @@ def revoke_refresh_token(raw_token: str, db: Session) -> None:
     if not raw_token:
         return
     try:
-        row = db.query(RefreshToken).filter(
-            RefreshToken.token_hash == _hash_refresh(raw_token)
-        ).first()
+        row = (
+            db.query(RefreshToken)
+            .filter(RefreshToken.token_hash == _hash_refresh(raw_token))
+            .first()
+        )
         if row and not row.revoked:
-            row.revoked    = True
-            row.revoked_at = datetime.now(tz=timezone.utc)
+            row.revoked = True
+            row.revoked_at = datetime.now(tz=UTC)
             db.commit()
     except Exception:
         db.rollback()
@@ -365,11 +379,15 @@ def revoke_refresh_token(raw_token: str, db: Session) -> None:
 def revoke_all_refresh_tokens(user_id: int, db: Session) -> int:
     """Revoke every active refresh token for a user. Returns count revoked."""
     try:
-        now = datetime.now(tz=timezone.utc)
-        n = db.query(RefreshToken).filter(
-            RefreshToken.user_id == user_id,
-            RefreshToken.revoked == False,  # noqa: E712
-        ).update({"revoked": True, "revoked_at": now}, synchronize_session=False)
+        now = datetime.now(tz=UTC)
+        n = (
+            db.query(RefreshToken)
+            .filter(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked == False,  # noqa: E712
+            )
+            .update({"revoked": True, "revoked_at": now}, synchronize_session=False)
+        )
         db.commit()
         return int(n or 0)
     except Exception:
@@ -433,12 +451,14 @@ def create_access_token(data: dict) -> str:
     """
     payload = data.copy()
 
-    now = datetime.now(tz=timezone.utc)
-    payload.update({
-        "jti": str(uuid4()),
-        "iat": now,
-        "exp": now + timedelta(hours=settings.ACCESS_TOKEN_EXPIRE_HOURS),
-    })
+    now = datetime.now(tz=UTC)
+    payload.update(
+        {
+            "jti": str(uuid4()),
+            "iat": now,
+            "exp": now + timedelta(hours=settings.ACCESS_TOKEN_EXPIRE_HOURS),
+        }
+    )
 
     return jwt.encode(payload, jwt_signing_key(), algorithm=settings.ALGORITHM)
 
@@ -475,6 +495,7 @@ def decode_access_token(token: str) -> dict:
 # TOTP  (teacher / hod / principal ONLY)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def generate_totp_secret() -> str:
     """Generate a new base-32 TOTP secret."""
     return pyotp.random_base32()
@@ -505,6 +526,7 @@ def verify_totp_code(secret: str, code: str) -> bool:
 # Face Verify Token  (issued after face check, consumed on QR scan)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _hash_face_token(raw_token: str) -> str:
     """SHA-256 hash a face-verify token for storage / lookup."""
     return hashlib.sha256(raw_token.encode()).hexdigest()
@@ -520,10 +542,8 @@ def create_face_verify_token(
     the student's face. Only the SHA-256 hash is persisted; the raw
     token is returned once to the caller.
     """
-    raw_token  = secrets.token_hex(32)
-    expires_at = datetime.now(tz=timezone.utc) + timedelta(
-        seconds=settings.FACE_VERIFY_TOKEN_EXPIRY_SECONDS
-    )
+    raw_token = secrets.token_hex(32)
+    expires_at = datetime.now(tz=UTC) + timedelta(seconds=settings.FACE_VERIFY_TOKEN_EXPIRY_SECONDS)
 
     record = FaceVerifyToken(
         user_id=user_id,
@@ -548,7 +568,7 @@ def validate_face_verify_token(
     raw token is hashed before lookup; returns True only if the hash
     matches an unexpired, unused row for the correct user + session.
     """
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     token_hash = _hash_face_token(token)
 
     record = (
@@ -560,7 +580,7 @@ def validate_face_verify_token(
             FaceVerifyToken.used == False,  # noqa: E712
             FaceVerifyToken.expires_at > now,
         )
-        .with_for_update()   # atomic lock prevents double-use
+        .with_for_update()  # atomic lock prevents double-use
         .first()
     )
 
@@ -576,11 +596,12 @@ def validate_face_verify_token(
 # FastAPI dependency — current user
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def get_current_user(
-    request:     Request,
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
     x_device_id: str = Header(default=""),
-    db:          Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> dict:
     """
     FastAPI dependency. Validates JWT, fetches the user row, and verifies
@@ -623,9 +644,7 @@ def get_current_user(
     iat = payload.get("iat")
     if user.password_changed_at and iat is not None:
         token_issued_at = (
-            datetime.fromtimestamp(iat, tz=timezone.utc)
-            if isinstance(iat, (int, float))
-            else iat
+            datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, int | float) else iat
         )
         if user.password_changed_at > token_issued_at:
             raise HTTPException(
@@ -656,7 +675,7 @@ def get_current_user(
     # Super-admin sessions (college_id is None) skip the tenant filter.
     try:
         db.info["college_id"] = user.college_id
-        db.info["user_role"]  = user.role.value
+        db.info["user_role"] = user.role.value
         if user.role.value == "super_admin":
             db.info["skip_tenant_filter"] = True
     except Exception:
@@ -665,18 +684,20 @@ def get_current_user(
         logger.warning("Failed to stamp tenant context on DB session", exc_info=True)
 
     return {
-        "id":               user.id,
-        "name":             user.name,
-        "email":            user.email,
-        "role":             user.role.value,
-        "college_id":       user.college_id,
-        "department_id":    user.department_id,
-        "face_enrolled":    user.face_enrolled,
-        "totp_enabled":     user.totp_enabled,
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role.value,
+        "college_id": user.college_id,
+        "department_id": user.department_id,
+        "face_enrolled": user.face_enrolled,
+        "totp_enabled": user.totp_enabled,
         "face_auth_enabled": user.face_auth_enabled,
-        "device_id":        device_id,
-        "iat":              payload.get("iat"),
+        "device_id": device_id,
+        "iat": payload.get("iat"),
     }
+
+
 # ── Re-auth requirement (sensitive actions) ─────────────────────────────
 def require_recent_auth(max_age_minutes: int = 5):
     """FastAPI dependency factory. Requires the access token's iat to be
@@ -686,22 +707,24 @@ def require_recent_auth(max_age_minutes: int = 5):
     Returns 401 with `{detail: "reauth_required"}` so the frontend can
     prompt for password re-entry and call /api/auth/reauth.
     """
+
     def _dep(current_user: dict = Depends(get_current_user)) -> dict:
         iat_raw = current_user.get("iat")
         if iat_raw is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "reauth_required")
         iat_dt = (
-            datetime.fromtimestamp(float(iat_raw), tz=timezone.utc)
-            if isinstance(iat_raw, (int, float))
+            datetime.fromtimestamp(float(iat_raw), tz=UTC)
+            if isinstance(iat_raw, int | float)
             else iat_raw
         )
-        age = datetime.now(tz=timezone.utc) - iat_dt
+        age = datetime.now(tz=UTC) - iat_dt
         if age > timedelta(minutes=max_age_minutes):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="reauth_required",
             )
         return current_user
+
     return _dep
 
 
@@ -709,8 +732,10 @@ def require_recent_auth(max_age_minutes: int = 5):
 # Role-Based FastAPI Dependencies
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _require_role(allowed: set[str]):
     """Factory: returns a FastAPI dependency that restricts by role."""
+
     def _dep(current_user: dict = Depends(get_current_user)) -> dict:
         if current_user["role"] not in allowed:
             raise HTTPException(
@@ -718,21 +743,23 @@ def _require_role(allowed: set[str]):
                 detail=f"Access restricted. Required role(s): {', '.join(sorted(allowed))}",
             )
         return current_user
+
     return _dep
 
 
 # Individual role dependencies — import and use directly in routers
-principal_only     = _require_role({"principal"})
-hod_or_above       = _require_role({"principal", "hod"})
-teacher_or_above   = _require_role({"principal", "hod", "teacher"})
-staff_only         = _require_role({"principal", "hod", "teacher"})
-any_authenticated  = _require_role({"principal", "hod", "teacher", "student"})
-student_only       = _require_role({"student"})
+principal_only = _require_role({"principal"})
+hod_or_above = _require_role({"principal", "hod"})
+teacher_or_above = _require_role({"principal", "hod", "teacher"})
+staff_only = _require_role({"principal", "hod", "teacher"})
+any_authenticated = _require_role({"principal", "hod", "teacher", "student"})
+student_only = _require_role({"student"})
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Multi-tenant dependencies  (issues #99, #100, #101, #104)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def require_super_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """FastAPI dependency: only allows users with role == "super_admin".
@@ -767,7 +794,8 @@ def college_scoped(current_user: dict = Depends(get_current_user)) -> int | None
         # Defence in depth — should never happen for non-super-admin users.
         logger.warning(
             "college_scoped: user_id=%s role=%s has no college_id",
-            current_user.get("id"), role,
+            current_user.get("id"),
+            role,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -779,6 +807,7 @@ def college_scoped(current_user: dict = Depends(get_current_user)) -> int | None
 # ═══════════════════════════════════════════════════════════════════════
 # First Login Check
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def is_first_login(user_id: int, db: Session) -> bool:
     """
@@ -794,7 +823,7 @@ def is_first_login(user_id: int, db: Session) -> bool:
 def record_login(user_id: int, db: Session) -> None:
     """Stamp last_login = now (UTC) after a successful authentication."""
     db.query(User).filter(User.id == user_id).update(
-        {"last_login": datetime.now(tz=timezone.utc)},
+        {"last_login": datetime.now(tz=UTC)},
         synchronize_session=False,
     )
     db.commit()
@@ -806,19 +835,20 @@ def record_login(user_id: int, db: Session) -> None:
 # NOT a full access token — carries purpose="totp_session".
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def create_totp_session_token(user_id: int) -> str:
     """
     Issue a 5-minute signed token after password verification.
     Rejected by decode_access_token / get_current_user so it cannot
     be used as a real access token.
     """
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload = {
         "purpose": "totp_session",
         "user_id": user_id,
-        "jti":     str(uuid4()),
-        "iat":     now,
-        "exp":     now + timedelta(minutes=5),
+        "jti": str(uuid4()),
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
     }
     return jwt.encode(payload, jwt_signing_key(), algorithm=settings.ALGORITHM)
 
@@ -843,4 +873,3 @@ def decode_totp_session_token(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid session token",
         )
-

@@ -9,11 +9,12 @@ AutoAttend AI v2.0 — FastAPI entry point
 # to stay independent of the pydantic Settings import below. Skips
 # silently when DSN is empty so dev/CI runs without Sentry.
 # ─────────────────────────────────────────────────────────────────────
-import os as _os
 import logging as _logging
+import os as _os
 
 try:
     from dotenv import load_dotenv as _load_dotenv  # type: ignore
+
     _load_dotenv()
 except Exception:  # pragma: no cover - dotenv is optional at runtime
     pass
@@ -32,7 +33,9 @@ if _SENTRY_DSN:
             traces_sample_rate=1.0,
             integrations=[FastApiIntegration(), SqlalchemyIntegration()],
         )
-        _logging.getLogger(__name__).info("📡 Sentry initialised (env=%s)", _os.environ.get("APP_ENV", "production"))
+        _logging.getLogger(__name__).info(
+            "📡 Sentry initialised (env=%s)", _os.environ.get("APP_ENV", "production")
+        )
     except ImportError:
         _logging.getLogger(__name__).warning(
             "SENTRY_DSN is set but sentry-sdk is not installed — run `pip install -r requirements.txt`."
@@ -67,9 +70,14 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    FastAPI,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -78,34 +86,43 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from config import settings
 from database import Base, engine
-from routes import alerts, attendance, auth, face, faculty, qr, reports, sections, students
-from routes import timetable, tutor, users
-from routes import twm
-from routes import leave
-from routes import analytics
-from routes import student_portal
-from routes import feed
-from routes import career
-from routes import suggestions
-from routes import classpulse
-from routes import live_session
-from routes import principal
-from routes import notifications
-from routes import uploads
-from routes import superadmin
-from routes import smart_replay
+from routes import (
+    alerts,
+    analytics,
+    attendance,
+    auth,
+    career,
+    classpulse,
+    face,
+    faculty,
+    feed,
+    leave,
+    live_session,
+    notifications,
+    principal,
+    qr,
+    reports,
+    sections,
+    smart_replay,
+    student_portal,
+    students,
+    suggestions,
+    superadmin,
+    timetable,
+    tutor,
+    twm,
+    uploads,
+    users,
+)
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
 # configure a dedicated handler on the root logger in a startup event
 # to guarantee our format + levels survive uvicorn's setup.
-LOG_FORMAT = (
-    "%(asctime)s │ %(levelname)-7s │ %(name)-28s │ %(message)s"
-)
+LOG_FORMAT = "%(asctime)s │ %(levelname)-7s │ %(name)-28s │ %(message)s"
 
 logger = logging.getLogger(__name__)
 
@@ -171,11 +188,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     _DEFAULTS = {
         "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
-        "X-Content-Type-Options":    "nosniff",
-        "X-Frame-Options":           "DENY",
-        "X-XSS-Protection":          "1; mode=block",
-        "Referrer-Policy":           "strict-origin-when-cross-origin",
-        "Permissions-Policy":        "camera=(self), microphone=(self), geolocation=(self), bluetooth=(self)",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "X-XSS-Protection": "1; mode=block",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(self), microphone=(self), geolocation=(self), bluetooth=(self)",
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self'; "
@@ -243,7 +260,7 @@ class RequestTimeoutMiddleware(BaseHTTPMiddleware):
                 call_next(request),
                 timeout=settings.REQUEST_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("⏱️ request timeout: %s %s", request.method, request.url.path)
             return JSONResponse(
                 status_code=504,
@@ -272,7 +289,15 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Device-ID", "X-Client-Type", "X-Request-ID", "X-Requested-With", "Accept"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Device-ID",
+        "X-Client-Type",
+        "X-Request-ID",
+        "X-Requested-With",
+        "Accept",
+    ],
 )
 
 # ── register routers ───────────────────────────────────────────────────
@@ -335,10 +360,10 @@ def health():
 
 
 # ── WebSocket: real-time live-session signalling ────────────────────────
-from utils.session_manager import manager as live_ws_manager  # noqa: E402
+from database import LiveSession, SessionLocal  # noqa: E402
 from utils.auth_utils import decode_access_token  # noqa: E402
-from database import LiveSession, LiveSessionParticipant, SessionLocal  # noqa: E402
 from utils.live_session_ai import generate_ai_observation  # noqa: E402
+from utils.session_manager import manager as live_ws_manager  # noqa: E402
 
 
 def _verify_ws_token(token: str) -> dict | None:
@@ -388,12 +413,20 @@ async def live_session_ws(
     query_token = ""
     if not cookie_token and not subproto_token and token:
         if settings.DEBUG:
-            logger.warning("WS auth via ?token= query param (DEBUG fallback) │ session=%s user=%s ip=%s",
-                           session_id, user_id, websocket.client.host if websocket.client else "?")
+            logger.warning(
+                "WS auth via ?token= query param (DEBUG fallback) │ session=%s user=%s ip=%s",
+                session_id,
+                user_id,
+                websocket.client.host if websocket.client else "?",
+            )
             query_token = token
         else:
-            logger.warning("WS auth via ?token= query param REJECTED in production │ session=%s user=%s ip=%s",
-                           session_id, user_id, websocket.client.host if websocket.client else "?")
+            logger.warning(
+                "WS auth via ?token= query param REJECTED in production │ session=%s user=%s ip=%s",
+                session_id,
+                user_id,
+                websocket.client.host if websocket.client else "?",
+            )
             await websocket.close(code=4401)
             return
 
@@ -417,27 +450,32 @@ async def live_session_ws(
         if not sess:
             await websocket.close(code=4404)
             return
-        is_teacher = role in ("teacher", "hod", "principal") and sess.teacher_id == int(token_uid or 0)
+        is_teacher = role in ("teacher", "hod", "principal") and sess.teacher_id == int(
+            token_uid or 0
+        )
     finally:
         db.close()
 
-    await live_ws_manager.connect(websocket, session_id, user_id,
-                                  is_teacher=is_teacher,
-                                  subprotocol=chosen_subproto)
+    await live_ws_manager.connect(
+        websocket, session_id, user_id, is_teacher=is_teacher, subprotocol=chosen_subproto
+    )
     try:
         # Greet the joiner
-        await websocket.send_json({
-            "type": "ws_ready",
-            "session_id": session_id,
-            "user_id": user_id,
-            "role": role,
-            "is_teacher": is_teacher,
-        })
+        await websocket.send_json(
+            {
+                "type": "ws_ready",
+                "session_id": session_id,
+                "user_id": user_id,
+                "role": role,
+                "is_teacher": is_teacher,
+            }
+        )
 
         # F01 — start AI observation scheduler when the teacher connects
         if is_teacher:
             try:
                 from routes.live_session import _ensure_observation_scheduler
+
                 _ensure_observation_scheduler(session_id)
             except Exception as exc:
                 logger.warning("observation scheduler start failed for %s: %s", session_id, exc)
@@ -459,55 +497,73 @@ async def live_session_ws(
                     finally:
                         db2.close()
                     if obs:
-                        await live_ws_manager.send_to_teacher(session_id, {
-                            "type": "ai_observation",
-                            **(obs if isinstance(obs, dict) else {"observation": str(obs)}),
-                        })
+                        await live_ws_manager.send_to_teacher(
+                            session_id,
+                            {
+                                "type": "ai_observation",
+                                **(obs if isinstance(obs, dict) else {"observation": str(obs)}),
+                            },
+                        )
 
             # ── Student answers a pulse check ──────────────────────────
             elif event_type == "pulse_response":
                 # Echo aggregate update to teacher
-                await live_ws_manager.send_to_teacher(session_id, {
-                    "type": "pulse_update",
-                    "pulse_id": data.get("pulse_id"),
-                    "answer": data.get("answer"),
-                    "from_user_id": user_id,
-                })
+                await live_ws_manager.send_to_teacher(
+                    session_id,
+                    {
+                        "type": "pulse_update",
+                        "pulse_id": data.get("pulse_id"),
+                        "answer": data.get("answer"),
+                        "from_user_id": user_id,
+                    },
+                )
 
             # ── New doubt posted (server already saved via REST) ───────
             elif event_type == "doubt_posted":
                 # Anonymised broadcast to all participants
-                await live_ws_manager.broadcast_to_session(session_id, {
-                    "type": "new_doubt",
-                    "doubt_id": data.get("doubt_id"),
-                    "question": data.get("question"),
-                    "resonance_count": data.get("resonance_count", 0),
-                })
+                await live_ws_manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "type": "new_doubt",
+                        "doubt_id": data.get("doubt_id"),
+                        "question": data.get("question"),
+                        "resonance_count": data.get("resonance_count", 0),
+                    },
+                )
                 # Identified copy to teacher
-                await live_ws_manager.send_to_teacher(session_id, {
-                    "type": "new_doubt",
-                    "doubt_id": data.get("doubt_id"),
-                    "question": data.get("question"),
-                    "resonance_count": data.get("resonance_count", 0),
-                    "posted_by_user_id": user_id,
-                })
+                await live_ws_manager.send_to_teacher(
+                    session_id,
+                    {
+                        "type": "new_doubt",
+                        "doubt_id": data.get("doubt_id"),
+                        "question": data.get("question"),
+                        "resonance_count": data.get("resonance_count", 0),
+                        "posted_by_user_id": user_id,
+                    },
+                )
 
             # ── Resonance click ────────────────────────────────────────
             elif event_type == "resonance":
-                await live_ws_manager.send_to_teacher(session_id, {
-                    "type": "hot_doubt",
-                    "doubt_id": data.get("doubt_id"),
-                    "resonance_count": data.get("resonance_count", 1),
-                    "question": data.get("question"),
-                })
+                await live_ws_manager.send_to_teacher(
+                    session_id,
+                    {
+                        "type": "hot_doubt",
+                        "doubt_id": data.get("doubt_id"),
+                        "resonance_count": data.get("resonance_count", 1),
+                        "question": data.get("question"),
+                    },
+                )
 
             # ── Bandwidth alert ────────────────────────────────────────
             elif event_type == "low_bandwidth_detected":
-                await live_ws_manager.send_to_teacher(session_id, {
-                    "type": "bandwidth_alert",
-                    "student_id": user_id,
-                    "quality": data.get("quality", "poor"),
-                })
+                await live_ws_manager.send_to_teacher(
+                    session_id,
+                    {
+                        "type": "bandwidth_alert",
+                        "student_id": user_id,
+                        "quality": data.get("quality", "poor"),
+                    },
+                )
                 # Server can later push micro_summary frames; placeholder ack:
                 await websocket.send_json({"type": "low_bandwidth_ack", "mode": "text"})
 
@@ -521,11 +577,14 @@ async def live_session_ws(
 
     except WebSocketDisconnect:
         live_ws_manager.disconnect(session_id, user_id)
-        await live_ws_manager.broadcast_to_session(session_id, {
-            "type": "student_left",
-            "user_id": user_id,
-            "total_count": len(live_ws_manager.participants(session_id)),
-        })
+        await live_ws_manager.broadcast_to_session(
+            session_id,
+            {
+                "type": "student_left",
+                "user_id": user_id,
+                "total_count": len(live_ws_manager.participants(session_id)),
+            },
+        )
     except Exception as exc:  # pragma: no cover
         logger.exception("WebSocket error: %s", exc)
         live_ws_manager.disconnect(session_id, user_id)
@@ -543,7 +602,8 @@ def _validate_security_config():
         errors.append("SECRET_KEY must be set and at least 32 characters long")
 
     if settings.DEBUG and settings.FRONTEND_URL not in (
-        "http://localhost:3000", "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:5173",
     ):
         errors.append(
             "DEBUG=True must not be used in production "
@@ -551,7 +611,9 @@ def _validate_security_config():
         )
 
     if not settings.AZURE_FACE_KEY or settings.AZURE_FACE_KEY in (
-        "YOUR_AZURE_KEY_1_HERE", "changeme", "placeholder",
+        "YOUR_AZURE_KEY_1_HERE",
+        "changeme",
+        "placeholder",
     ):
         errors.append("AZURE_FACE_KEY must be configured with a real key")
 
@@ -566,16 +628,12 @@ def _validate_security_config():
     alg = (settings.ALGORITHM or "HS256").upper()
     if not alg.startswith("HS"):
         if not settings.JWT_PRIVATE_KEY_PATH or not settings.JWT_PUBLIC_KEY_PATH:
-            errors.append(
-                f"ALGORITHM={alg} requires JWT_PRIVATE_KEY_PATH and JWT_PUBLIC_KEY_PATH"
-            )
+            errors.append(f"ALGORITHM={alg} requires JWT_PRIVATE_KEY_PATH and JWT_PUBLIC_KEY_PATH")
 
     if errors:
         for e in errors:
             logger.critical("🚨 SECURITY CONFIG ERROR: %s", e)
-        raise RuntimeError(
-            "Security configuration invalid: " + "; ".join(errors)
-        )
+        raise RuntimeError("Security configuration invalid: " + "; ".join(errors))
     logger.info("✅ Security configuration validated.")
 
 
@@ -588,9 +646,7 @@ def _warn_optional_integrations():
     def _warn(missing: str, message: str):
         # In production these are real outages → ERROR; in DEBUG mode they
         # are expected (no real keys yet) → INFO.
-        (logger.error if is_prod else logger.info)(
-            "⚠️  %s missing — %s", missing, message
-        )
+        (logger.error if is_prod else logger.info)("⚠️  %s missing — %s", missing, message)
 
     if not settings.NEWS_API_KEY:
         _warn(
@@ -655,13 +711,14 @@ def _configure_logging():
     handler = logging.StreamHandler(sys.stdout)
     if getattr(settings, "LOG_FORMAT_MODE", "text").lower() == "json":
         import json as _json
+
         class _JsonFormatter(logging.Formatter):
             def format(self, record):  # noqa: D401
                 payload = {
-                    "ts":       self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
-                    "level":    record.levelname,
-                    "logger":   record.name,
-                    "msg":      record.getMessage(),
+                    "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "msg": record.getMessage(),
                 }
                 if record.exc_info:
                     payload["exc"] = self.formatException(record.exc_info)
@@ -670,16 +727,23 @@ def _configure_logging():
                 if rid:
                     payload["request_id"] = rid
                 return _json.dumps(payload, default=str)
+
         handler.setFormatter(_JsonFormatter())
     else:
         handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S"))
     root.addHandler(handler)
     root.setLevel(logging.INFO)
     # Silence noisy libraries
-    for noisy in ("sqlalchemy.engine", "sqlalchemy.engine.Engine",
-                  "urllib3", "httpcore", "watchfiles", "httpx"):
+    for noisy in (
+        "sqlalchemy.engine",
+        "sqlalchemy.engine.Engine",
+        "urllib3",
+        "httpcore",
+        "watchfiles",
+        "httpx",
+    ):
         noisy_logger = logging.getLogger(noisy)
-        noisy_logger.handlers.clear()   # remove echo=True handler
+        noisy_logger.handlers.clear()  # remove echo=True handler
         noisy_logger.setLevel(logging.WARNING)
         noisy_logger.propagate = True
     # Disable SQLAlchemy echo (echo=True resets logger to INFO on every query)
@@ -692,7 +756,7 @@ def _configure_logging():
 # ═══════════════════════════════════════════════════════════════════════
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from database import SessionLocal
+
 from routes.attendance import auto_expire_sessions
 from utils.notification_utils import send_push_notification
 
@@ -714,9 +778,12 @@ def _daily_low_attendance_alerts():
     whose attendance is below the threshold in any subject.
     """
     from sqlalchemy import func as sqlfunc
+
     from database import (
-        AttendanceRecord, AttendanceSession, AttendanceStatus,
-        Subject, User, UserRole,
+        AttendanceRecord,
+        AttendanceSession,
+        AttendanceStatus,
+        Subject,
     )
 
     db = SessionLocal()
@@ -730,9 +797,7 @@ def _daily_low_attendance_alerts():
                 AttendanceSession.subject_id,
                 sqlfunc.count(AttendanceRecord.id).label("total"),
                 sqlfunc.sum(
-                    sqlfunc.cast(
-                        AttendanceRecord.status == AttendanceStatus.present, Integer
-                    )
+                    sqlfunc.cast(AttendanceRecord.status == AttendanceStatus.present, Integer)
                 ).label("present"),
             )
             .join(AttendanceSession, AttendanceSession.id == AttendanceRecord.session_id)
@@ -748,9 +813,9 @@ def _daily_low_attendance_alerts():
                     # How many more present classes to reach threshold
                     # (present + x) / (total + x) >= threshold/100
                     import math
+
                     x = math.ceil(
-                        (threshold * row.total / 100 - (row.present or 0))
-                        / (1 - threshold / 100)
+                        (threshold * row.total / 100 - (row.present or 0)) / (1 - threshold / 100)
                     )
                     needed = max(x, 1)
 
@@ -759,7 +824,7 @@ def _daily_low_attendance_alerts():
 
                 send_push_notification(
                     user_id=row.student_id,
-                    title=f"⚠️ Low Attendance Warning",
+                    title="⚠️ Low Attendance Warning",
                     body=f"Your {subj_name} attendance is {pct:.0f}%. Need {needed} more classes.",
                     db=db,
                     data={"type": "low_attendance", "subject_id": row.subject_id},
@@ -779,12 +844,15 @@ from sqlalchemy import Integer
 def _purge_old_login_attempts():
     """Hourly job: drop LoginAttemptLog rows older than 30 days."""
     from database import LoginAttemptLog
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=30)
+
+    cutoff = datetime.now(tz=UTC) - timedelta(days=30)
     db = SessionLocal()
     try:
-        n = db.query(LoginAttemptLog).filter(
-            LoginAttemptLog.attempted_at < cutoff
-        ).delete(synchronize_session=False)
+        n = (
+            db.query(LoginAttemptLog)
+            .filter(LoginAttemptLog.attempted_at < cutoff)
+            .delete(synchronize_session=False)
+        )
         db.commit()
         if n:
             logger.info("🧹 Purged %d login_attempt_log rows older than 30 days", n)
@@ -802,23 +870,34 @@ def _daily_cleanup_tokens():
       * qr_tokens          : used OR older than 7 days
       * otp_logs           : expired more than 1 day ago
     """
-    from database import FaceVerifyToken, QRToken, OTPLog
-    now = datetime.now(tz=timezone.utc)
-    db  = SessionLocal()
+    from database import FaceVerifyToken, OTPLog, QRToken
+
+    now = datetime.now(tz=UTC)
+    db = SessionLocal()
     try:
-        n_face = db.query(FaceVerifyToken).filter(
-            (FaceVerifyToken.used == True)  # noqa: E712
-            | (FaceVerifyToken.expires_at < now - timedelta(days=1))
-        ).delete(synchronize_session=False)
+        n_face = (
+            db.query(FaceVerifyToken)
+            .filter(
+                (FaceVerifyToken.used == True)  # noqa: E712
+                | (FaceVerifyToken.expires_at < now - timedelta(days=1))
+            )
+            .delete(synchronize_session=False)
+        )
 
-        n_qr = db.query(QRToken).filter(
-            (QRToken.is_used == True)  # noqa: E712
-            | (QRToken.created_at < now - timedelta(days=7))
-        ).delete(synchronize_session=False)
+        n_qr = (
+            db.query(QRToken)
+            .filter(
+                (QRToken.is_used == True)  # noqa: E712
+                | (QRToken.created_at < now - timedelta(days=7))
+            )
+            .delete(synchronize_session=False)
+        )
 
-        n_otp = db.query(OTPLog).filter(
-            OTPLog.expires_at < now - timedelta(days=1)
-        ).delete(synchronize_session=False)
+        n_otp = (
+            db.query(OTPLog)
+            .filter(OTPLog.expires_at < now - timedelta(days=1))
+            .delete(synchronize_session=False)
+        )
 
         db.commit()
         if n_face or n_qr or n_otp:
@@ -833,14 +912,19 @@ def _daily_cleanup_tokens():
 def _purge_expired_refresh_tokens():
     """Daily job: drop expired or long-revoked refresh tokens (>30 d)."""
     from database import RefreshToken
-    now    = datetime.now(tz=timezone.utc)
+
+    now = datetime.now(tz=UTC)
     cutoff = now - timedelta(days=30)
     db = SessionLocal()
     try:
-        n = db.query(RefreshToken).filter(
-            (RefreshToken.expires_at < now)
-            | ((RefreshToken.revoked == True) & (RefreshToken.revoked_at < cutoff))  # noqa: E712
-        ).delete(synchronize_session=False)
+        n = (
+            db.query(RefreshToken)
+            .filter(
+                (RefreshToken.expires_at < now)
+                | (RefreshToken.revoked.is_(True) & (RefreshToken.revoked_at < cutoff))
+            )
+            .delete(synchronize_session=False)
+        )
         db.commit()
         if n:
             logger.info("🧹 Purged %d refresh_tokens rows (expired or long-revoked)", n)
@@ -854,6 +938,7 @@ def _purge_expired_refresh_tokens():
 def _purge_old_smart_replay_clips():
     """Weekly job: delete SmartReplayClip rows older than 30 days (issue #118)."""
     from routes.smart_replay import purge_old_clips
+
     db = SessionLocal()
     try:
         n = purge_old_clips(db)
@@ -867,12 +952,21 @@ def _purge_old_smart_replay_clips():
 
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(_auto_expire_job,              "interval", minutes=1,        id="auto_expire")
-scheduler.add_job(_daily_low_attendance_alerts,  "cron",     hour=20, minute=0, id="daily_alerts")
-scheduler.add_job(_purge_old_login_attempts,     "interval", hours=1,          id="purge_login_attempts")
-scheduler.add_job(_purge_expired_refresh_tokens, "cron",     hour=3,  minute=0, id="purge_refresh_tokens")
-scheduler.add_job(_daily_cleanup_tokens,         "cron",     hour=4,  minute=0, id="cleanup_tokens")
-scheduler.add_job(_purge_old_smart_replay_clips, "cron",     day_of_week="sun", hour=2, minute=30, id="purge_smart_replay_clips")
+scheduler.add_job(_auto_expire_job, "interval", minutes=1, id="auto_expire")
+scheduler.add_job(_daily_low_attendance_alerts, "cron", hour=20, minute=0, id="daily_alerts")
+scheduler.add_job(_purge_old_login_attempts, "interval", hours=1, id="purge_login_attempts")
+scheduler.add_job(
+    _purge_expired_refresh_tokens, "cron", hour=3, minute=0, id="purge_refresh_tokens"
+)
+scheduler.add_job(_daily_cleanup_tokens, "cron", hour=4, minute=0, id="cleanup_tokens")
+scheduler.add_job(
+    _purge_old_smart_replay_clips,
+    "cron",
+    day_of_week="sun",
+    hour=2,
+    minute=30,
+    id="purge_smart_replay_clips",
+)
 
 
 # ── Lifespan: start scheduler at app boot, stop cleanly on shutdown ─────
@@ -907,4 +1001,3 @@ async def _lifespan(app: FastAPI):
 
 # Bind the lifespan to the FastAPI instance now that it is defined.
 app.router.lifespan_context = _lifespan
-

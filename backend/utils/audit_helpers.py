@@ -4,6 +4,7 @@ Wraps utils.security_logger.sec_logger with the ADMIN_ACTION event type and
 a standardized payload schema (action / target_id / before / after).
 Used wherever a staff member mutates state belonging to another user.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -39,21 +40,9 @@ def audit_admin_action(
         if extra:
             details.update(extra)
 
-        ip = (
-            request.client.host
-            if request is not None and request.client is not None
-            else None
-        )
-        ua = (
-            request.headers.get("user-agent")
-            if request is not None
-            else None
-        )
-        req_id = (
-            getattr(request.state, "request_id", None)
-            if request is not None
-            else None
-        )
+        ip = request.client.host if request is not None and request.client is not None else None
+        ua = request.headers.get("user-agent") if request is not None else None
+        req_id = getattr(request.state, "request_id", None) if request is not None else None
 
         sec_logger.log(
             SecurityEventType.ADMIN_ACTION,

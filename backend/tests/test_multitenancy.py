@@ -15,8 +15,8 @@ Covers:
 
 from datetime import date, timedelta
 
-from database import LeaveRequest, LeaveType, LeaveRequestStatus, User
-from tests.conftest import auth_headers, TEST_PASSWORD
+from database import LeaveRequest, LeaveRequestStatus, LeaveType, User
+from tests.conftest import auth_headers
 
 
 def _hod(seed, college_idx, get_user):
@@ -31,9 +31,7 @@ def test_hod_sections_list_excludes_other_college(client, seed, get_user):
     assert resp.status_code == 200, resp.text
     returned_ids = {s["id"] for s in resp.json()}
 
-    a_section_ids = {
-        sec["id"] for sec in seed.colleges[0]["departments"][0]["sections"]
-    }
+    a_section_ids = {sec["id"] for sec in seed.colleges[0]["departments"][0]["sections"]}
     assert returned_ids == a_section_ids
     assert b_section_id not in returned_ids
 

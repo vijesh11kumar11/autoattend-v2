@@ -12,7 +12,7 @@ POST   /api/sections/remove-student           hod_or_above  — remove a student
 """
 
 import logging
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
@@ -30,26 +30,27 @@ router = APIRouter(prefix="/api/sections", tags=["sections"])
 # Pydantic schemas
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class SectionCreate(BaseModel):
-    course_id:    int
-    semester:     int = Field(..., ge=1, le=10)
-    name:         str = Field(..., min_length=1, max_length=10)
+    course_id: int
+    semester: int = Field(..., ge=1, le=10)
+    name: str = Field(..., min_length=1, max_length=10)
     max_strength: Optional[int] = None
 
 
 class SectionUpdate(BaseModel):
-    name:         Optional[str] = Field(None, min_length=1, max_length=10)
+    name: Optional[str] = Field(None, min_length=1, max_length=10)
     max_strength: Optional[int] = None
 
 
 class SectionOut(BaseModel):
-    id:            int
+    id: int
     department_id: int
-    course_id:     int
-    course_name:   Optional[str] = None
-    semester:      int
-    name:          str
-    max_strength:  Optional[int] = None
+    course_id: int
+    course_name: Optional[str] = None
+    semester: int
+    name: str
+    max_strength: Optional[int] = None
     student_count: int = 0
 
     class Config:
@@ -57,19 +58,19 @@ class SectionOut(BaseModel):
 
 
 class StudentBrief(BaseModel):
-    id:          int
-    name:        str
+    id: int
+    name: str
     roll_number: Optional[str] = None
-    email:       str
-    semester:    Optional[int] = None
+    email: str
+    semester: Optional[int] = None
 
     class Config:
         from_attributes = True
 
 
 class BulkAssignRequest(BaseModel):
-    section_id:  int
-    student_ids: List[int]
+    section_id: int
+    student_ids: list[int]
 
 
 class RemoveStudentRequest(BaseModel):
@@ -80,15 +81,20 @@ class RemoveStudentRequest(BaseModel):
 # GET /api/sections  — list (filterable)
 # ═══════════════════════════════════════════════════════════════════════
 
-@router.get("", response_model=List[SectionOut])
+
+@router.get("", response_model=list[SectionOut])
 def list_sections(
-    course_id:    Optional[int] = None,
-    semester:     Optional[int] = None,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    course_id: Optional[int] = None,
+    semester: Optional[int] = None,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
-    logger.info("📂 SECTIONS LIST │ user_id=%d │ course_id=%s │ semester=%s",
-                current_user["id"], course_id, semester)
+    logger.info(
+        "📂 SECTIONS LIST │ user_id=%d │ course_id=%s │ semester=%s",
+        current_user["id"],
+        course_id,
+        semester,
+    )
 
     q = db.query(Section).filter(
         Section.department_id == current_user["department_id"],
@@ -104,20 +110,22 @@ def list_sections(
     for s in sections:
         count = (
             db.query(User)
-            .filter(User.section_id == s.id, User.role == UserRole.student, User.is_active == True)
+            .filter(User.section_id == s.id, User.role == UserRole.student, User.is_active is True)
             .count()
         )
         course = db.query(Course).filter(Course.id == s.course_id).first()
-        result.append(SectionOut(
-            id=s.id,
-            department_id=s.department_id,
-            course_id=s.course_id,
-            course_name=course.name if course else None,
-            semester=s.semester,
-            name=s.name,
-            max_strength=s.max_strength,
-            student_count=count,
-        ))
+        result.append(
+            SectionOut(
+                id=s.id,
+                department_id=s.department_id,
+                course_id=s.course_id,
+                course_name=course.name if course else None,
+                semester=s.semester,
+                name=s.name,
+                max_strength=s.max_strength,
+                student_count=count,
+            )
+        )
 
     logger.info("📂 SECTIONS LIST │ returned %d sections", len(result))
     return result
@@ -127,11 +135,12 @@ def list_sections(
 # POST /api/sections  — create
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("", response_model=SectionOut, status_code=status.HTTP_201_CREATED)
 def create_section(
-    body:         SectionCreate,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: SectionCreate,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     dept_id = current_user["department_id"]
 
@@ -145,28 +154,36 @@ def create_section(
         db.query(Section)
         .filter(
             Section.course_id == body.course_id,
-            Section.semester  == body.semester,
-            Section.name      == body.name.strip().upper(),
+            Section.semester == body.semester,
+            Section.name == body.name.strip().upper(),
         )
         .first()
     )
     if existing:
-        raise HTTPException(status.HTTP_409_CONFLICT,
-                            f"Section '{body.name.upper()}' already exists for this course & semester.")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Section '{body.name.upper()}' already exists for this course & semester.",
+        )
 
     section = Section(
-        department_id = dept_id,
-        course_id     = body.course_id,
-        semester      = body.semester,
-        name          = body.name.strip().upper(),
-        max_strength  = body.max_strength,
+        department_id=dept_id,
+        course_id=body.course_id,
+        semester=body.semester,
+        name=body.name.strip().upper(),
+        max_strength=body.max_strength,
     )
     db.add(section)
     db.commit()
     db.refresh(section)
 
-    logger.info("📂 SECTION CREATED │ id=%d │ course=%s │ sem=%d │ name=%s │ by user_id=%d",
-                section.id, course.name, body.semester, section.name, current_user["id"])
+    logger.info(
+        "📂 SECTION CREATED │ id=%d │ course=%s │ sem=%d │ name=%s │ by user_id=%d",
+        section.id,
+        course.name,
+        body.semester,
+        section.name,
+        current_user["id"],
+    )
 
     return SectionOut(
         id=section.id,
@@ -184,12 +201,13 @@ def create_section(
 # PUT /api/sections/{section_id}  — update
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.put("/{section_id}", response_model=SectionOut)
 def update_section(
-    section_id:   int,
-    body:         SectionUpdate,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    section_id: int,
+    body: SectionUpdate,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     section = (
         db.query(Section)
@@ -205,15 +223,17 @@ def update_section(
             db.query(Section)
             .filter(
                 Section.course_id == section.course_id,
-                Section.semester  == section.semester,
-                Section.name      == new_name,
-                Section.id        != section.id,
+                Section.semester == section.semester,
+                Section.name == new_name,
+                Section.id != section.id,
             )
             .first()
         )
         if dup:
-            raise HTTPException(status.HTTP_409_CONFLICT,
-                                f"Section '{new_name}' already exists for this course & semester.")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Section '{new_name}' already exists for this course & semester.",
+            )
         section.name = new_name
 
     if body.max_strength is not None:
@@ -224,13 +244,19 @@ def update_section(
 
     count = (
         db.query(User)
-        .filter(User.section_id == section.id, User.role == UserRole.student, User.is_active == True)
+        .filter(
+            User.section_id == section.id, User.role == UserRole.student, User.is_active is True
+        )
         .count()
     )
     course = db.query(Course).filter(Course.id == section.course_id).first()
 
-    logger.info("📂 SECTION UPDATED │ id=%d │ name=%s │ by user_id=%d",
-                section.id, section.name, current_user["id"])
+    logger.info(
+        "📂 SECTION UPDATED │ id=%d │ name=%s │ by user_id=%d",
+        section.id,
+        section.name,
+        current_user["id"],
+    )
 
     return SectionOut(
         id=section.id,
@@ -248,11 +274,12 @@ def update_section(
 # DELETE /api/sections/{section_id}
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.delete("/{section_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_section(
-    section_id:   int,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    section_id: int,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     section = (
         db.query(Section)
@@ -274,11 +301,12 @@ def delete_section(
 # GET /api/sections/{section_id}/students
 # ═══════════════════════════════════════════════════════════════════════
 
-@router.get("/{section_id}/students", response_model=List[StudentBrief])
+
+@router.get("/{section_id}/students", response_model=list[StudentBrief])
 def list_section_students(
-    section_id:   int,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    section_id: int,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     section = (
         db.query(Section)
@@ -292,8 +320,8 @@ def list_section_students(
         db.query(User)
         .filter(
             User.section_id == section_id,
-            User.role       == UserRole.student,
-            User.is_active  == True,
+            User.role == UserRole.student,
+            User.is_active is True,
         )
         .order_by(User.roll_number)
         .all()
@@ -301,8 +329,11 @@ def list_section_students(
 
     return [
         StudentBrief(
-            id=s.id, name=s.name, roll_number=s.roll_number,
-            email=s.email, semester=s.semester,
+            id=s.id,
+            name=s.name,
+            roll_number=s.roll_number,
+            email=s.email,
+            semester=s.semester,
         )
         for s in students
     ]
@@ -312,15 +343,18 @@ def list_section_students(
 # POST /api/sections/assign-students  — bulk assign by IDs
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/assign-students")
 def bulk_assign_students(
-    body:         BulkAssignRequest,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: BulkAssignRequest,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     section = (
         db.query(Section)
-        .filter(Section.id == body.section_id, Section.department_id == current_user["department_id"])
+        .filter(
+            Section.id == body.section_id, Section.department_id == current_user["department_id"]
+        )
         .first()
     )
     if not section:
@@ -329,10 +363,14 @@ def bulk_assign_students(
     updated = 0
     not_found = []
     for sid in body.student_ids:
-        student = db.query(User).filter(
-            User.id   == sid,
-            User.role == UserRole.student,
-        ).first()
+        student = (
+            db.query(User)
+            .filter(
+                User.id == sid,
+                User.role == UserRole.student,
+            )
+            .first()
+        )
         if not student:
             not_found.append(sid)
             continue
@@ -341,8 +379,13 @@ def bulk_assign_students(
 
     db.commit()
 
-    logger.info("📂 BULK ASSIGN │ section_id=%d │ assigned=%d │ not_found=%d │ by user_id=%d",
-                section.id, updated, len(not_found), current_user["id"])
+    logger.info(
+        "📂 BULK ASSIGN │ section_id=%d │ assigned=%d │ not_found=%d │ by user_id=%d",
+        section.id,
+        updated,
+        len(not_found),
+        current_user["id"],
+    )
 
     return {
         "assigned": updated,
@@ -356,12 +399,13 @@ def bulk_assign_students(
 # POST /api/sections/assign-students-excel  — bulk assign via Excel
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/assign-students-excel")
 def bulk_assign_excel(
-    section_id:   int,
-    file:         UploadFile = File(...),
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    section_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     """
     Expects an Excel (.xlsx) file with a column named 'roll_number'.
@@ -398,8 +442,9 @@ def bulk_assign_excel(
     try:
         rn_idx = header.index("roll_number")
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            "Excel must have a 'roll_number' column header.")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Excel must have a 'roll_number' column header."
+        )
 
     assigned = 0
     not_found_rolls = []
@@ -408,10 +453,14 @@ def bulk_assign_excel(
         if rn_idx >= len(row) or not row[rn_idx]:
             continue
         roll = str(row[rn_idx]).strip()
-        student = db.query(User).filter(
-            User.roll_number == roll,
-            User.role        == UserRole.student,
-        ).first()
+        student = (
+            db.query(User)
+            .filter(
+                User.roll_number == roll,
+                User.role == UserRole.student,
+            )
+            .first()
+        )
         if not student:
             not_found_rolls.append(roll)
             continue
@@ -421,8 +470,13 @@ def bulk_assign_excel(
     db.commit()
     wb.close()
 
-    logger.info("📂 EXCEL ASSIGN │ section_id=%d │ assigned=%d │ not_found=%d │ by user_id=%d",
-                section.id, assigned, len(not_found_rolls), current_user["id"])
+    logger.info(
+        "📂 EXCEL ASSIGN │ section_id=%d │ assigned=%d │ not_found=%d │ by user_id=%d",
+        section.id,
+        assigned,
+        len(not_found_rolls),
+        current_user["id"],
+    )
 
     return {
         "assigned": assigned,
@@ -436,16 +490,21 @@ def bulk_assign_excel(
 # POST /api/sections/remove-student  — remove student from section
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/remove-student")
 def remove_student_from_section(
-    body:         RemoveStudentRequest,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: RemoveStudentRequest,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
-    student = db.query(User).filter(
-        User.id   == body.student_id,
-        User.role == UserRole.student,
-    ).first()
+    student = (
+        db.query(User)
+        .filter(
+            User.id == body.student_id,
+            User.role == UserRole.student,
+        )
+        .first()
+    )
     if not student:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found.")
 
@@ -453,7 +512,11 @@ def remove_student_from_section(
     student.section_id = None
     db.commit()
 
-    logger.info("📂 REMOVE FROM SECTION │ student_id=%d │ old_section_id=%s │ by user_id=%d",
-                body.student_id, old_section_id, current_user["id"])
+    logger.info(
+        "📂 REMOVE FROM SECTION │ student_id=%d │ old_section_id=%s │ by user_id=%d",
+        body.student_id,
+        old_section_id,
+        current_user["id"],
+    )
 
     return {"removed": True, "student_id": body.student_id}

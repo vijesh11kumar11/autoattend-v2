@@ -1,0 +1,12 @@
+# Development & CI tooling for the AutoAttend backend.
+# Install with:  pip install -r requirements.txt -r requirements-dev.txt
+#
+# Production dependencies (including the pytest suite that ships with the app)
+# live in requirements.txt. This file holds tools that are only needed for
+# local development, linting, and CI — never required to run the server.
+
+-r requirements.txt
+
+# ── Linting & formatting ────────────────────────────────────────────
+ruff==0.6.9
+black==24.8.0

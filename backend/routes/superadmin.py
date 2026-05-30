@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import College, User, UserRole, get_db
@@ -42,50 +42,51 @@ DEACTIVATING_PLANS = {"suspended", "cancelled"}
 # Pydantic schemas
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class CollegeCreateIn(BaseModel):
-    name:   str = Field(..., min_length=2, max_length=255)
+    name: str = Field(..., min_length=2, max_length=255)
     domain: Optional[str] = Field(None, max_length=255)
-    plan:   str = Field("trial", pattern="^(trial|active|suspended|cancelled)$")
+    plan: str = Field("trial", pattern="^(trial|active|suspended|cancelled)$")
 
 
 class CollegeUpdateIn(BaseModel):
-    name:   Optional[str] = Field(None, min_length=2, max_length=255)
+    name: Optional[str] = Field(None, min_length=2, max_length=255)
     domain: Optional[str] = Field(None, max_length=255)
-    plan:   Optional[str] = Field(None, pattern="^(trial|active|suspended|cancelled)$")
+    plan: Optional[str] = Field(None, pattern="^(trial|active|suspended|cancelled)$")
     status: Optional[str] = Field(None, pattern="^(active|inactive)$")
 
 
 class CollegeOut(BaseModel):
-    id:             int
-    name:           str
-    domain:         Optional[str]
-    college_code:   Optional[str]
-    plan:           str
-    status:         str
-    created_at:     Optional[datetime]
-    is_deleted:     bool
-    deleted_at:     Optional[datetime]
-    user_count:     int = 0
-    student_count:  int = 0
+    id: int
+    name: str
+    domain: Optional[str]
+    college_code: Optional[str]
+    plan: str
+    status: str
+    created_at: Optional[datetime]
+    is_deleted: bool
+    deleted_at: Optional[datetime]
+    user_count: int = 0
+    student_count: int = 0
 
     model_config = {"from_attributes": True}
 
 
 class PrincipalCreateIn(BaseModel):
-    name:     str       = Field(..., min_length=2, max_length=255)
-    email:    EmailStr
-    phone:    Optional[str] = Field(None, max_length=20)
-    password: str       = Field(..., min_length=8, max_length=128)
+    name: str = Field(..., min_length=2, max_length=255)
+    email: EmailStr
+    phone: Optional[str] = Field(None, max_length=20)
+    password: str = Field(..., min_length=8, max_length=128)
 
 
 class UserOut(BaseModel):
-    id:         int
-    name:       str
-    email:      str
-    phone:      Optional[str]
-    role:       str
+    id: int
+    name: str
+    email: str
+    phone: Optional[str]
+    role: str
     college_id: Optional[int]
-    is_active:  bool
+    is_active: bool
     created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
@@ -99,18 +100,19 @@ class PasswordResetIn(BaseModel):
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _serialize_college(c: College, user_count: int = 0, student_count: int = 0) -> dict:
     return {
-        "id":            c.id,
-        "name":          c.name,
-        "domain":        c.domain,
-        "college_code":  c.college_code,
-        "plan":          c.plan or "trial",
-        "status":        c.status or "active",
-        "created_at":    c.created_at,
-        "is_deleted":    bool(c.is_deleted),
-        "deleted_at":    c.deleted_at,
-        "user_count":    int(user_count),
+        "id": c.id,
+        "name": c.name,
+        "domain": c.domain,
+        "college_code": c.college_code,
+        "plan": c.plan or "trial",
+        "status": c.status or "active",
+        "created_at": c.created_at,
+        "is_deleted": bool(c.is_deleted),
+        "deleted_at": c.deleted_at,
+        "user_count": int(user_count),
         "student_count": int(student_count),
     }
 
@@ -124,7 +126,9 @@ def _send_welcome_email_safe(*, to_email: str, name: str, password: str, college
     """
     try:
         import requests
+
         from config import settings
+
         if not getattr(settings, "MSG91_AUTH_KEY", None):
             logger.info("MSG91 not configured — skipping welcome email to %s", to_email)
             return False
@@ -138,14 +142,15 @@ def _send_welcome_email_safe(*, to_email: str, name: str, password: str, college
             f"<p>— Traceln Team</p>"
         )
         payload = {
-            "to":      [{"name": name, "email": to_email}],
-            "from":    {"name": "AutoAttend AI", "email": settings.MSG91_EMAIL_FROM},
+            "to": [{"name": name, "email": to_email}],
+            "from": {"name": "AutoAttend AI", "email": settings.MSG91_EMAIL_FROM},
             "subject": f"Welcome to AutoAttend AI — {college_name}",
-            "body":    body,
+            "body": body,
         }
         headers = {"authkey": settings.MSG91_AUTH_KEY, "Content-Type": "application/json"}
-        resp = requests.post("https://control.msg91.com/api/v5/email/send",
-                             json=payload, headers=headers, timeout=10)
+        resp = requests.post(
+            "https://control.msg91.com/api/v5/email/send", json=payload, headers=headers, timeout=10
+        )
         return resp.status_code in (200, 202)
     except Exception as exc:
         logger.warning("Welcome email failed for %s: %s", to_email, exc)
@@ -156,18 +161,20 @@ def _send_welcome_email_safe(*, to_email: str, name: str, password: str, college
 # 1. GET /api/admin/colleges — paginated list (includes soft-deleted)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/colleges", response_model=CursorPage[CollegeOut])
 def list_colleges(
-    limit:        int = Query(default=20, ge=1, le=100),
-    cursor:       Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None),
     current_user: dict = Depends(require_super_admin),
-    db:           Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     # Super-admin context lets us see soft-deleted rows.
     q = db.query(College).execution_options(include_deleted=True)
 
     if cursor:
         from utils.pagination import decode_cursor
+
         last_id = decode_cursor(cursor)
         q = q.filter(College.id > last_id)
 
@@ -184,15 +191,15 @@ def list_colleges(
     # super-admin listing size).
     user_counts = dict(
         db.query(User.college_id, func.count(User.id))
-          .filter(User.college_id.in_(college_ids))
-          .group_by(User.college_id)
-          .all()
+        .filter(User.college_id.in_(college_ids))
+        .group_by(User.college_id)
+        .all()
     )
     student_counts = dict(
         db.query(User.college_id, func.count(User.id))
-          .filter(User.college_id.in_(college_ids), User.role == UserRole.student)
-          .group_by(User.college_id)
-          .all()
+        .filter(User.college_id.in_(college_ids), User.role == UserRole.student)
+        .group_by(User.college_id)
+        .all()
     )
 
     items = [
@@ -211,18 +218,19 @@ def list_colleges(
 # 2. POST /api/admin/colleges — create
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/colleges", response_model=CollegeOut, status_code=status.HTTP_201_CREATED)
 def create_college(
-    body:         CollegeCreateIn,
+    body: CollegeCreateIn,
     current_user: dict = Depends(require_super_admin),
-    db:           Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     if body.domain:
         clash = (
             db.query(College)
-              .execution_options(include_deleted=True)
-              .filter(College.domain == body.domain)
-              .first()
+            .execution_options(include_deleted=True)
+            .filter(College.domain == body.domain)
+            .first()
         )
         if clash:
             raise HTTPException(status.HTTP_409_CONFLICT, "Domain already registered")
@@ -244,18 +252,19 @@ def create_college(
 # 3. PATCH /api/admin/colleges/{college_id} — update
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.patch("/colleges/{college_id}", response_model=CollegeOut)
 def update_college(
-    college_id:   int,
-    body:         CollegeUpdateIn,
+    college_id: int,
+    body: CollegeUpdateIn,
     current_user: dict = Depends(require_super_admin),
-    db:           Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     college = (
         db.query(College)
-          .execution_options(include_deleted=True)
-          .filter(College.id == college_id)
-          .first()
+        .execution_options(include_deleted=True)
+        .filter(College.id == college_id)
+        .first()
     )
     if not college:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "College not found")
@@ -265,9 +274,9 @@ def update_college(
     if "domain" in updates and updates["domain"] and updates["domain"] != college.domain:
         clash = (
             db.query(College)
-              .execution_options(include_deleted=True)
-              .filter(College.domain == updates["domain"], College.id != college.id)
-              .first()
+            .execution_options(include_deleted=True)
+            .filter(College.domain == updates["domain"], College.id != college.id)
+            .first()
         )
         if clash:
             raise HTTPException(status.HTTP_409_CONFLICT, "Domain already registered")
@@ -278,15 +287,15 @@ def update_college(
 
     # Cascade: suspend/cancel plan → soft-delete college + deactivate its users
     if updates.get("plan") in DEACTIVATING_PLANS:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         college.is_deleted = True
         college.deleted_at = now
         college.status = "inactive"
         (
             db.query(User)
-              .execution_options(include_deleted=True)
-              .filter(User.college_id == college.id)
-              .update({User.is_active: False}, synchronize_session=False)
+            .execution_options(include_deleted=True)
+            .filter(User.college_id == college.id)
+            .update({User.is_active: False}, synchronize_session=False)
         )
 
     db.commit()
@@ -298,27 +307,30 @@ def update_college(
 # 4. POST /api/admin/colleges/{id}/principal — provision principal
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post(
     "/colleges/{college_id}/principal",
     response_model=UserOut,
     status_code=status.HTTP_201_CREATED,
 )
 def create_principal(
-    college_id:   int,
-    body:         PrincipalCreateIn,
+    college_id: int,
+    body: PrincipalCreateIn,
     current_user: dict = Depends(require_super_admin),
-    db:           Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     college = (
         db.query(College)
-          .execution_options(include_deleted=True)
-          .filter(College.id == college_id)
-          .first()
+        .execution_options(include_deleted=True)
+        .filter(College.id == college_id)
+        .first()
     )
     if not college:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "College not found")
     if college.is_deleted:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot add principal to a deleted college")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Cannot add principal to a deleted college"
+        )
 
     email_clash = db.query(User).filter(User.email == body.email).first()
     if email_clash:
@@ -352,24 +364,20 @@ def create_principal(
 # 5. POST /api/admin/users/{user_id}/reset-password
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/users/{user_id}/reset-password")
 def reset_user_password(
-    user_id:      int,
-    body:         PasswordResetIn,
+    user_id: int,
+    body: PasswordResetIn,
     current_user: dict = Depends(require_super_admin),
-    db:           Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
-    user = (
-        db.query(User)
-          .execution_options(include_deleted=True)
-          .filter(User.id == user_id)
-          .first()
-    )
+    user = db.query(User).execution_options(include_deleted=True).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
     user.password_hash = hash_password(body.new_password)
-    user.password_changed_at = datetime.now(timezone.utc)
+    user.password_changed_at = datetime.now(UTC)
     db.commit()
     return {"ok": True, "user_id": user.id, "message": "Password reset successfully"}
 
@@ -378,33 +386,31 @@ def reset_user_password(
 # 6. GET /api/admin/stats — platform totals
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/stats")
 def platform_stats(
     current_user: dict = Depends(require_super_admin),
-    db:           Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     total_colleges = (
-        db.query(func.count(College.id))
-          .execution_options(include_deleted=True)
-          .scalar() or 0
+        db.query(func.count(College.id)).execution_options(include_deleted=True).scalar() or 0
     )
     total_users = (
-        db.query(func.count(User.id))
-          .execution_options(include_deleted=True)
-          .scalar() or 0
+        db.query(func.count(User.id)).execution_options(include_deleted=True).scalar() or 0
     )
     total_students = (
         db.query(func.count(User.id))
-          .execution_options(include_deleted=True)
-          .filter(User.role == UserRole.student)
-          .scalar() or 0
+        .execution_options(include_deleted=True)
+        .filter(User.role == UserRole.student)
+        .scalar()
+        or 0
     )
 
     plan_breakdown_rows = (
         db.query(College.plan, func.count(College.id))
-          .execution_options(include_deleted=True)
-          .group_by(College.plan)
-          .all()
+        .execution_options(include_deleted=True)
+        .group_by(College.plan)
+        .all()
     )
     plan_counts = {"trial": 0, "active": 0, "suspended": 0, "cancelled": 0}
     for plan_value, count in plan_breakdown_rows:
@@ -413,7 +419,7 @@ def platform_stats(
 
     return {
         "total_colleges": int(total_colleges),
-        "total_users":    int(total_users),
+        "total_users": int(total_users),
         "total_students": int(total_students),
         "colleges_by_plan": plan_counts,
     }
