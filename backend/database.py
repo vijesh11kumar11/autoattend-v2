@@ -346,13 +346,17 @@ def _autotenant_and_softdelete(execute_state):
 class College(Base, SoftDeleteMixin):
     __tablename__ = "colleges"
 
-    id         = Column(Integer, primary_key=True, index=True)
-    name       = Column(String(255), nullable=False)
-    address    = Column(Text, nullable=True)
-    phone      = Column(String(20), nullable=True)
-    email      = Column(String(255), nullable=True)
-    logo_url   = Column(String(500), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    id            = Column(Integer, primary_key=True, index=True)
+    name          = Column(String(255), nullable=False)
+    domain        = Column(String(255), nullable=True, unique=True, index=True)
+    college_code  = Column(String(64),  nullable=True, unique=True, index=True)
+    plan          = Column(String(20),  nullable=False, server_default="trial", default="trial")
+    status        = Column(String(20),  nullable=False, server_default="active", default="active")
+    address       = Column(Text, nullable=True)
+    phone         = Column(String(20),  nullable=True)
+    email         = Column(String(255), nullable=True)
+    logo_url      = Column(String(500), nullable=True)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships
     departments = relationship("Department", back_populates="college", cascade="all, delete-orphan")
@@ -448,7 +452,7 @@ class User(Base, SoftDeleteMixin):
     )
 
     id               = Column(Integer, primary_key=True, index=True)
-    college_id       = Column(Integer, ForeignKey("colleges.id",    ondelete="CASCADE"),   nullable=False)
+    college_id       = Column(Integer, ForeignKey("colleges.id",    ondelete="CASCADE"),   nullable=True)
     department_id    = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"),  nullable=True)
     course_id        = Column(Integer, ForeignKey("courses.id",     ondelete="SET NULL"),  nullable=True)
     section_id       = Column(Integer, ForeignKey("sections.id",    ondelete="SET NULL"),  nullable=True)

@@ -177,20 +177,24 @@ api.interceptors.response.use(
         const cfg = { ...error.config, _retried: true };
         return api.request(cfg);
       } catch {
-        if (window.location.pathname !== '/login') {
+        const onAdmin = window.location.pathname.startsWith('/admin');
+        const target = onAdmin ? '/admin/login' : '/login';
+        if (window.location.pathname !== target) {
           // Tell LoginPage why we got bounced so we can surface a banner
           // instead of a silent redirect.
           try { sessionStorage.setItem('aa_login_reason', 'session_expired'); } catch { /* ignore */ }
-          window.location.replace('/login');
+          window.location.replace(target);
         }
         return Promise.reject(error);
       }
     }
 
     if (status === 401 && !isPublicLiveCall) {
-      if (window.location.pathname !== '/login') {
+      const onAdmin = window.location.pathname.startsWith('/admin');
+      const target = onAdmin ? '/admin/login' : '/login';
+      if (window.location.pathname !== target) {
         try { sessionStorage.setItem('aa_login_reason', 'session_expired'); } catch { /* ignore */ }
-        window.location.replace('/login');
+        window.location.replace(target);
       }
     } else if (status === 403 && !isPublicLiveCall) {
       const detail = error.response?.data?.detail || '';

@@ -96,6 +96,7 @@ from routes import live_session
 from routes import principal
 from routes import notifications
 from routes import uploads
+from routes import superadmin
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
@@ -298,6 +299,7 @@ app.include_router(classpulse.router)
 app.include_router(uploads.router)
 app.include_router(live_session.router)
 app.include_router(notifications.router)
+app.include_router(superadmin.router)
 
 
 @app.get("/api/health")

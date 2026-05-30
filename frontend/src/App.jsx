@@ -30,6 +30,12 @@ const TOTPSetupPage      = lazy(() => import('./pages/TOTPSetupPage'));
 const JoinSessionPage    = lazy(() => import('./pages/live/JoinSessionPage'));
 const StudentLiveSession = lazy(() => import('./pages/live/StudentLiveSession'));
 
+// Super-admin console (Issue #108) — fully isolated from role dashboards.
+const SuperAdminLoginPage = lazy(() => import('./pages/superadmin/SuperAdminLoginPage'));
+const SuperAdminLayout    = lazy(() => import('./pages/superadmin/SuperAdminLayout'));
+const SuperAdminColleges  = lazy(() => import('./pages/superadmin/CollegesPage'));
+const SuperAdminStats     = lazy(() => import('./pages/superadmin/StatsPage'));
+
 // ── Loading fallback ──────────────────────────────────────────────────
 function PageLoading() {
   return (
@@ -113,6 +119,16 @@ function AppRoutes() {
 
         {/* Root — dispatch by role */}
         <Route path="/" element={<RoleRedirect />} />
+
+        {/* ── Super-admin console (Traceln internal — Issue #108) ──
+            Fully isolated: own login page + own layout guard. Not
+            wrapped in PrivateRoute and unaffected by RoleRedirect. */}
+        <Route path="/admin/login" element={<SuperAdminLoginPage />} />
+        <Route path="/admin" element={<SuperAdminLayout />}>
+          <Route index             element={<Navigate to="colleges" replace />} />
+          <Route path="colleges"   element={<SuperAdminColleges />} />
+          <Route path="stats"      element={<SuperAdminStats />} />
+        </Route>
 
         {/* Principal */}
         <Route
