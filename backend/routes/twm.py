@@ -17,6 +17,8 @@ Endpoints:
 from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -38,6 +40,8 @@ from database import (
 )
 from utils.auth_utils import teacher_or_above
 from utils.notification_utils import send_push_to_many
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/twm", tags=["twm"])
 
@@ -514,7 +518,10 @@ def session_report(
                 "most_failed_capsule": most_failed,
             }
     except Exception:
-        pass
+        # ClassPulse engagement is a supplementary widget; if its aggregation
+        # fails, fall back to the zeroed defaults rather than failing the
+        # whole dashboard. Logged for visibility.
+        logger.warning("Failed to compute ClassPulse engagement for TWM dashboard", exc_info=True)
 
     return {
         "session_id": sess.id,

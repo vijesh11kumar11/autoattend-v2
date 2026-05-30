@@ -1778,7 +1778,9 @@ def get_participant_names(
             if payload.get("purpose") == "live_guest" and int(payload.get("session_id") or 0) == session_id:
                 authorised = True
         except Exception:
-            pass
+            # Invalid/expired guest token — leave unauthorised so the 403
+            # below fires. Logged for visibility.
+            logger.debug("Guest token validation failed for session %s", session_id)
 
     if not authorised:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a participant in this session.")
@@ -2510,7 +2512,9 @@ async def breakout_create(
             "rooms": rooms_payload,
         })
     except Exception:
-        pass
+        # WS broadcast is best-effort; assignments are already persisted and
+        # clients also poll. Don't fail the request on a notify error.
+        logger.debug("breakout_started broadcast failed for session %s", session_id, exc_info=True)
 
     return {"rooms": rooms_payload}
 
@@ -2577,7 +2581,8 @@ async def breakout_end_all(
     try:
         await live_ws_manager.broadcast_to_session(session_id, {"type": "breakout_ended"})
     except Exception:
-        pass
+        # Best-effort notify; rooms are already closed in the DB.
+        logger.debug("breakout_ended broadcast failed for session %s", session_id, exc_info=True)
 
     return {"rooms_closed": len(rooms), "peer_experts_identified": peer_experts}
 
@@ -2951,7 +2956,8 @@ def analytics_hod_overview(
             try:
                 comp_scores.append(int(rep["comprehension_score"]))
             except (TypeError, ValueError):
-                pass
+                # Skip malformed comprehension scores from older reports.
+                logger.debug("Skipping non-numeric comprehension_score in health report")
     avg_comprehension = round(sum(comp_scores) / len(comp_scores), 1) if comp_scores else 0.0
 
     at_risk = []
@@ -3066,7 +3072,8 @@ about student understanding. Return ONLY a JSON object: {{"insight": "..."}}"""
         if isinstance(result, dict) and result.get("insight"):
             return str(result["insight"])[:300]
     except Exception:
-        pass
+        # AI insight is optional; fall back to a numeric summary below.
+        logger.debug("Live pulse AI insight generation failed", exc_info=True)
     if pct is not None:
         return f"{counts['correct']}/{counts['total']} students got it right ({pct}%)."
     return f"{counts['total']} responses received."
@@ -3108,7 +3115,8 @@ async def _auto_close_live_pulse(pulse_id: int, delay_secs: int) -> None:
                 "auto_closed":    True,
             })
         except Exception:
-            pass
+            # Best-effort notify; pulse is already closed in the DB.
+            logger.debug("pulse_check_closed broadcast failed for pulse %s", pulse_id, exc_info=True)
     except Exception as exc:
         logger.error("auto_close_live_pulse failed for pulse %s: %s", pulse_id, exc)
     finally:
@@ -3235,7 +3243,8 @@ async def submit_live_pulse_response(
             "counts":   counts,
         })
     except Exception:
-        pass
+        # Best-effort live teacher update; response is already persisted.
+        logger.debug("pulse_response_update send failed for session %s", session_id, exc_info=True)
     return {"ok": True, "is_correct": is_correct}
 
 
@@ -3279,7 +3288,8 @@ async def close_live_pulse_check(
     try:
         await live_ws_manager.broadcast_to_session(session_id, final)
     except Exception:
-        pass
+        # Best-effort notify; pulse is already closed and results returned.
+        logger.debug("pulse_check_closed broadcast failed for session %s", session_id, exc_info=True)
     return final
 
 
@@ -3492,7 +3502,8 @@ async def _create_observation(session_id: int, db: Session) -> Optional[LiveSess
             },
         })
     except Exception:
-        pass
+        # Best-effort live push; observation is already persisted.
+        logger.debug("ai_observation send failed for session %s", session_id, exc_info=True)
     return obs
 
 
@@ -3509,7 +3520,9 @@ async def list_ai_observations(
         try:
             _ensure_observation_scheduler(session_id)
         except Exception:
-            pass
+            # Scheduler is a background convenience; clients still poll this
+            # endpoint, so a start failure must not break the request.
+            logger.warning("Failed to ensure observation scheduler for session %s", session_id, exc_info=True)
     q = db.query(LiveSessionObservation).filter(
         LiveSessionObservation.live_session_id == session_id,
     )
@@ -4213,7 +4226,8 @@ async def check_ai_intervention(
             "intervention": payload,
         })
     except Exception:
-        pass
+        # Best-effort live push; intervention is already persisted.
+        logger.debug("ai_intervention send failed for session %s", session_id, exc_info=True)
 
     return {"intervention": payload}
 
@@ -4305,7 +4319,8 @@ async def add_bookmark(
             },
         })
     except Exception:
-        pass
+        # Best-effort notify; bookmark is already persisted.
+        logger.debug("bookmark_added broadcast failed for session %s", session_id, exc_info=True)
 
     return {"ok": True, "bookmark_id": bm.id, "elapsed_mins": elapsed_mins}
 

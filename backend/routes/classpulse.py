@@ -348,7 +348,9 @@ def _capsule_summary_text(capsule: Capsule) -> str:
         if isinstance(data, dict):
             return str(data.get("summary", ""))[:2000]
     except (json.JSONDecodeError, TypeError):
-        pass
+        # ai_summary is plain text rather than structured JSON — fall through
+        # to returning the raw text below. Logged for visibility.
+        logger.debug("ClassPulse ai_summary is not JSON; using raw text")
     return capsule.ai_summary[:2000]
 
 
@@ -615,7 +617,9 @@ async def _save_upload(file: UploadFile, subject_id: int, max_bytes: int, allowe
                 try:
                     os.remove(fpath)
                 except OSError:
-                    pass
+                    # Best-effort cleanup of the partial upload; the file may
+                    # already be gone. Logged for visibility.
+                    logger.debug("Could not remove oversized partial upload: %s", fpath)
                 raise HTTPException(413, f"File too large (max {max_bytes // (1024*1024)} MB)")
             await out.write(chunk)
     return {
@@ -663,7 +667,8 @@ def _cleanup_old_watermarks() -> None:
             except OSError:
                 continue
     except Exception:
-        pass
+        # Cleanup is best-effort housekeeping; never let it disrupt a request.
+        logger.debug("Watermark cleanup pass failed", exc_info=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1770,7 +1775,8 @@ async def student_download_capsule(
     try:
         cleanup_expired_watermarks()
     except Exception:
-        pass
+        # Best-effort GC of expired watermark files; must not block downloads.
+        logger.debug("cleanup_expired_watermarks failed", exc_info=True)
 
     is_pdf = (capsule.file_mime_type or "").lower() == "application/pdf" or \
              (capsule.file_url or "").lower().endswith(".pdf")

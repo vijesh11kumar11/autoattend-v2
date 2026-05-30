@@ -135,7 +135,9 @@ def alert_history(
         try:
             q = q.filter(AlertsLog.status == AlertStatus(alert_status))
         except ValueError:
-            pass
+            # Unknown status value in the query string — ignore the filter
+            # instead of failing on user input. Logged for visibility.
+            logger.debug("Ignoring invalid alert status filter: %r", alert_status)
     if date_from:
         q = q.filter(AlertsLog.sent_at >= datetime.combine(date_from, datetime.min.time()))
     if date_to:

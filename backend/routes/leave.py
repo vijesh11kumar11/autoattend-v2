@@ -14,6 +14,7 @@ Tutor / HOD endpoints:
   GET    /api/leave/summary                — dashboard counts
 """
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -38,6 +39,8 @@ from database import (
 from utils.auth_utils import any_authenticated, require_recent_auth, student_only, teacher_or_above
 from utils.audit_helpers import audit_admin_action
 from utils.notification_utils import send_push_to_many
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/leave", tags=["leave"])
 
@@ -257,7 +260,9 @@ def my_requests(
         try:
             q = q.filter(LeaveRequest.status == LeaveRequestStatus(status_filter))
         except ValueError:
-            pass
+            # Unknown status value in the query string — ignore the filter
+            # rather than 500ing on user-supplied input. Logged for visibility.
+            logger.debug("Ignoring invalid leave status filter: %r", status_filter)
     leaves = q.order_by(LeaveRequest.created_at.desc()).all()
     return [_serialize_leave(lr, db) for lr in leaves]
 
@@ -348,7 +353,9 @@ def leave_history(
         try:
             q = q.filter(LeaveRequest.status == LeaveRequestStatus(status_filter))
         except ValueError:
-            pass
+            # Unknown status value — ignore the filter instead of failing the
+            # request on bad user input. Logged for visibility.
+            logger.debug("Ignoring invalid leave status filter: %r", status_filter)
     if from_date:
         q = q.filter(LeaveRequest.from_date >= from_date)
     if to_date:

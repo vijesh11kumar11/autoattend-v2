@@ -191,7 +191,8 @@ Return ONLY valid JSON matching this schema (no markdown fences):
         rt = int(result.get("estimated_read_time_min", 10))
         out["estimated_read_time_min"] = max(1, min(120, rt))
     except (TypeError, ValueError):
-        pass
+        # AI returned a non-numeric read-time; keep the schema default of 10.
+        logger.debug("Non-numeric estimated_read_time_min from AI; using default")
     return out
 
 

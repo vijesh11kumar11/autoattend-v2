@@ -134,7 +134,9 @@ class SecurityEventLogger:
                 try:
                     db.rollback()
                 except Exception:
-                    pass
+                    # Rollback during error recovery may itself fail on a broken
+                    # connection; nothing more we can do here safely.
+                    logger.debug("security_logger rollback failed", exc_info=True)
 
 
 sec_logger = SecurityEventLogger()

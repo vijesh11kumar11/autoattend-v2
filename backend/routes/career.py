@@ -339,7 +339,9 @@ def _parse_json(text: str) -> dict | None:
             try:
                 return json.loads(match.group())
             except json.JSONDecodeError:
-                pass
+                # Salvage attempt failed — the AI returned non-JSON content.
+                # Caller handles None by falling back to a default payload.
+                logger.warning("Failed to parse JSON from AI response after salvage attempt")
     return None
 
 

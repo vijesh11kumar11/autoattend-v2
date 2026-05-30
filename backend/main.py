@@ -627,6 +627,13 @@ def _warn_optional_integrations():
             "suggestion endpoints will return 503.",
         )
 
+    if not (settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN):
+        _warn(
+            "TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN",
+            "WhatsApp parent alerts via Twilio are disabled — "
+            "send_whatsapp_message() will no-op / return an error.",
+        )
+
 
 # Logging configuration — invoked from _lifespan.
 def _configure_logging():

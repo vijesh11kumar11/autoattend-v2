@@ -660,7 +660,9 @@ def get_current_user(
         if user.role.value == "super_admin":
             db.info["skip_tenant_filter"] = True
     except Exception:
-        pass  # never let context-stamping break authentication
+        # Never let context-stamping break authentication; the tenant filter
+        # falls back to its safe default. Logged for visibility.
+        logger.warning("Failed to stamp tenant context on DB session", exc_info=True)
 
     return {
         "id":               user.id,
