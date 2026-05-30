@@ -651,6 +651,17 @@ def get_current_user(
                 detail="Device mismatch — attendance must be marked from your registered device",
             )
 
+    # Stamp the session with tenant context so the global ORM listener
+    # (database.py :: _autotenant_and_softdelete) can scope queries.
+    # Super-admin sessions (college_id is None) skip the tenant filter.
+    try:
+        db.info["college_id"] = user.college_id
+        db.info["user_role"]  = user.role.value
+        if user.role.value == "super_admin":
+            db.info["skip_tenant_filter"] = True
+    except Exception:
+        pass  # never let context-stamping break authentication
+
     return {
         "id":               user.id,
         "name":             user.name,
@@ -664,8 +675,6 @@ def get_current_user(
         "device_id":        device_id,
         "iat":              payload.get("iat"),
     }
-
-
 # ── Re-auth requirement (sensitive actions) ─────────────────────────────
 def require_recent_auth(max_age_minutes: int = 5):
     """FastAPI dependency factory. Requires the access token's iat to be
@@ -717,6 +726,52 @@ teacher_or_above   = _require_role({"principal", "hod", "teacher"})
 staff_only         = _require_role({"principal", "hod", "teacher"})
 any_authenticated  = _require_role({"principal", "hod", "teacher", "student"})
 student_only       = _require_role({"student"})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Multi-tenant dependencies  (issues #99, #100, #101, #104)
+# ═══════════════════════════════════════════════════════════════════════
+
+def require_super_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI dependency: only allows users with role == "super_admin".
+
+    Super-admin sessions intentionally have ``college_id is None`` and
+    bypass the global tenant filter (set in :func:`get_current_user`).
+    """
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required",
+        )
+    return current_user
+
+
+def college_scoped(current_user: dict = Depends(get_current_user)) -> int | None:
+    """FastAPI dependency: returns the caller's college_id.
+
+    * Regular users (principal / hod / teacher / student) must have a
+      college_id — otherwise 403.
+    * Super-admins legitimately have ``college_id is None`` and the
+      dependency returns ``None`` — callers should branch on this and
+      either select a college explicitly or skip the tenant filter.
+    """
+    role = current_user.get("role")
+    college_id = current_user.get("college_id")
+
+    if role == "super_admin":
+        return college_id  # None is valid for super-admins
+
+    if college_id is None:
+        # Defence in depth — should never happen for non-super-admin users.
+        logger.warning(
+            "college_scoped: user_id=%s role=%s has no college_id",
+            current_user.get("id"), role,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not associated with any college",
+        )
+    return college_id
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -169,6 +169,13 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET_NAME: str = ""
     AWS_REGION: str = "ap-south-1"
 
+    # ── Multi-tenancy  (issues #99, #100, #101, #104) ─────────────────
+    # When True, every ORM SELECT is auto-filtered by the caller's
+    # college_id (resolved via the JWT). Leave False until all routes
+    # have been audited & every existing row is back-filled with a
+    # college_id — otherwise tenant-less rows become invisible.
+    ENFORCE_TENANT_ISOLATION: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True
