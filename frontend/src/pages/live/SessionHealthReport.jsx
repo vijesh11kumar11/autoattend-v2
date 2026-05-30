@@ -86,6 +86,12 @@ export default function SessionHealthReport() {
           <span className="text-3xl">📊</span> Session Health Report
         </h1>
         <p className="text-white/80 mt-1 text-sm">{report.title || report.subject_name || `Session #${sessionId}`}{report.duration_mins ? ` · ${report.duration_mins} min` : ''}</p>
+        <button
+          onClick={() => navigate('../replay')}
+          className="mt-3 inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition"
+        >
+          <span>⏪</span> Open Smart Replay
+        </button>
       </div>
 
       {report.ai_narrative && (

@@ -97,6 +97,7 @@ from routes import principal
 from routes import notifications
 from routes import uploads
 from routes import superadmin
+from routes import smart_replay
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
@@ -300,6 +301,7 @@ app.include_router(uploads.router)
 app.include_router(live_session.router)
 app.include_router(notifications.router)
 app.include_router(superadmin.router)
+app.include_router(smart_replay.router)
 
 
 @app.get("/api/health")
@@ -842,12 +844,28 @@ def _purge_expired_refresh_tokens():
         db.close()
 
 
+def _purge_old_smart_replay_clips():
+    """Weekly job: delete SmartReplayClip rows older than 30 days (issue #118)."""
+    from routes.smart_replay import purge_old_clips
+    db = SessionLocal()
+    try:
+        n = purge_old_clips(db)
+        if n:
+            logger.info("🧹 Purged %d smart_replay_clips rows (>30 days)", n)
+    except Exception as exc:
+        logger.error("_purge_old_smart_replay_clips failed: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 scheduler = BackgroundScheduler()
 scheduler.add_job(_auto_expire_job,              "interval", minutes=1,        id="auto_expire")
 scheduler.add_job(_daily_low_attendance_alerts,  "cron",     hour=20, minute=0, id="daily_alerts")
 scheduler.add_job(_purge_old_login_attempts,     "interval", hours=1,          id="purge_login_attempts")
 scheduler.add_job(_purge_expired_refresh_tokens, "cron",     hour=3,  minute=0, id="purge_refresh_tokens")
 scheduler.add_job(_daily_cleanup_tokens,         "cron",     hour=4,  minute=0, id="cleanup_tokens")
+scheduler.add_job(_purge_old_smart_replay_clips, "cron",     day_of_week="sun", hour=2, minute=30, id="purge_smart_replay_clips")
 
 
 # ── Lifespan: start scheduler at app boot, stop cleanly on shutdown ─────
@@ -859,7 +877,7 @@ async def _lifespan(app: FastAPI):
     _warn_optional_integrations()
     if not scheduler.running:
         scheduler.start()
-        logger.info("🕒 APScheduler started (5 jobs)")
+        logger.info("🕒 APScheduler started (6 jobs)")
     try:
         yield
     finally:

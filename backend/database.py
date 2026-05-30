@@ -1724,6 +1724,40 @@ class LiveSessionBreakoutRoom(Base, SoftDeleteMixin, TenantMixin):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Smart Replay — smart_replay_clips (issue #118)
+# ═══════════════════════════════════════════════════════════════════════
+
+class SmartReplayClip(Base, SoftDeleteMixin, TenantMixin):
+    """A student doubt → AI-identified timeline segment for a past session.
+
+    Created when a student submits a topic/doubt against a completed
+    session. The AI (Gemini → Groq) inspects the event timeline and
+    returns the offset range where the topic was covered. Records are
+    retained for 30 days (a weekly scheduler job prunes older rows).
+    """
+    __tablename__ = "smart_replay_clips"
+    __table_args__ = (
+        Index("ix_src_session_id", "session_id"),
+        Index("ix_src_student_id", "student_id"),
+        Index("ix_src_created_at", "created_at"),
+    )
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    session_id            = Column(Integer, ForeignKey("live_sessions.id", ondelete="CASCADE"), nullable=False)
+    student_id            = Column(Integer, ForeignKey("users.id",         ondelete="CASCADE"), nullable=False)
+    topic                 = Column(String(300), nullable=False)
+    doubt_text            = Column(Text, nullable=True)
+    start_offset_seconds  = Column(Integer, nullable=True)
+    end_offset_seconds    = Column(Integer, nullable=True)
+    ai_confidence         = Column(Float, nullable=True)
+    ai_explanation        = Column(Text, nullable=True)
+    created_at            = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    live_session = relationship("LiveSession", foreign_keys=[session_id])
+    student      = relationship("User", foreign_keys=[student_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Security tables — login attempts, refresh tokens, GPS anti-spoof snapshots
 # ═══════════════════════════════════════════════════════════════════════
 

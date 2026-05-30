@@ -24,6 +24,7 @@ import ProfilePage from '../shared/ProfilePage';
 import NotificationsInboxPage from '../shared/NotificationsInboxPage';
 import StudentClassPulsePage from './StudentClassPulsePage';
 import StudentKnowledgeGraphPage from '../live/StudentKnowledgeGraphPage';
+import SmartReplayPage from '../live/SmartReplayPage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -1182,6 +1183,7 @@ export default function StudentDashboard() {
         <Route path="inbox"            element={<NotificationsInboxPage />} />
         <Route path="classpulse"       element={<StudentClassPulsePage />} />
         <Route path="knowledge-graph"  element={<StudentKnowledgeGraphPage />} />
+        <Route path="live/:sessionId/replay" element={<SmartReplayPage />} />
         <Route path="*"          element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>

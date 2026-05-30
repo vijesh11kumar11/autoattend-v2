@@ -26,6 +26,7 @@ const ClassPulsePage           = lazy(() => import('./ClassPulsePage'));
 const TeacherLiveDashboard     = lazy(() => import('../live/TeacherLiveDashboard'));
 const TeacherPreClassBrief     = lazy(() => import('../live/TeacherPreClassBrief'));
 const SessionHealthReport      = lazy(() => import('../live/SessionHealthReport'));
+const SmartReplayPage          = lazy(() => import('../live/SmartReplayPage'));
 const StudentKnowledgeGraphPage = lazy(() => import('../live/StudentKnowledgeGraphPage'));
 
 function RouteFallback() {
@@ -64,6 +65,7 @@ export default function TeacherDashboard() {
           <Route path="live/:sessionId"    element={<TeacherLiveDashboard />} />
           <Route path="live/:sessionId/brief"  element={<TeacherPreClassBrief />} />
           <Route path="live/:sessionId/report" element={<SessionHealthReport />} />
+          <Route path="live/:sessionId/replay" element={<SmartReplayPage />} />
           <Route path="student/:studentId/knowledge" element={<StudentKnowledgeGraphPage />} />
           <Route path="analytics/:subjectId" element={<SubjectAnalyticsPage />} />
           <Route path="*"              element={<Navigate to="dashboard" replace />} />
