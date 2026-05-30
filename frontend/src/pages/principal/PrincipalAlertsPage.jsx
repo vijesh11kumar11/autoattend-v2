@@ -15,26 +15,29 @@ import { useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 const DEFAULT_MSG =
-  'Dear Parent, your ward\'s attendance is below 75%. Please take necessary action.';
+  "Dear Parent, your ward's attendance is below 75%. Please take necessary action.";
 
 export default function PrincipalAlertsPage() {
-  const [data,       setData]       = useState(null);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState('');
-  const [selected,   setSelected]   = useState(new Set());
-  const [message,    setMessage]    = useState(DEFAULT_MSG);
-  const [sending,    setSending]    = useState(false);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [message, setMessage] = useState(DEFAULT_MSG);
+  const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState(null);
 
   const load = () => {
     setLoading(true);
-    api.get('/principal/alerts')
+    api
+      .get('/principal/alerts')
       .then((r) => setData(r.data))
       .catch(() => setError('Failed to load alerts data.'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const toggleOne = (id) => {
     setSelected((prev) => {
@@ -52,7 +55,10 @@ export default function PrincipalAlertsPage() {
 
   const sendAlerts = async (studentIds) => {
     if (!studentIds.length) return;
-    if (!message.trim()) { alert('Message cannot be empty.'); return; }
+    if (!message.trim()) {
+      alert('Message cannot be empty.');
+      return;
+    }
 
     setSending(true);
     setSendResult(null);
@@ -69,12 +75,13 @@ export default function PrincipalAlertsPage() {
     }
   };
 
-  if (loading) return <div className="p-8 text-slate-400 text-sm animate-pulse">Loading alerts…</div>;
-  if (error)   return <div className="p-8 text-red-500 text-sm">{error}</div>;
+  if (loading)
+    return <div className="p-8 text-slate-400 text-sm animate-pulse">Loading alerts…</div>;
+  if (error) return <div className="p-8 text-red-500 text-sm">{error}</div>;
 
-  const defaulters     = data?.defaulters     || [];
-  const alertHistory   = data?.alert_history  || [];
-  const selectedArray  = [...selected];
+  const defaulters = data?.defaulters || [];
+  const alertHistory = data?.alert_history || [];
+  const selectedArray = [...selected];
 
   return (
     <div className="space-y-6">
@@ -109,9 +116,7 @@ export default function PrincipalAlertsPage() {
               ✓ Sent: {sendResult.sent} | Failed: {sendResult.failed}
             </span>
           )}
-          {sendResult?.error && (
-            <span className="text-red-500 text-xs">{sendResult.error}</span>
-          )}
+          {sendResult?.error && <span className="text-red-500 text-xs">{sendResult.error}</span>}
         </div>
       </div>
 
@@ -119,7 +124,8 @@ export default function PrincipalAlertsPage() {
       <div className="card overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-700">
-            Defaulters (&lt; 75% attendance) — {defaulters.length} student{defaulters.length !== 1 ? 's' : ''}
+            Defaulters (&lt; 75% attendance) — {defaulters.length} student
+            {defaulters.length !== 1 ? 's' : ''}
           </h3>
           {defaulters.length > 0 && (
             <button className="text-xs text-blue-600 hover:underline" onClick={toggleAll}>
@@ -144,8 +150,18 @@ export default function PrincipalAlertsPage() {
                     className="rounded"
                   />
                 </th>
-                {['Name', 'Roll No.', 'Attendance', 'Present / Total', 'Parent Phone', 'Action'].map((h) => (
-                  <th key={h} className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                {[
+                  'Name',
+                  'Roll No.',
+                  'Attendance',
+                  'Present / Total',
+                  'Parent Phone',
+                  'Action',
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide"
+                  >
                     {h}
                   </th>
                 ))}
@@ -153,7 +169,10 @@ export default function PrincipalAlertsPage() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {defaulters.map((d) => (
-                <tr key={d.student_id} className={`hover:bg-slate-50 transition-colors ${selected.has(d.student_id) ? 'bg-blue-50' : ''}`}>
+                <tr
+                  key={d.student_id}
+                  className={`hover:bg-slate-50 transition-colors ${selected.has(d.student_id) ? 'bg-blue-50' : ''}`}
+                >
                   <td className="px-4 py-2.5">
                     <input
                       type="checkbox"
@@ -207,7 +226,10 @@ export default function PrincipalAlertsPage() {
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
                 {['Student', 'Message', 'Channel', 'Status', 'Sent At'].map((h) => (
-                  <th key={h} className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  <th
+                    key={h}
+                    className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide"
+                  >
                     {h}
                   </th>
                 ))}
@@ -220,7 +242,9 @@ export default function PrincipalAlertsPage() {
                   <td className="px-4 py-2.5 text-slate-600 max-w-xs truncate">{a.message}</td>
                   <td className="px-4 py-2.5 text-slate-500 capitalize">{a.channel}</td>
                   <td className="px-4 py-2.5">
-                    <span className={`badge ${a.status === 'sent' ? 'badge-success' : 'badge-danger'}`}>
+                    <span
+                      className={`badge ${a.status === 'sent' ? 'badge-success' : 'badge-danger'}`}
+                    >
                       {a.status}
                     </span>
                   </td>

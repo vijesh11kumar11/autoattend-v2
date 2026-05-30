@@ -23,7 +23,6 @@ import { PINNED_CERT_FILES, SSL_PINNING_ENABLED } from '../config';
 
 let _pinnedFetch = null;
 try {
-  // eslint-disable-next-line global-require
   const lib = require('react-native-ssl-pinning');
   _pinnedFetch = lib?.fetch || null;
 } catch {
@@ -47,10 +46,10 @@ export async function pinnedFetch(url, init = {}) {
     return fetch(url, init);
   }
   const opts = {
-    method:  init.method || 'GET',
+    method: init.method || 'GET',
     timeoutInterval: init.timeout ?? 15000,
     headers: init.headers || {},
-    body:    init.body,
+    body: init.body,
     sslPinning: { certs: PINNED_CERT_FILES },
   };
   return _pinnedFetch(url, opts);
@@ -82,7 +81,6 @@ export async function pinnedFetch(url, init = {}) {
 // implementation is JS-level awareness only and never blocks in __DEV__.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line global-require
 const Constants = require('expo-constants').default;
 
 /**
@@ -91,16 +89,16 @@ const Constants = require('expo-constants').default;
  */
 function normalisePin(value) {
   if (!value) return '';
-  return String(value).trim().replace(/^sha256\//i, '').trim();
+  return String(value)
+    .trim()
+    .replace(/^sha256\//i, '')
+    .trim();
 }
 
 /** Read the expo.extra block, tolerant of SDK manifest shape differences. */
 function getExtra() {
   return (
-    Constants?.expoConfig?.extra ??
-    Constants?.manifest?.extra ??
-    Constants?.manifest2?.extra ??
-    {}
+    Constants?.expoConfig?.extra ?? Constants?.manifest?.extra ?? Constants?.manifest2?.extra ?? {}
   );
 }
 
@@ -142,7 +140,7 @@ export function urlMatchesPinnedDomain(url) {
  * fingerprint to decide whether to allow the connection.
  */
 export function validatePin(cert) {
-  if (__DEV__) return true;                  // never block development / Expo Go
-  if (!isPinningConfigured()) return true;   // nothing to enforce → JS-level only
+  if (__DEV__) return true; // never block development / Expo Go
+  if (!isPinningConfigured()) return true; // nothing to enforce → JS-level only
   return normalisePin(cert) === EXPECTED_PIN;
 }

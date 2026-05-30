@@ -27,17 +27,17 @@ const VIOLET = 'from-violet-600 via-purple-600 to-fuchsia-600';
 // ════════════════════════════════════════════════════════════════════════
 function CreateSessionModal({ open, onClose, onCreated }) {
   const [title, setTitle] = useState('');
-  const [type, setType]   = useState('standalone');
+  const [type, setType] = useState('standalone');
   const [capsuleId, setCapsuleId] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [sectionId, setSectionId] = useState('');
-  const [allowGuests, setAllowGuests] = useState(true);                  // default ON for public
+  const [allowGuests, setAllowGuests] = useState(true); // default ON for public
   const [allowGuestInteraction, setAllowGuestInteraction] = useState(true);
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [recording, setRecording] = useState(true);
   const [capsules, setCapsules] = useState([]);
-  const [subjects, setSubjects] = useState([]);                          // [{id,name,sections:[]}]
+  const [subjects, setSubjects] = useState([]); // [{id,name,sections:[]}]
   const [loadingOpts, setLoadingOpts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -45,11 +45,18 @@ function CreateSessionModal({ open, onClose, onCreated }) {
   // Reset everything whenever the modal closes / re-opens.
   useEffect(() => {
     if (!open) {
-      setTitle(''); setType('standalone'); setCapsuleId('');
-      setSubjectId(''); setSectionId('');
-      setAllowGuests(true); setAllowGuestInteraction(true);
-      setPassword(''); setShowPwd(false); setRecording(true);
-      setError(''); setSubmitting(false);
+      setTitle('');
+      setType('standalone');
+      setCapsuleId('');
+      setSubjectId('');
+      setSectionId('');
+      setAllowGuests(true);
+      setAllowGuestInteraction(true);
+      setPassword('');
+      setShowPwd(false);
+      setRecording(true);
+      setError('');
+      setSubmitting(false);
     }
   }, [open]);
 
@@ -57,8 +64,9 @@ function CreateSessionModal({ open, onClose, onCreated }) {
   useEffect(() => {
     if (!open) return;
     setLoadingOpts(true);
-    api.get('/live/teacher/options')
-      .then(r => setSubjects(r.data?.subjects || []))
+    api
+      .get('/live/teacher/options')
+      .then((r) => setSubjects(r.data?.subjects || []))
       .catch(() => setSubjects([]))
       .finally(() => setLoadingOpts(false));
   }, [open]);
@@ -66,9 +74,10 @@ function CreateSessionModal({ open, onClose, onCreated }) {
   // Load capsules (used by Capsule-Locked)
   useEffect(() => {
     if (!open || type !== 'capsule_locked') return;
-    api.get('/classpulse/teacher/dashboard')
-      .then(r => {
-        const flat = (r.data?.subjects || []).flatMap(s => s.capsules || []);
+    api
+      .get('/classpulse/teacher/dashboard')
+      .then((r) => {
+        const flat = (r.data?.subjects || []).flatMap((s) => s.capsules || []);
         setCapsules(flat);
       })
       .catch(() => setCapsules([]));
@@ -77,7 +86,7 @@ function CreateSessionModal({ open, onClose, onCreated }) {
   // When capsule changes, auto-fill its subject/section silently
   const handleCapsuleChange = (id) => {
     setCapsuleId(id);
-    const c = capsules.find(x => String(x.id) === String(id));
+    const c = capsules.find((x) => String(x.id) === String(id));
     if (c) {
       if (c.subject_id) setSubjectId(String(c.subject_id));
       if (c.section_id) setSectionId(String(c.section_id));
@@ -90,19 +99,31 @@ function CreateSessionModal({ open, onClose, onCreated }) {
     setSectionId('');
   };
 
-  const currentSubject = subjects.find(s => String(s.id) === String(subjectId));
+  const currentSubject = subjects.find((s) => String(s.id) === String(subjectId));
   const sectionOptions = currentSubject?.sections || [];
 
   if (!open) return null;
 
   const submit = async () => {
     setError('');
-    if (!title.trim()) { setError('Title is required'); return; }
-    if (type === 'standalone') {
-      if (!subjectId) { setError('Pick a subject'); return; }
-      if (!sectionId) { setError('Pick a section'); return; }
+    if (!title.trim()) {
+      setError('Title is required');
+      return;
     }
-    if (type === 'capsule_locked' && !capsuleId) { setError('Pick a capsule'); return; }
+    if (type === 'standalone') {
+      if (!subjectId) {
+        setError('Pick a subject');
+        return;
+      }
+      if (!sectionId) {
+        setError('Pick a section');
+        return;
+      }
+    }
+    if (type === 'capsule_locked' && !capsuleId) {
+      setError('Pick a capsule');
+      return;
+    }
     setSubmitting(true);
     try {
       const body = {
@@ -120,23 +141,32 @@ function CreateSessionModal({ open, onClose, onCreated }) {
       onCreated(r.data);
     } catch (e) {
       const detail = e.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : (detail?.message || 'Failed to create session'));
-    } finally { setSubmitting(false); }
+      setError(typeof detail === 'string' ? detail : detail?.message || 'Failed to create session');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className={`bg-gradient-to-r ${VIOLET} px-6 py-4 rounded-t-2xl text-white flex justify-between items-center`}>
+        <div
+          className={`bg-gradient-to-r ${VIOLET} px-6 py-4 rounded-t-2xl text-white flex justify-between items-center`}
+        >
           <h2 className="font-bold text-lg">🎬 Create Live Session</h2>
-          <button onClick={onClose} className="text-white/80 hover:text-white text-xl">×</button>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-xl">
+            ×
+          </button>
         </div>
         <div className="p-6 space-y-4">
           <div>
             <label className="text-xs font-semibold text-slate-700">Title</label>
-            <input value={title} onChange={e=>setTitle(e.target.value)}
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="Data Structures - Trees"
-              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-violet-500" />
+              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-violet-500"
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-700">Session Type</label>
@@ -146,10 +176,18 @@ function CreateSessionModal({ open, onClose, onCreated }) {
                 ['capsule_locked', '📦 Capsule-Locked'],
                 ['public', '🌐 Public Link'],
               ].map(([k, l]) => (
-                <button key={k} type="button" onClick={()=>setType(k)}
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setType(k)}
                   className={`text-xs font-semibold rounded-lg py-2 border ${
-                    type===k ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-700 border-slate-300'
-                  }`}>{l}</button>
+                    type === k
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {l}
+                </button>
               ))}
             </div>
           </div>
@@ -158,11 +196,14 @@ function CreateSessionModal({ open, onClose, onCreated }) {
             <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 space-y-3">
               <div>
                 <label className="text-xs font-semibold text-slate-700">Subject</label>
-                <select value={subjectId} onChange={e => handleSubjectChange(e.target.value)}
+                <select
+                  value={subjectId}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
                   disabled={loadingOpts}
-                  className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white">
+                  className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                >
                   <option value="">{loadingOpts ? 'Loading…' : '— pick a subject —'}</option>
-                  {subjects.map(s => (
+                  {subjects.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} ({s.code} · Sem {s.semester})
                     </option>
@@ -176,9 +217,12 @@ function CreateSessionModal({ open, onClose, onCreated }) {
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-700">Section</label>
-                <select value={sectionId} onChange={e => setSectionId(e.target.value)}
+                <select
+                  value={sectionId}
+                  onChange={(e) => setSectionId(e.target.value)}
                   disabled={!subjectId || sectionOptions.length === 0}
-                  className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100">
+                  className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white disabled:bg-slate-100"
+                >
                   <option value="">
                     {!subjectId
                       ? '— pick a subject first —'
@@ -186,29 +230,42 @@ function CreateSessionModal({ open, onClose, onCreated }) {
                         ? 'No sections available'
                         : '— pick a section —'}
                   </option>
-                  {sectionOptions.map(sec => (
-                    <option key={sec.id} value={sec.id}>{sec.name}</option>
+                  {sectionOptions.map((sec) => (
+                    <option key={sec.id} value={sec.id}>
+                      {sec.name}
+                    </option>
                   ))}
                 </select>
               </div>
-              <p className="text-xs text-violet-700">🎓 Only students in the chosen section can join.</p>
+              <p className="text-xs text-violet-700">
+                🎓 Only students in the chosen section can join.
+              </p>
             </div>
           )}
 
           {type === 'capsule_locked' && (
             <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
               <label className="text-xs font-semibold text-slate-700">Select Capsule</label>
-              <select value={capsuleId} onChange={e=>handleCapsuleChange(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white">
+              <select
+                value={capsuleId}
+                onChange={(e) => handleCapsuleChange(e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg bg-white"
+              >
                 <option value="">— pick one —</option>
-                {capsules.map(c => (
-                  <option key={c.id} value={c.id}>{c.title} ({c.subject_name || ''})</option>
+                {capsules.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title} ({c.subject_name || ''})
+                  </option>
                 ))}
               </select>
               {capsules.length === 0 && (
-                <p className="text-xs text-amber-700 mt-1">⚠ No capsules found. Create one from ClassPulse first.</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  ⚠ No capsules found. Create one from ClassPulse first.
+                </p>
               )}
-              <p className="text-xs text-violet-700 mt-2">🔒 Only students enrolled in this capsule's section can join.</p>
+              <p className="text-xs text-violet-700 mt-2">
+                🔒 Only students enrolled in this capsule's section can join.
+              </p>
             </div>
           )}
 
@@ -216,43 +273,75 @@ function CreateSessionModal({ open, onClose, onCreated }) {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
               <p className="text-sm font-semibold text-amber-800">🌐 Public Link Session</p>
               <p className="text-xs text-amber-700">
-                Anyone with the share link can join — no subject or section required.
-                Use this for guest lectures, workshops, demo classes, etc.
+                Anyone with the share link can join — no subject or section required. Use this for
+                guest lectures, workshops, demo classes, etc.
               </p>
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={allowGuests} onChange={e=>setAllowGuests(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={allowGuests}
+                  onChange={(e) => setAllowGuests(e.target.checked)}
+                />
                 Allow guests without an account
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={allowGuestInteraction} onChange={e=>setAllowGuestInteraction(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={allowGuestInteraction}
+                  onChange={(e) => setAllowGuestInteraction(e.target.checked)}
+                />
                 Guests can interact (post doubts, take pulse)
               </label>
-              <p className="text-xs text-amber-700">💡 Tip: set a password below to keep things safer.</p>
+              <p className="text-xs text-amber-700">
+                💡 Tip: set a password below to keep things safer.
+              </p>
             </div>
           )}
 
           <div>
             <label className="text-xs font-semibold text-slate-700">Optional password</label>
             <div className="flex gap-2 mt-1">
-              <input type={showPwd?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)}
-                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg" />
-              <button type="button" onClick={()=>setShowPwd(v=>!v)} className="px-3 py-2 text-xs bg-slate-100 rounded-lg">
-                {showPwd?'Hide':'Show'}
+              <input
+                type={showPwd ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd((v) => !v)}
+                className="px-3 py-2 text-xs bg-slate-100 rounded-lg"
+              >
+                {showPwd ? 'Hide' : 'Show'}
               </button>
             </div>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={recording} onChange={e=>setRecording(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={recording}
+              onChange={(e) => setRecording(e.target.checked)}
+            />
             🎥 Record session (default ON)
           </label>
 
-          {error && <div className="bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>}
+          {error && (
+            <div className="bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>
+          )}
 
           <div className="flex gap-2 pt-2">
-            <button onClick={onClose} className="flex-1 py-2 border border-slate-300 rounded-lg font-semibold">Cancel</button>
-            <button onClick={submit} disabled={submitting}
-              className={`flex-1 py-2 rounded-lg font-semibold text-white bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
+            <button
+              onClick={onClose}
+              className="flex-1 py-2 border border-slate-300 rounded-lg font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submit}
+              disabled={submitting}
+              className={`flex-1 py-2 rounded-lg font-semibold text-white bg-gradient-to-r ${VIOLET} disabled:opacity-50`}
+            >
               {submitting ? 'Creating…' : 'Create Session'}
             </button>
           </div>
@@ -275,8 +364,11 @@ function JoinLinkCard({ session, onStart }) {
       } else {
         // Fallback for non-secure contexts (HTTP / older browsers)
         const ta = document.createElement('textarea');
-        ta.value = link; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
+        ta.value = link;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
       }
@@ -299,26 +391,45 @@ function JoinLinkCard({ session, onStart }) {
         <p className="text-2xl font-bold tracking-widest text-violet-700">{session.join_link}</p>
         <div className="mt-3 pt-3 border-t border-violet-200">
           <p className="text-xs text-slate-600 uppercase tracking-wide mb-1">Share Link</p>
-          <a href={link} target="_blank" rel="noopener" className="text-sm text-violet-700 underline break-all">
+          <a
+            href={link}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-violet-700 underline break-all"
+          >
             {link}
           </a>
         </div>
       </div>
       <div className="flex gap-2">
-        <button onClick={copy} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold">
+        <button
+          onClick={copy}
+          className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold"
+        >
           {copied ? '✅ Copied!' : '📋 Copy Link'}
         </button>
-        <a href={wa} target="_blank" rel="noopener" className="flex-1 py-2 bg-emerald-100 hover:bg-emerald-200 rounded-lg text-sm font-semibold text-center">
+        <a
+          href={wa}
+          target="_blank"
+          rel="noreferrer"
+          className="flex-1 py-2 bg-emerald-100 hover:bg-emerald-200 rounded-lg text-sm font-semibold text-center"
+        >
           📤 WhatsApp
         </a>
       </div>
       <div className="mt-4 text-xs text-slate-500 space-y-1">
-        {session.session_type === 'capsule_locked' && <p>🔒 Capsule-Locked · only enrolled students may join</p>}
+        {session.session_type === 'capsule_locked' && (
+          <p>🔒 Capsule-Locked · only enrolled students may join</p>
+        )}
         {session.session_type === 'public' && <p>🌐 Public Link · anyone with the link may join</p>}
-        {session.session_type === 'standalone' && <p>🎓 Standalone · only students in your section may join</p>}
+        {session.session_type === 'standalone' && (
+          <p>🎓 Standalone · only students in your section may join</p>
+        )}
       </div>
-      <button onClick={() => onStart(session.session_id)}
-        className={`mt-5 w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET} shadow-lg`}>
+      <button
+        onClick={() => onStart(session.session_id)}
+        className={`mt-5 w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET} shadow-lg`}
+      >
         🚀 Start Class Now
       </button>
     </div>
@@ -329,12 +440,12 @@ function JoinLinkCard({ session, onStart }) {
 // AI WHITEBOARD MODAL
 // ════════════════════════════════════════════════════════════════════════
 function WhiteboardModal({ open, sessionId, onClose }) {
-  const [tab, setTab] = useState('text');               // 'text' | 'code'
-  const [prompt, setPrompt]   = useState('');
-  const [diagram, setDiagram] = useState('');     // raw mermaid / html
+  const [tab, setTab] = useState('text'); // 'text' | 'code'
+  const [prompt, setPrompt] = useState('');
+  const [diagram, setDiagram] = useState(''); // raw mermaid / html
   const [diagramType, setDiagramType] = useState('mermaid');
-  const [busy, setBusy]       = useState(false);
-  const [err, setErr]         = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   // F14 — Code → Diagram
   const [code, setCode] = useState('');
   const [lang, setLang] = useState('python');
@@ -356,37 +467,55 @@ function WhiteboardModal({ open, sessionId, onClose }) {
       setDiagramType(r.data?.diagram_type || 'mermaid');
     } catch (e) {
       setErr(e.response?.data?.detail || e.message || 'Generation failed.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const generateFromCode = async () => {
     if (!code.trim() || !sessionId) return;
-    setBusy(true); setErr(''); setDiagram('');
+    setBusy(true);
+    setErr('');
+    setDiagram('');
     try {
       const r = await api.post(`/live/sessions/${sessionId}/ai/diagram-from-code`, {
-        code, language: lang, diagram_type: 'auto',
+        code,
+        language: lang,
+        diagram_type: 'auto',
       });
       setDiagram(r.data?.diagram || '');
       setDiagramType('mermaid');
     } catch (e) {
       setErr(e.response?.data?.detail || e.message || 'Generation failed.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <div className={`bg-gradient-to-r ${VIOLET} px-6 py-4 text-white flex justify-between items-center rounded-t-2xl`}>
+        <div
+          className={`bg-gradient-to-r ${VIOLET} px-6 py-4 text-white flex justify-between items-center rounded-t-2xl`}
+        >
           <h2 className="font-bold text-lg">🖼️ AI Whiteboard</h2>
-          <button onClick={onClose} className="text-2xl">×</button>
+          <button onClick={onClose} className="text-2xl">
+            ×
+          </button>
         </div>
         <div className="p-6 space-y-3">
           {/* Tab switcher */}
           <div className="flex gap-2">
-            {[['text','📝 Text Prompt'], ['code','💻 Code → Diagram']].map(([k, label]) => (
-              <button key={k} onClick={() => setTab(k)}
+            {[
+              ['text', '📝 Text Prompt'],
+              ['code', '💻 Code → Diagram'],
+            ].map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold
-                  ${tab === k ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                  ${tab === k ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+              >
                 {label}
               </button>
             ))}
@@ -394,11 +523,18 @@ function WhiteboardModal({ open, sessionId, onClose }) {
 
           {tab === 'text' && (
             <>
-              <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={3}
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={3}
                 placeholder="e.g. binary tree with 7 nodes, in-order traversal arrows…"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
-              <button onClick={generate} disabled={busy}
-                className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+              />
+              <button
+                onClick={generate}
+                disabled={busy}
+                className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}
+              >
                 {busy ? 'Generating…' : '✨ Generate'}
               </button>
             </>
@@ -407,19 +543,29 @@ function WhiteboardModal({ open, sessionId, onClose }) {
           {tab === 'code' && (
             <>
               <div className="flex gap-2 flex-wrap">
-                {['python','javascript','java','c++'].map(l => (
-                  <button key={l} onClick={() => setLang(l)}
+                {['python', 'javascript', 'java', 'c++'].map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => setLang(l)}
                     className={`px-2 py-1 rounded text-xs font-mono
-                      ${lang === l ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                      ${lang === l ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700'}`}
+                  >
                     {l}
                   </button>
                 ))}
               </div>
-              <textarea value={code} onChange={e=>setCode(e.target.value)} rows={8}
+              <textarea
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                rows={8}
                 placeholder={`# Paste ${lang} code → AI will generate a Mermaid diagram`}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs bg-slate-950 text-emerald-300" />
-              <button onClick={generateFromCode} disabled={busy || !code.trim()}
-                className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}>
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs bg-slate-950 text-emerald-300"
+              />
+              <button
+                onClick={generateFromCode}
+                disabled={busy || !code.trim()}
+                className={`w-full py-2 rounded-lg text-white font-semibold bg-gradient-to-r ${VIOLET} disabled:opacity-50`}
+              >
                 {busy ? 'Generating…' : '🎯 Generate Diagram from Code'}
               </button>
             </>
@@ -441,7 +587,9 @@ function WhiteboardModal({ open, sessionId, onClose }) {
               </div>
               <details className="text-xs">
                 <summary className="text-slate-500 cursor-pointer">Show Mermaid code</summary>
-                <pre className="bg-slate-950 text-emerald-300 p-3 rounded-lg mt-2 overflow-x-auto text-xs whitespace-pre-wrap">{diagram}</pre>
+                <pre className="bg-slate-950 text-emerald-300 p-3 rounded-lg mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
+                  {diagram}
+                </pre>
               </details>
             </div>
           )}
@@ -453,12 +601,20 @@ function WhiteboardModal({ open, sessionId, onClose }) {
               // Even though the source is our own backend, a compromised AI
               // provider could embed <script>/onerror payloads that would
               // otherwise execute in the teacher's browser.
-              // eslint-disable-next-line react/no-danger
+
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(diagram, {
                   USE_PROFILES: { html: true, svg: true, mathMl: true },
                   FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
-                  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'formaction'],
+                  FORBID_ATTR: [
+                    'onerror',
+                    'onload',
+                    'onclick',
+                    'onmouseover',
+                    'onfocus',
+                    'onblur',
+                    'formaction',
+                  ],
                 }),
               }}
             />
@@ -479,30 +635,46 @@ function WhiteboardModal({ open, sessionId, onClose }) {
 // PULSE CHECK MODAL (F04 — state-machine: idle → active → results)
 // ════════════════════════════════════════════════════════════════════════
 function PulseModal({ open, sessionId, onClose }) {
-  const [stage, setStage] = useState('idle');         // idle | active | results
-  const [form, setForm]   = useState({
-    question: '', optionA: '', optionB: '', optionC: '', optionD: '',
-    correctOption: '', durationSecs: 30,
+  const [stage, setStage] = useState('idle'); // idle | active | results
+  const [form, setForm] = useState({
+    question: '',
+    optionA: '',
+    optionB: '',
+    optionC: '',
+    optionD: '',
+    correctOption: '',
+    durationSecs: 30,
   });
-  const [activePulse, setActivePulse] = useState(null);  // {pulse_id, duration_secs}
-  const [counts, setCounts]   = useState({ A:0, B:0, C:0, D:0, total:0, correct:0 });
-  const [timer, setTimer]     = useState(0);
+  const [activePulse, setActivePulse] = useState(null); // {pulse_id, duration_secs}
+  const [counts, setCounts] = useState({ A: 0, B: 0, C: 0, D: 0, total: 0, correct: 0 });
+  const [timer, setTimer] = useState(0);
   const [insight, setInsight] = useState('');
-  const [busy, setBusy]       = useState(false);
-  const [err, setErr]         = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   const timerRef = useRef(null);
-  const pollRef  = useRef(null);
+  const pollRef = useRef(null);
 
   // Reset everything on close
   useEffect(() => {
     if (!open) {
-      clearInterval(timerRef.current); clearInterval(pollRef.current);
+      clearInterval(timerRef.current);
+      clearInterval(pollRef.current);
       setStage('idle');
-      setForm({ question:'', optionA:'', optionB:'', optionC:'', optionD:'',
-                correctOption:'', durationSecs:30 });
+      setForm({
+        question: '',
+        optionA: '',
+        optionB: '',
+        optionC: '',
+        optionD: '',
+        correctOption: '',
+        durationSecs: 30,
+      });
       setActivePulse(null);
-      setCounts({ A:0, B:0, C:0, D:0, total:0, correct:0 });
-      setTimer(0); setInsight(''); setErr(''); setBusy(false);
+      setCounts({ A: 0, B: 0, C: 0, D: 0, total: 0, correct: 0 });
+      setTimer(0);
+      setInsight('');
+      setErr('');
+      setBusy(false);
     }
   }, [open]);
 
@@ -512,13 +684,34 @@ function PulseModal({ open, sessionId, onClose }) {
     pollRef.current = setInterval(async () => {
       try {
         const r = await api.get(`/live/sessions/${sessionId}/pulse-results`);
-        const me = (r.data?.pulse_checks || []).find(p => p.id === activePulse.pulse_id);
+        const me = (r.data?.pulse_checks || []).find((p) => p.id === activePulse.pulse_id);
         if (me) setCounts(me.counts || counts);
       } catch (_) {}
     }, 2000);
     return () => clearInterval(pollRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, activePulse, sessionId]);
+
+  // Auto move to results when timer hits zero (poll once for the close payload)
+  useEffect(() => {
+    if (stage === 'active' && timer === 0 && activePulse) {
+      // Give backend a beat to auto-close, then fetch insight
+      const t = setTimeout(async () => {
+        try {
+          const r = await api.get(`/live/sessions/${sessionId}/pulse-results`);
+          const me = (r.data?.pulse_checks || []).find((p) => p.id === activePulse.pulse_id);
+          if (me) {
+            setCounts(me.counts || counts);
+            setInsight(me.ai_insight || '');
+          }
+        } catch (_) {}
+        setStage('results');
+      }, 6500);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, timer]);
 
   if (!open) return null;
 
@@ -531,28 +724,33 @@ function PulseModal({ open, sessionId, onClose }) {
     setBusy(true);
     try {
       const r = await api.post(`/live/sessions/${sessionId}/pulse-check`, {
-        question:       form.question.trim(),
-        option_a:       form.optionA.trim(),
-        option_b:       form.optionB.trim(),
-        option_c:       (form.optionC || 'N/A').trim(),
-        option_d:       (form.optionD || 'N/A').trim(),
+        question: form.question.trim(),
+        option_a: form.optionA.trim(),
+        option_b: form.optionB.trim(),
+        option_c: (form.optionC || 'N/A').trim(),
+        option_d: (form.optionD || 'N/A').trim(),
         correct_option: form.correctOption || null,
-        duration_secs:  form.durationSecs,
+        duration_secs: form.durationSecs,
       });
       setActivePulse(r.data);
-      setCounts({ A:0, B:0, C:0, D:0, total:0, correct:0 });
+      setCounts({ A: 0, B: 0, C: 0, D: 0, total: 0, correct: 0 });
       setStage('active');
       setTimer(form.durationSecs);
       clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
-        setTimer(prev => {
-          if (prev <= 1) { clearInterval(timerRef.current); return 0; }
+        setTimer((prev) => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            return 0;
+          }
           return prev - 1;
         });
       }, 1000);
     } catch (e) {
       setErr(e.response?.data?.detail || 'Could not send pulse check.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const closeEarly = async () => {
@@ -561,35 +759,17 @@ function PulseModal({ open, sessionId, onClose }) {
     setBusy(true);
     try {
       const r = await api.post(
-        `/live/sessions/${sessionId}/pulse-check/${activePulse.pulse_id}/close`,
+        `/live/sessions/${sessionId}/pulse-check/${activePulse.pulse_id}/close`
       );
       setCounts(r.data?.counts || counts);
       setInsight(r.data?.ai_insight || '');
       setStage('results');
-    } catch (e) { setErr('Could not close pulse.'); }
-    finally { setBusy(false); }
-  };
-
-  // Auto move to results when timer hits zero (poll once for the close payload)
-  useEffect(() => {
-    if (stage === 'active' && timer === 0 && activePulse) {
-      // Give backend a beat to auto-close, then fetch insight
-      const t = setTimeout(async () => {
-        try {
-          const r = await api.get(`/live/sessions/${sessionId}/pulse-results`);
-          const me = (r.data?.pulse_checks || []).find(p => p.id === activePulse.pulse_id);
-          if (me) {
-            setCounts(me.counts || counts);
-            setInsight(me.ai_insight || '');
-          }
-        } catch (_) {}
-        setStage('results');
-      }, 6500);
-      return () => clearTimeout(t);
+    } catch (e) {
+      setErr('Could not close pulse.');
+    } finally {
+      setBusy(false);
     }
-    return undefined;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, timer]);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4">
@@ -599,41 +779,62 @@ function PulseModal({ open, sessionId, onClose }) {
           <>
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-bold text-lg">⚡ Send Pulse Check</h3>
-              <button onClick={onClose} className="text-gray-400 hover:text-white text-xl leading-none">×</button>
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-white text-xl leading-none"
+              >
+                ×
+              </button>
             </div>
             <div className="space-y-3">
-              <input className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-sm placeholder-gray-500"
+              <input
+                className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-sm placeholder-gray-500"
                 placeholder="Question — e.g. What does a recursive function need?"
                 value={form.question}
-                onChange={e => setForm(p => ({...p, question: e.target.value}))} />
-              {['A','B','C','D'].map(opt => (
+                onChange={(e) => setForm((p) => ({ ...p, question: e.target.value }))}
+              />
+              {['A', 'B', 'C', 'D'].map((opt) => (
                 <div key={opt} className="flex items-center gap-2">
-                  <button type="button"
-                    onClick={() => setForm(p => ({...p, correctOption: p.correctOption === opt ? '' : opt}))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((p) => ({ ...p, correctOption: p.correctOption === opt ? '' : opt }))
+                    }
                     className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center flex-shrink-0
-                      ${form.correctOption === opt ? 'bg-green-500 text-black' : 'bg-gray-700 text-gray-300'}`}>
+                      ${form.correctOption === opt ? 'bg-green-500 text-black' : 'bg-gray-700 text-gray-300'}`}
+                  >
                     {opt}
                   </button>
-                  <input className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-sm placeholder-gray-500"
-                    placeholder={`Option ${opt}${opt==='A'||opt==='B' ? ' (required)' : ' (optional)'}`}
+                  <input
+                    className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-3 py-2 text-sm placeholder-gray-500"
+                    placeholder={`Option ${opt}${opt === 'A' || opt === 'B' ? ' (required)' : ' (optional)'}`}
                     value={form[`option${opt}`]}
-                    onChange={e => setForm(p => ({...p, [`option${opt}`]: e.target.value}))} />
+                    onChange={(e) => setForm((p) => ({ ...p, [`option${opt}`]: e.target.value }))}
+                  />
                 </div>
               ))}
-              <p className="text-xs text-gray-500">Tap a letter to mark the correct answer (optional).</p>
+              <p className="text-xs text-gray-500">
+                Tap a letter to mark the correct answer (optional).
+              </p>
               <div className="flex items-center gap-3">
                 <label className="text-sm text-gray-300">Duration:</label>
-                {[15,30,60].map(s => (
-                  <button key={s} onClick={() => setForm(p => ({...p, durationSecs: s}))}
+                {[15, 30, 60].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setForm((p) => ({ ...p, durationSecs: s }))}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold
-                      ${form.durationSecs === s ? 'bg-violet-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
+                      ${form.durationSecs === s ? 'bg-violet-600 text-white' : 'bg-gray-700 text-gray-300'}`}
+                  >
                     {s}s
                   </button>
                 ))}
               </div>
               {err && <p className="text-red-400 text-xs">{err}</p>}
-              <button onClick={sendPulse} disabled={busy}
-                className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl">
+              <button
+                onClick={sendPulse}
+                disabled={busy}
+                className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl"
+              >
                 {busy ? 'Sending…' : '⚡ Send to All Students'}
               </button>
             </div>
@@ -649,25 +850,34 @@ function PulseModal({ open, sessionId, onClose }) {
             </div>
             <p className="font-medium mb-4 text-sm">{form.question}</p>
             <div className="space-y-2 mb-4">
-              {['A','B','C','D'].map(opt => {
+              {['A', 'B', 'C', 'D'].map((opt) => {
                 const c = counts[opt] || 0;
                 const total = counts.total || 1;
                 const pct = Math.round((c / total) * 100);
                 return (
                   <div key={opt} className="relative bg-gray-800 rounded-lg p-2.5 overflow-hidden">
-                    <div className="absolute left-0 top-0 bottom-0 bg-violet-600/30 transition-all"
-                      style={{ width: `${pct}%` }} />
+                    <div
+                      className="absolute left-0 top-0 bottom-0 bg-violet-600/30 transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
                     <div className="relative flex items-center justify-between">
-                      <span className="text-xs">{opt}: {form[`option${opt}`]}</span>
-                      <span className="text-gray-400 text-xs font-mono">{c} ({pct}%)</span>
+                      <span className="text-xs">
+                        {opt}: {form[`option${opt}`]}
+                      </span>
+                      <span className="text-gray-400 text-xs font-mono">
+                        {c} ({pct}%)
+                      </span>
                     </div>
                   </div>
                 );
               })}
             </div>
             <p className="text-gray-400 text-xs mb-3 text-center">{counts.total} responses</p>
-            <button onClick={closeEarly} disabled={busy}
-              className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm">
+            <button
+              onClick={closeEarly}
+              disabled={busy}
+              className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm"
+            >
               {busy ? 'Closing…' : 'Close Pulse Early'}
             </button>
           </>
@@ -679,23 +889,29 @@ function PulseModal({ open, sessionId, onClose }) {
             <h3 className="font-bold text-lg mb-4">📊 Pulse Results</h3>
             <p className="text-gray-300 text-sm mb-4">{form.question}</p>
             <div className="space-y-2 mb-4">
-              {['A','B','C','D'].map(opt => {
+              {['A', 'B', 'C', 'D'].map((opt) => {
                 const c = counts[opt] || 0;
                 const total = counts.total || 1;
                 const pct = Math.round((c / total) * 100);
                 const isCorrect = form.correctOption === opt;
                 return (
-                  <div key={opt}
+                  <div
+                    key={opt}
                     className={`relative rounded-lg p-2.5 overflow-hidden
-                      ${isCorrect ? 'bg-green-900/40 border border-green-500/40' : 'bg-gray-800'}`}>
-                    <div className={`absolute left-0 top-0 bottom-0 transition-all
+                      ${isCorrect ? 'bg-green-900/40 border border-green-500/40' : 'bg-gray-800'}`}
+                  >
+                    <div
+                      className={`absolute left-0 top-0 bottom-0 transition-all
                       ${isCorrect ? 'bg-green-600/30' : 'bg-violet-600/20'}`}
-                      style={{ width: `${pct}%` }} />
+                      style={{ width: `${pct}%` }}
+                    />
                     <div className="relative flex items-center justify-between">
                       <span className={`text-xs ${isCorrect ? 'text-green-300' : ''}`}>
                         {opt}: {form[`option${opt}`]} {isCorrect ? '✓' : ''}
                       </span>
-                      <span className="text-gray-400 text-xs font-mono">{c} ({pct}%)</span>
+                      <span className="text-gray-400 text-xs font-mono">
+                        {c} ({pct}%)
+                      </span>
                     </div>
                   </div>
                 );
@@ -704,7 +920,9 @@ function PulseModal({ open, sessionId, onClose }) {
             {form.correctOption && (
               <div className="bg-gray-800 rounded-lg p-3 mb-3 text-center">
                 <span className="text-green-400 font-bold text-lg">
-                  {counts.total > 0 ? `${Math.round((counts.correct / counts.total) * 100)}%` : '0%'}
+                  {counts.total > 0
+                    ? `${Math.round((counts.correct / counts.total) * 100)}%`
+                    : '0%'}
                 </span>
                 <span className="text-gray-400 text-sm"> correct</span>
               </div>
@@ -715,17 +933,30 @@ function PulseModal({ open, sessionId, onClose }) {
               </div>
             )}
             <div className="flex gap-2">
-              <button onClick={() => {
-                  setStage('idle'); setActivePulse(null); setInsight('');
-                  setCounts({ A:0, B:0, C:0, D:0, total:0, correct:0 });
-                  setForm({ question:'', optionA:'', optionB:'', optionC:'', optionD:'',
-                            correctOption:'', durationSecs:30 });
+              <button
+                onClick={() => {
+                  setStage('idle');
+                  setActivePulse(null);
+                  setInsight('');
+                  setCounts({ A: 0, B: 0, C: 0, D: 0, total: 0, correct: 0 });
+                  setForm({
+                    question: '',
+                    optionA: '',
+                    optionB: '',
+                    optionC: '',
+                    optionD: '',
+                    correctOption: '',
+                    durationSecs: 30,
+                  });
                 }}
-                className="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-sm">
+                className="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2.5 rounded-xl text-sm"
+              >
                 New Pulse
               </button>
-              <button onClick={onClose}
-                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-xl text-sm">
+              <button
+                onClick={onClose}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-xl text-sm"
+              >
                 Close
               </button>
             </div>
@@ -740,33 +971,46 @@ function PulseModal({ open, sessionId, onClose }) {
 // AI BRAIN PANEL — F01: real LiveSessionObservation data
 // ════════════════════════════════════════════════════════════════════════
 const SEVERITY_BG = {
-  high:   'border-red-300 bg-red-50',
+  high: 'border-red-300 bg-red-50',
   medium: 'border-amber-300 bg-amber-50',
-  low:    'border-emerald-300 bg-emerald-50',
+  low: 'border-emerald-300 bg-emerald-50',
 };
 const TYPE_ICON = {
-  confusion: '🤔', pace: '⚡', engagement: '📊',
-  positive: '⭐', topic_complete: '✅', energy: '🔋',
+  confusion: '🤔',
+  pace: '⚡',
+  engagement: '📊',
+  positive: '⭐',
+  topic_complete: '✅',
+  energy: '🔋',
 };
 
 // F02 — Engagement timeline (sparkline)
 function AttentionTimelinePanel({ timeline }) {
   if (!timeline || timeline.length === 0) return null;
   const max = 100;
-  const w = 240, h = 48;
+  const w = 240,
+    h = 48;
   const step = timeline.length > 1 ? w / (timeline.length - 1) : 0;
-  const points = timeline.map((p, i) => {
-    const x = i * step;
-    const y = h - (Math.max(0, Math.min(max, p.engagement_pct || 0)) / max) * h;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+  const points = timeline
+    .map((p, i) => {
+      const x = i * step;
+      const y = h - (Math.max(0, Math.min(max, p.engagement_pct || 0)) / max) * h;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
   const last = timeline[timeline.length - 1];
-  const colour = (last.engagement_pct || 0) >= 70 ? '#10b981'
-               : (last.engagement_pct || 0) >= 40 ? '#f59e0b' : '#ef4444';
+  const colour =
+    (last.engagement_pct || 0) >= 70
+      ? '#10b981'
+      : (last.engagement_pct || 0) >= 40
+        ? '#f59e0b'
+        : '#ef4444';
   return (
     <div className="mt-4 bg-white border border-violet-100 rounded-xl p-3">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Engagement timeline</span>
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+          Engagement timeline
+        </span>
         <span className="text-xs font-bold" style={{ color: colour }}>
           {Math.round(last.engagement_pct || 0)}%
         </span>
@@ -783,7 +1027,7 @@ function AttentionTimelinePanel({ timeline }) {
 function AttentionSignalsPanel({ students }) {
   if (!students || students.length === 0) return null;
   // Only surface non-green signals
-  const flagged = students.filter(s => s.label !== 'highly_engaged');
+  const flagged = students.filter((s) => s.label !== 'highly_engaged');
   if (flagged.length === 0) {
     return (
       <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-700">
@@ -792,16 +1036,20 @@ function AttentionSignalsPanel({ students }) {
     );
   }
   const COLOURS = {
-    moderate:       'bg-yellow-50  border-yellow-200  text-yellow-800',
-    silent:         'bg-orange-50  border-orange-200  text-orange-800',
-    dropped_off:    'bg-red-50     border-red-200     text-red-800',
+    moderate: 'bg-yellow-50  border-yellow-200  text-yellow-800',
+    silent: 'bg-orange-50  border-orange-200  text-orange-800',
+    dropped_off: 'bg-red-50     border-red-200     text-red-800',
   };
   return (
     <div className="mt-4 space-y-2">
-      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Attention signals</span>
+      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+        Attention signals
+      </span>
       {flagged.slice(0, 8).map((s, i) => (
-        <div key={s.student_id || i}
-          className={`text-xs p-2 rounded-lg border ${COLOURS[s.label] || 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+        <div
+          key={s.student_id || i}
+          className={`text-xs p-2 rounded-lg border ${COLOURS[s.label] || 'bg-slate-50 border-slate-200 text-slate-700'}`}
+        >
           {s.signal || `${s.name} — ${s.label}`}
         </div>
       ))}
@@ -810,31 +1058,35 @@ function AttentionSignalsPanel({ students }) {
 }
 
 function AIBrainPanel({ sessionId }) {
-  const [obs, setObs]       = useState([]);
+  const [obs, setObs] = useState([]);
   const [lastId, setLastId] = useState(0);
-  const [busy, setBusy]     = useState(false);
-  const [err, setErr]       = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   const fetchObs = useCallback(async () => {
     try {
-      const r = await api.get(`/live/sessions/${sessionId}/ai/observations`,
-        { params: { since_id: lastId } });
+      const r = await api.get(`/live/sessions/${sessionId}/ai/observations`, {
+        params: { since_id: lastId },
+      });
       const list = r.data?.observations || [];
       if (list.length > 0) {
-        setObs(prev => {
+        setObs((prev) => {
           // dedup by id, keep newest first
           const merged = [...list, ...prev];
           const seen = new Set();
           const out = [];
           for (const o of merged) {
             if (seen.has(o.id)) continue;
-            seen.add(o.id); out.push(o);
+            seen.add(o.id);
+            out.push(o);
           }
           return out.slice(0, 20);
         });
-        setLastId(prev => Math.max(prev, ...list.map(o => o.id)));
+        setLastId((prev) => Math.max(prev, ...list.map((o) => o.id)));
       }
-    } catch (_) { /* silent */ }
+    } catch (_) {
+      /* silent */
+    }
   }, [sessionId, lastId]);
 
   useEffect(() => {
@@ -844,27 +1096,35 @@ function AIBrainPanel({ sessionId }) {
   }, [fetchObs]);
 
   const triggerNow = async () => {
-    setBusy(true); setErr('');
+    setBusy(true);
+    setErr('');
     try {
       const r = await api.post(`/live/sessions/${sessionId}/ai/trigger-observation`);
       if (r.data) {
-        setObs(prev => {
-          if (prev.find(o => o.id === r.data.id)) return prev;
+        setObs((prev) => {
+          if (prev.find((o) => o.id === r.data.id)) return prev;
           return [r.data, ...prev].slice(0, 20);
         });
-        setLastId(prev => Math.max(prev, r.data.id));
+        setLastId((prev) => Math.max(prev, r.data.id));
       }
     } catch (e) {
       setErr(e.response?.data?.detail || 'Could not generate observation.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">AI Observations</span>
-        <button onClick={triggerNow} disabled={busy}
-          className="text-xs text-violet-600 hover:text-violet-800 disabled:opacity-50 font-semibold">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+          AI Observations
+        </span>
+        <button
+          onClick={triggerNow}
+          disabled={busy}
+          className="text-xs text-violet-600 hover:text-violet-800 disabled:opacity-50 font-semibold"
+        >
           {busy ? 'Thinking…' : '🔄 Refresh'}
         </button>
       </div>
@@ -879,11 +1139,15 @@ function AIBrainPanel({ sessionId }) {
         </div>
       )}
 
-      {obs.map(o => (
-        <div key={o.id}
-          className={`border rounded-xl p-3 ${SEVERITY_BG[o.severity] || SEVERITY_BG.low}`}>
+      {obs.map((o) => (
+        <div
+          key={o.id}
+          className={`border rounded-xl p-3 ${SEVERITY_BG[o.severity] || SEVERITY_BG.low}`}
+        >
           <div className="flex items-start gap-2">
-            <span className="text-base flex-shrink-0">{TYPE_ICON[o.type || o.obs_type] || '🤖'}</span>
+            <span className="text-base flex-shrink-0">
+              {TYPE_ICON[o.type || o.obs_type] || '🤖'}
+            </span>
             <div className="flex-1 min-w-0">
               <p className="text-slate-800 text-xs leading-relaxed">{o.message}</p>
               {o.suggestion && (
@@ -891,7 +1155,10 @@ function AIBrainPanel({ sessionId }) {
               )}
               {o.created_at && (
                 <p className="text-[10px] text-slate-400 mt-1">
-                  {new Date(o.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
+                  {new Date(o.created_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </p>
               )}
             </div>
@@ -911,7 +1178,9 @@ function DoubtWall({ sessionId }) {
     try {
       const r = await api.get('/live/doubts', { params: { session_id: sessionId } });
       setDoubts(r.data?.doubts || r.data || []);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   };
   useEffect(() => {
     refresh();
@@ -923,7 +1192,9 @@ function DoubtWall({ sessionId }) {
     try {
       await api.post(`/classpulse/wall/${id}/answer`, { answer_text: answer });
       refresh();
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   };
 
   return (
@@ -932,14 +1203,18 @@ function DoubtWall({ sessionId }) {
         <h3 className="font-bold">🔥 Live Doubt Wall</h3>
       </div>
       <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-        {doubts.length === 0 && <p className="text-slate-400 text-sm text-center py-6">No live doubts yet.</p>}
-        {doubts.map(d => (
+        {doubts.length === 0 && (
+          <p className="text-slate-400 text-sm text-center py-6">No live doubts yet.</p>
+        )}
+        {doubts.map((d) => (
           <div key={d.id} className="border border-slate-200 rounded-lg p-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-semibold text-orange-600">
                 {d.resonance_count >= 5 ? '🔥 HOT' : '🤔'} ({d.resonance_count || 0} students)
               </span>
-              <span className="text-[10px] text-slate-400">{(d.created_at||'').slice(11,16)}</span>
+              <span className="text-[10px] text-slate-400">
+                {(d.created_at || '').slice(11, 16)}
+              </span>
             </div>
             <p className="text-sm font-medium text-slate-800">{d.question || d.title}</p>
             {d.ai_answer && (
@@ -947,11 +1222,19 @@ function DoubtWall({ sessionId }) {
                 🤖 {d.ai_answer}
               </p>
             )}
-            <p className="text-[10px] text-slate-400 mt-1">By: {d.author_name || 'Anonymous'} (private to you)</p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              By: {d.author_name || 'Anonymous'} (private to you)
+            </p>
             <div className="flex gap-2 mt-2">
-              <button onClick={()=>post(d.id, d.ai_answer || 'Acknowledged')}
-                className="flex-1 py-1 text-xs bg-emerald-500 text-white rounded font-semibold">✅ Post Answer</button>
-              <button className="flex-1 py-1 text-xs bg-slate-200 text-slate-700 rounded font-semibold">✏️ Edit</button>
+              <button
+                onClick={() => post(d.id, d.ai_answer || 'Acknowledged')}
+                className="flex-1 py-1 text-xs bg-emerald-500 text-white rounded font-semibold"
+              >
+                ✅ Post Answer
+              </button>
+              <button className="flex-1 py-1 text-xs bg-slate-200 text-slate-700 rounded font-semibold">
+                ✏️ Edit
+              </button>
             </div>
           </div>
         ))}
@@ -965,27 +1248,27 @@ function DoubtWall({ sessionId }) {
 // ════════════════════════════════════════════════════════════════════════
 function LivePanel({ session, onEnd }) {
   const { user: currentUser } = useAuth();
-  const [details,    setDetails]    = useState(null);
-  const [secs,       setSecs]       = useState(0);
-  const [showWB,     setShowWB]     = useState(false);
-  const [showPulse,  setShowPulse]  = useState(false);
-  const [showBreakout,    setShowBreakout]    = useState(false);  // F10 modal
-  const [breakoutActive,  setBreakoutActive]  = useState(false);
-  const [breakoutRooms,   setBreakoutRooms]   = useState([]);     // status snapshots
+  const [details, setDetails] = useState(null);
+  const [secs, setSecs] = useState(0);
+  const [showWB, setShowWB] = useState(false);
+  const [showPulse, setShowPulse] = useState(false);
+  const [showBreakout, setShowBreakout] = useState(false); // F10 modal
+  const [breakoutActive, setBreakoutActive] = useState(false);
+  const [breakoutRooms, setBreakoutRooms] = useState([]); // status snapshots
   // ── Live-room UI state ───────────────────────────────────────────
-  const [webrtc,        setWebrtc]        = useState(null); // {agora:{app_id,channel,token,uid}}
-  const [webrtcError,   setWebrtcError]   = useState('');
+  const [webrtc, setWebrtc] = useState(null); // {agora:{app_id,channel,token,uid}}
+  const [webrtcError, setWebrtcError] = useState('');
   const [credsFetching, setCredsFetching] = useState(false);
-  const [viewMode,      setViewMode]      = useState('speaker'); // speaker | grid | focus
-  const [pinnedUid,     setPinnedUid]     = useState(null);
-  const [rightPanel,    setRightPanel]    = useState('ai');      // ai | doubts | people
+  const [viewMode, setViewMode] = useState('speaker'); // speaker | grid | focus
+  const [pinnedUid, setPinnedUid] = useState(null);
+  const [rightPanel, setRightPanel] = useState('ai'); // ai | doubts | people
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [muteAllBusy,   setMuteAllBusy]   = useState(false);
+  const [muteAllBusy, setMuteAllBusy] = useState(false);
   // { "<agora_uid>": { name, role, user_id } }
   const [participantNames, setParticipantNames] = useState({});
 
   // F02 — engagement timeline + per-student attention
-  const [timeline,         setTimeline]         = useState([]);
+  const [timeline, setTimeline] = useState([]);
   const [studentAttention, setStudentAttention] = useState([]);
   // F03 — AI raises hand
   const [activeIntervention, setActiveIntervention] = useState(null);
@@ -994,15 +1277,20 @@ function LivePanel({ session, onEnd }) {
     try {
       const r = await api.get(`/live/sessions/${session.id}/details`);
       setDetails(r.data);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
     refresh();
     const t1 = setInterval(refresh, 15000);
     const startedAt = session.started_at ? new Date(session.started_at).getTime() : Date.now();
-    const t2 = setInterval(() => setSecs(Math.floor((Date.now()-startedAt)/1000)), 1000);
-    return () => { clearInterval(t1); clearInterval(t2); };
+    const t2 = setInterval(() => setSecs(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => {
+      clearInterval(t1);
+      clearInterval(t2);
+    };
   }, [session.id]);
 
   // ── Acquire Agora webrtc_config once the session is live ─────────
@@ -1030,28 +1318,40 @@ function LivePanel({ session, onEnd }) {
         if (!cancelled) setCredsFetching(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [session?.join_link]);
 
-  const fmt = (s) => `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  const fmt = (s) =>
+    `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   // ── Agora hook ───────────────────────────────────────────────────
   const agoraCfg = webrtc?.agora || {};
   const localUid = agoraCfg.uid ?? currentUser?.id ?? 0;
   const {
-    isJoined, isLoading: agoraLoading, error: agoraError,
-    localVideoEnabled, localAudioEnabled,
-    remoteUsers, networkQuality, speakingUsers, activeSpeakerUid,
+    isJoined,
+    isLoading: agoraLoading,
+    error: agoraError,
+    localVideoEnabled,
+    localAudioEnabled,
+    remoteUsers,
+    networkQuality,
+    speakingUsers,
+    activeSpeakerUid,
     localVideoTrackRef,
-    initClient, leaveChannel,
-    toggleAudio, toggleVideo,
-    startScreenShare, stopScreenShare,
+    initClient,
+    leaveChannel,
+    toggleAudio,
+    toggleVideo,
+    startScreenShare,
+    stopScreenShare,
   } = useAgoraRTC({
-    appId:   agoraCfg.app_id || '',
+    appId: agoraCfg.app_id || '',
     channel: agoraCfg.channel || '',
-    token:   agoraCfg.token   || '',
-    uid:     localUid,
-    role:    'host',
+    token: agoraCfg.token || '',
+    uid: localUid,
+    role: 'host',
   });
 
   // Auto-join Agora as soon as we have credentials
@@ -1069,11 +1369,16 @@ function LivePanel({ session, onEnd }) {
       try {
         const r = await api.get(`/live/sessions/${session.id}/participant-names`);
         if (!cancelled) setParticipantNames(r.data || {});
-      } catch (_) { /* tolerable — falls back to "User <uid>" */ }
+      } catch (_) {
+        /* tolerable — falls back to "User <uid>" */
+      }
     };
     fetchNames();
     const t = setInterval(fetchNames, 30000);
-    return () => { cancelled = true; clearInterval(t); };
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [isJoined, session?.id]);
 
   // F02 — engagement timeline + per-student attention (every 30s)
@@ -1089,11 +1394,16 @@ function LivePanel({ session, onEnd }) {
         if (cancelled) return;
         setTimeline(tl.data?.timeline || []);
         setStudentAttention(sa.data?.students || []);
-      } catch (_) { /* silent */ }
+      } catch (_) {
+        /* silent */
+      }
     };
     fetchAttention();
     const t = setInterval(fetchAttention, 30000);
-    return () => { cancelled = true; clearInterval(t); };
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [session?.id]);
 
   // F03 — AI raises hand (poll every 5 min as backup; WS pushes faster)
@@ -1106,10 +1416,15 @@ function LivePanel({ session, onEnd }) {
         if (!cancelled && r.data?.intervention) {
           setActiveIntervention(r.data.intervention);
         }
-      } catch (_) { /* silent */ }
+      } catch (_) {
+        /* silent */
+      }
     };
     const t = setInterval(checkIntervention, 300000); // 5 min
-    return () => { cancelled = true; clearInterval(t); };
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [session?.id]);
 
   const handleInterventionAction = async (action) => {
@@ -1123,9 +1438,12 @@ function LivePanel({ session, onEnd }) {
     setActiveIntervention(null);
     try {
       await api.post(`/live/sessions/${session.id}/ai/dismiss-intervention`, {
-        intervention_id: id, action,
+        intervention_id: id,
+        action,
       });
-    } catch (_) { /* non-fatal */ }
+    } catch (_) {
+      /* non-fatal */
+    }
   };
 
   // Build agora_uid → attention label map (so VideoTile shows colour ring)
@@ -1135,14 +1453,18 @@ function LivePanel({ session, onEnd }) {
       if (info?.user_id) userIdToUid[info.user_id] = uid;
     });
     const map = {};
-    studentAttention.forEach(s => {
+    studentAttention.forEach((s) => {
       const uid = s.student_id ? userIdToUid[s.student_id] : null;
       if (!uid) return;
       // VideoTile expects 'high'|'medium'|'low' for the ring colour
-      const ring = s.label === 'highly_engaged' ? 'high'
-                 : s.label === 'moderate'       ? 'medium'
-                 : s.label === 'silent' || s.label === 'dropped_off' ? 'low'
-                 : null;
+      const ring =
+        s.label === 'highly_engaged'
+          ? 'high'
+          : s.label === 'moderate'
+            ? 'medium'
+            : s.label === 'silent' || s.label === 'dropped_off'
+              ? 'low'
+              : null;
       if (ring) map[uid] = ring;
     });
     return map;
@@ -1150,30 +1472,34 @@ function LivePanel({ session, onEnd }) {
 
   // Enrich remote-user list with names from /participant-names (preferred)
   // then fall back to /details participant list.
-  const enrichedRemote = useMemo(() => remoteUsers.map(ru => {
-    const uidStr = String(ru.uid);
-    const named = participantNames[uidStr] || participantNames[Number(ru.uid)];
-    const attentionLevel = attentionLevelsByUid[uidStr] || null;
-    if (named) {
-      return {
-        ...ru,
-        name: named.name,
-        role: named.role === 'teacher' ? 'teacher'
-              : named.role === 'guest' ? 'guest' : 'student',
-        aiObservation: null,
-        attentionLevel,
-        isHandRaised: false,
-      };
-    }
-    return {
-      ...ru,
-      name: `User ${uidStr.slice(-4)}`,
-      role: 'student',
-      aiObservation: null,
-      attentionLevel,
-      isHandRaised: false,
-    };
-  }), [remoteUsers, participantNames, attentionLevelsByUid]);
+  const enrichedRemote = useMemo(
+    () =>
+      remoteUsers.map((ru) => {
+        const uidStr = String(ru.uid);
+        const named = participantNames[uidStr] || participantNames[Number(ru.uid)];
+        const attentionLevel = attentionLevelsByUid[uidStr] || null;
+        if (named) {
+          return {
+            ...ru,
+            name: named.name,
+            role:
+              named.role === 'teacher' ? 'teacher' : named.role === 'guest' ? 'guest' : 'student',
+            aiObservation: null,
+            attentionLevel,
+            isHandRaised: false,
+          };
+        }
+        return {
+          ...ru,
+          name: `User ${uidStr.slice(-4)}`,
+          role: 'student',
+          aiObservation: null,
+          attentionLevel,
+          isHandRaised: false,
+        };
+      }),
+    [remoteUsers, participantNames, attentionLevelsByUid]
+  );
 
   // Effective list (dedupe by uid)
   const handleScreenShare = async () => {
@@ -1188,27 +1514,40 @@ function LivePanel({ session, onEnd }) {
 
   const handleEnd = async () => {
     if (!window.confirm('End this session for all participants?')) return;
-    try { await leaveChannel(); } catch (_) {}
+    try {
+      await leaveChannel();
+    } catch (_) {}
     onEnd();
   };
 
-  // Mute-all / mute-one are placeholders until the WS control channel
-  // lands in a future prompt. They flip local UI state immediately so
-  // the teacher gets visual feedback.
+  // Mute-all / mute-one are intentional no-ops on the teacher UI until a
+  // server-side WS control channel exists. They flip local UI state so the
+  // teacher gets immediate visual feedback; no remote mute is sent yet.
   const handleMuteAll = async () => {
     setMuteAllBusy(true);
     setTimeout(() => setMuteAllBusy(false), 800);
   };
-  const handleMuteOne = (_uid) => { /* TODO: WS broadcast in V3 */ };
+  const handleMuteOne = (_uid) => {
+    // Intentional no-op: per-participant remote mute requires the WS control
+    // channel, which is not part of the current attendance/live feature set.
+  };
 
   // ── RENDER ───────────────────────────────────────────────────────
   const totalCount = enrichedRemote.length + 1;
-  const netLabel = !networkQuality ? 'Connecting'
-    : networkQuality.uplink <= 2 ? 'Excellent'
-    : networkQuality.uplink <= 4 ? 'Fair' : 'Poor';
-  const netColor = !networkQuality ? 'text-gray-400'
-    : networkQuality.uplink <= 2 ? 'text-emerald-400'
-    : networkQuality.uplink <= 4 ? 'text-amber-400' : 'text-red-400';
+  const netLabel = !networkQuality
+    ? 'Connecting'
+    : networkQuality.uplink <= 2
+      ? 'Excellent'
+      : networkQuality.uplink <= 4
+        ? 'Fair'
+        : 'Poor';
+  const netColor = !networkQuality
+    ? 'text-gray-400'
+    : networkQuality.uplink <= 2
+      ? 'text-emerald-400'
+      : networkQuality.uplink <= 4
+        ? 'text-amber-400'
+        : 'text-red-400';
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-gray-950 text-white">
@@ -1220,16 +1559,18 @@ function LivePanel({ session, onEnd }) {
             <span className="text-red-400 font-bold text-sm">LIVE</span>
             <span className="text-gray-400 font-mono text-sm">{fmt(secs)}</span>
           </div>
-          <span className="text-white font-medium text-sm truncate max-w-[18rem]">{session.title}</span>
+          <span className="text-white font-medium text-sm truncate max-w-[18rem]">
+            {session.title}
+          </span>
           <span className={`text-xs ${netColor} hidden md:inline`}>📶 {netLabel}</span>
         </div>
 
         <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
           {[
             { mode: 'speaker', icon: '👁️', label: 'Speaker' },
-            { mode: 'grid',    icon: '⊞',  label: 'Grid'    },
-            { mode: 'focus',   icon: '🎯', label: 'Focus'   },
-          ].map(v => (
+            { mode: 'grid', icon: '⊞', label: 'Grid' },
+            { mode: 'focus', icon: '🎯', label: 'Focus' },
+          ].map((v) => (
             <button
               key={v.mode}
               onClick={() => setViewMode(v.mode)}
@@ -1270,7 +1611,9 @@ function LivePanel({ session, onEnd }) {
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
                 <div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className="text-gray-400">{credsFetching ? 'Getting session credentials…' : 'Connecting to video…'}</p>
+                <p className="text-gray-400">
+                  {credsFetching ? 'Getting session credentials…' : 'Connecting to video…'}
+                </p>
               </div>
             </div>
           )}
@@ -1301,7 +1644,7 @@ function LivePanel({ session, onEnd }) {
               speakingUsers={speakingUsers}
               activeSpeakerUid={activeSpeakerUid}
               pinnedUid={pinnedUid}
-              onPin={(uid) => setPinnedUid(prev => prev === uid ? null : uid)}
+              onPin={(uid) => setPinnedUid((prev) => (prev === uid ? null : uid))}
               onMute={handleMuteOne}
               isTeacher
               viewMode={viewMode}
@@ -1327,10 +1670,10 @@ function LivePanel({ session, onEnd }) {
         <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col shrink-0">
           <div className="flex border-b border-gray-800 shrink-0">
             {[
-              { id: 'ai',     label: '🤖 AI' },
+              { id: 'ai', label: '🤖 AI' },
               { id: 'doubts', label: '🔥 Doubts' },
               { id: 'people', label: `👥 ${totalCount}` },
-            ].map(t => (
+            ].map((t) => (
               <button
                 key={t.id}
                 onClick={() => setRightPanel(t.id)}
@@ -1346,14 +1689,14 @@ function LivePanel({ session, onEnd }) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 bg-slate-50 text-slate-800">
-            {rightPanel === 'ai'     && (
+            {rightPanel === 'ai' && (
               <>
                 <AIBrainPanel sessionId={session.id} />
                 <AttentionTimelinePanel timeline={timeline} />
                 <AttentionSignalsPanel students={studentAttention} />
               </>
             )}
-            {rightPanel === 'doubts' && <DoubtWall    sessionId={session.id} />}
+            {rightPanel === 'doubts' && <DoubtWall sessionId={session.id} />}
             {rightPanel === 'people' && (
               <PeoplePanel
                 participants={enrichedRemote}
@@ -1367,26 +1710,32 @@ function LivePanel({ session, onEnd }) {
 
       {/* F03 — AI raises hand toast (just above the bottom control bar) */}
       {activeIntervention && (
-        <div className={`mx-4 mt-2 mb-2 rounded-2xl border p-4 shrink-0 ${
-          activeIntervention.severity === 'high'
-            ? 'bg-red-900/30 border-red-500/40'
-            : activeIntervention.severity === 'medium'
-            ? 'bg-yellow-900/30 border-yellow-500/40'
-            : 'bg-blue-900/30 border-blue-500/40'
-        }`}>
+        <div
+          className={`mx-4 mt-2 mb-2 rounded-2xl border p-4 shrink-0 ${
+            activeIntervention.severity === 'high'
+              ? 'bg-red-900/30 border-red-500/40'
+              : activeIntervention.severity === 'medium'
+                ? 'bg-yellow-900/30 border-yellow-500/40'
+                : 'bg-blue-900/30 border-blue-500/40'
+          }`}
+        >
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="min-w-0">
               <p className="text-white text-sm font-bold">{activeIntervention.title}</p>
               <p className="text-gray-300 text-xs mt-0.5">{activeIntervention.message}</p>
-              <p className="text-gray-400 text-xs mt-1 italic">💡 {activeIntervention.suggestion}</p>
+              <p className="text-gray-400 text-xs mt-1 italic">
+                💡 {activeIntervention.suggestion}
+              </p>
             </div>
             <button
               onClick={() => setActiveIntervention(null)}
               className="text-gray-400 hover:text-gray-200 text-lg leading-none flex-shrink-0"
-            >✕</button>
+            >
+              ✕
+            </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {(activeIntervention.actions || []).map(a => (
+            {(activeIntervention.actions || []).map((a) => (
               <button
                 key={a}
                 onClick={() => handleInterventionAction(a)}
@@ -1395,7 +1744,9 @@ function LivePanel({ session, onEnd }) {
                     ? 'bg-gray-700 text-gray-300'
                     : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
                 }`}
-              >{a}</button>
+              >
+                {a}
+              </button>
             ))}
           </div>
         </div>
@@ -1428,27 +1779,36 @@ function LivePanel({ session, onEnd }) {
         <div className="w-px h-8 bg-gray-700 mx-1" />
 
         <CtrlBtn onClick={() => setShowPulse(true)} icon="⚡" label="Pulse" accent="violet" />
-        <CtrlBtn onClick={() => setShowWB(true)}    icon="🖼️" label="Whiteboard" accent="blue" />
-        <CtrlBtn onClick={() => setShowBreakout(true)} icon="🤝" label={breakoutActive ? 'Breakouts' : 'Breakout'} accent={breakoutActive ? 'success' : 'amber'} />
+        <CtrlBtn onClick={() => setShowWB(true)} icon="🖼️" label="Whiteboard" accent="blue" />
+        <CtrlBtn
+          onClick={() => setShowBreakout(true)}
+          icon="🤝"
+          label={breakoutActive ? 'Breakouts' : 'Breakout'}
+          accent={breakoutActive ? 'success' : 'amber'}
+        />
         <CtrlBtn
           onClick={async () => {
             try {
               const r = await api.post(`/live/sessions/${session.id}/generate-warmups`);
-              alert(`✅ Sent ${r.data?.warmups_created || 0} warmup(s) to ${r.data?.total_students || 0} student(s).`);
+              alert(
+                `✅ Sent ${r.data?.warmups_created || 0} warmup(s) to ${r.data?.total_students || 0} student(s).`
+              );
             } catch (e) {
               alert(e.response?.data?.detail || 'Could not generate warmups.');
             }
           }}
-          icon="📨" label="Warmups" accent="emerald"
+          icon="📨"
+          label="Warmups"
+          accent="emerald"
         />
 
         {/* F09 — Quick AI/teacher bookmarks */}
         <div className="w-px h-8 bg-gray-700 mx-1" />
         {[
           { type: 'topic_start', label: '📍 Topic' },
-          { type: 'live_demo',   label: '💻 Demo' },
-          { type: 'qa_start',    label: '❓ Q&A' },
-        ].map(b => (
+          { type: 'live_demo', label: '💻 Demo' },
+          { type: 'qa_start', label: '❓ Q&A' },
+        ].map((b) => (
           <button
             key={b.type}
             onClick={async () => {
@@ -1457,7 +1817,9 @@ function LivePanel({ session, onEnd }) {
                   bookmark_type: b.type,
                   title: b.label.replace(/^[^\s]+\s/, ''),
                 });
-              } catch (_) { /* silent */ }
+              } catch (_) {
+                /* silent */
+              }
             }}
             className="px-2 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-lg"
             title="Add session bookmark"
@@ -1476,15 +1838,18 @@ function LivePanel({ session, onEnd }) {
         />
       </div>
 
-      <WhiteboardModal open={showWB}    sessionId={session.id} onClose={() => setShowWB(false)} />
-      <PulseModal      open={showPulse} sessionId={session.id} onClose={() => setShowPulse(false)} />
+      <WhiteboardModal open={showWB} sessionId={session.id} onClose={() => setShowWB(false)} />
+      <PulseModal open={showPulse} sessionId={session.id} onClose={() => setShowPulse(false)} />
       <BreakoutModal
         open={showBreakout}
         sessionId={session.id}
         details={details}
         breakoutActive={breakoutActive}
         onActivated={() => setBreakoutActive(true)}
-        onEnded={() => { setBreakoutActive(false); setBreakoutRooms([]); }}
+        onEnded={() => {
+          setBreakoutActive(false);
+          setBreakoutRooms([]);
+        }}
         onClose={() => setShowBreakout(false)}
       />
       {breakoutActive && (
@@ -1492,7 +1857,10 @@ function LivePanel({ session, onEnd }) {
           sessionId={session.id}
           rooms={breakoutRooms}
           setRooms={setBreakoutRooms}
-          onEnded={() => { setBreakoutActive(false); setBreakoutRooms([]); }}
+          onEnded={() => {
+            setBreakoutActive(false);
+            setBreakoutRooms([]);
+          }}
         />
       )}
     </div>
@@ -1504,10 +1872,10 @@ function CtrlBtn({ on, onClick, icon, label, danger, accent }) {
   let cls = 'bg-gray-800 hover:bg-gray-700 text-white';
   if (danger) cls = 'bg-red-600 hover:bg-red-700 text-white';
   else if (accent === 'success') cls = 'bg-emerald-600 hover:bg-emerald-700 text-white';
-  else if (accent === 'violet')  cls = 'bg-gray-800 hover:bg-violet-700 text-white';
-  else if (accent === 'blue')    cls = 'bg-gray-800 hover:bg-blue-700 text-white';
-  else if (accent === 'amber')   cls = 'bg-gray-800 hover:bg-amber-600 text-white';
-  else if (accent === 'rose')    cls = 'bg-gray-800 hover:bg-rose-700 text-white';
+  else if (accent === 'violet') cls = 'bg-gray-800 hover:bg-violet-700 text-white';
+  else if (accent === 'blue') cls = 'bg-gray-800 hover:bg-blue-700 text-white';
+  else if (accent === 'amber') cls = 'bg-gray-800 hover:bg-amber-600 text-white';
+  else if (accent === 'rose') cls = 'bg-gray-800 hover:bg-rose-700 text-white';
   return (
     <button
       onClick={onClick}
@@ -1530,10 +1898,15 @@ function PeoplePanel({ participants, localName, speakingUsers }) {
       {participants.length === 0 && (
         <p className="text-xs text-slate-400 text-center py-4">No remote participants yet.</p>
       )}
-      {participants.map(p => (
-        <div key={p.uid} className="bg-white border border-slate-200 rounded-lg p-2 flex items-center justify-between">
+      {participants.map((p) => (
+        <div
+          key={p.uid}
+          className="bg-white border border-slate-200 rounded-lg p-2 flex items-center justify-between"
+        >
           <span className="text-sm text-slate-700 flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${speakingUsers.has(p.uid) ? 'bg-violet-500 animate-pulse' : 'bg-emerald-400'}`} />
+            <span
+              className={`w-2 h-2 rounded-full ${speakingUsers.has(p.uid) ? 'bg-violet-500 animate-pulse' : 'bg-emerald-400'}`}
+            />
             {p.name}
           </span>
           <span className="text-[10px] text-slate-400 uppercase tracking-wide">{p.role}</span>
@@ -1551,10 +1924,13 @@ function PostSessionView({ session, onClose }) {
   const [report, setReport] = useState(null);
   // F05 — auto-capsule status: 'generating' | 'ready' | 'failed'
   const [capsuleStatus, setCapsuleStatus] = useState('generating');
-  const [capsuleId,     setCapsuleId]     = useState(null);
+  const [capsuleId, setCapsuleId] = useState(null);
 
   useEffect(() => {
-    api.get(`/live/sessions/${session.id}/health-report`).then(r=>setReport(r.data)).catch(()=>{});
+    api
+      .get(`/live/sessions/${session.id}/health-report`)
+      .then((r) => setReport(r.data))
+      .catch(() => {});
   }, [session.id]);
 
   // Poll for auto-capsule readiness (every 3s, 2-min cap)
@@ -1570,14 +1946,20 @@ function PostSessionView({ session, onClose }) {
           setCapsuleStatus('ready');
           clearInterval(poll);
         }
-      } catch (_) { /* silent */ }
+      } catch (_) {
+        /* silent */
+      }
     }, 3000);
     const timeout = setTimeout(() => {
       stopped = true;
       clearInterval(poll);
-      setCapsuleStatus(prev => prev === 'ready' ? prev : 'failed');
+      setCapsuleStatus((prev) => (prev === 'ready' ? prev : 'failed'));
     }, 120000);
-    return () => { stopped = true; clearInterval(poll); clearTimeout(timeout); };
+    return () => {
+      stopped = true;
+      clearInterval(poll);
+      clearTimeout(timeout);
+    };
   }, [session?.id]);
 
   const score = report?.health_score || 0;
@@ -1586,16 +1968,25 @@ function PostSessionView({ session, onClose }) {
     <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-bold text-slate-800">📋 Session ended: {session.title}</h3>
-        <button onClick={onClose} className="text-slate-400 text-xl">×</button>
+        <button onClick={onClose} className="text-slate-400 text-xl">
+          ×
+        </button>
       </div>
       <div className="flex items-center gap-6">
         <div className="relative w-32 h-32">
           <svg viewBox="0 0 100 100" className="-rotate-90">
             <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" strokeWidth="8" />
-            <circle cx="50" cy="50" r="42" fill="none" stroke="#7c3aed" strokeWidth="8"
-              strokeDasharray={2*Math.PI*42}
-              strokeDashoffset={2*Math.PI*42 - (score/100)*2*Math.PI*42}
-              className="transition-all duration-1000" />
+            <circle
+              cx="50"
+              cy="50"
+              r="42"
+              fill="none"
+              stroke="#7c3aed"
+              strokeWidth="8"
+              strokeDasharray={2 * Math.PI * 42}
+              strokeDashoffset={2 * Math.PI * 42 - (score / 100) * 2 * Math.PI * 42}
+              className="transition-all duration-1000"
+            />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-3xl font-black text-violet-700">{score}</span>
@@ -1603,10 +1994,21 @@ function PostSessionView({ session, onClose }) {
           </div>
         </div>
         <div className="flex-1 grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-slate-500">Attendance:</span> <b>{report?.attendance_percentage||0}%</b></div>
-          <div><span className="text-slate-500">Engagement:</span> <b>{report?.engagement_score||0}%</b></div>
-          <div><span className="text-slate-500">Comprehension:</span> <b>{report?.comprehension_score||0}%</b></div>
-          <div><span className="text-slate-500">Pace:</span> <b>{report?.pace_score||0}%</b></div>
+          <div>
+            <span className="text-slate-500">Attendance:</span>{' '}
+            <b>{report?.attendance_percentage || 0}%</b>
+          </div>
+          <div>
+            <span className="text-slate-500">Engagement:</span>{' '}
+            <b>{report?.engagement_score || 0}%</b>
+          </div>
+          <div>
+            <span className="text-slate-500">Comprehension:</span>{' '}
+            <b>{report?.comprehension_score || 0}%</b>
+          </div>
+          <div>
+            <span className="text-slate-500">Pace:</span> <b>{report?.pace_score || 0}%</b>
+          </div>
         </div>
       </div>
 
@@ -1630,19 +2032,29 @@ function PostSessionView({ session, onClose }) {
                 <p className="text-slate-500 text-xs">Students can access it in ClassPulse</p>
               </div>
             </div>
-            <button onClick={() => navigate(capsuleId ? `/teacher/classpulse?capsule=${capsuleId}` : '/teacher/classpulse')}
-              className="bg-violet-600 hover:bg-violet-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">
+            <button
+              onClick={() =>
+                navigate(
+                  capsuleId ? `/teacher/classpulse?capsule=${capsuleId}` : '/teacher/classpulse'
+                )
+              }
+              className="bg-violet-600 hover:bg-violet-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium"
+            >
               View →
             </button>
           </div>
         )}
         {capsuleStatus === 'failed' && (
-          <p className="text-amber-700 text-sm">⚠️ Capsule generation timed out. You can create one manually in ClassPulse.</p>
+          <p className="text-amber-700 text-sm">
+            ⚠️ Capsule generation timed out. You can create one manually in ClassPulse.
+          </p>
         )}
       </div>
 
-      <button onClick={()=>navigate(`/teacher/live/${session.id}/report`)}
-        className={`w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET}`}>
+      <button
+        onClick={() => navigate(`/teacher/live/${session.id}/report`)}
+        className={`w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET}`}
+      >
         📊 View Full Health Report
       </button>
     </div>
@@ -1652,21 +2064,29 @@ function PostSessionView({ session, onClose }) {
 // ════════════════════════════════════════════════════════════════════════
 // F10 — BREAKOUT MODAL + STATUS PANEL
 // ════════════════════════════════════════════════════════════════════════
-function BreakoutModal({ open, sessionId, details, breakoutActive, onActivated, onEnded, onClose }) {
+function BreakoutModal({
+  open,
+  sessionId,
+  details,
+  breakoutActive,
+  onActivated,
+  onEnded,
+  onClose,
+}) {
   const [roomCount, setRoomCount] = useState(3);
-  const [topic,     setTopic]     = useState("Discuss today's concept");
-  const [busy,      setBusy]      = useState(false);
-  const [err,       setErr]       = useState('');
+  const [topic, setTopic] = useState("Discuss today's concept");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   // Build student participant list from the session details payload
   const students = useMemo(() => {
     const list = details?.participants || details?.session?.participants || [];
     return list
-      .filter(p => (p.participant_type || p.type || 'student') === 'student')
-      .map(p => ({
-        id:       p.id,
-        name:     p.name || p.guest_name || `Student ${p.id}`,
-        user_id:  p.user_id || null,
+      .filter((p) => (p.participant_type || p.type || 'student') === 'student')
+      .map((p) => ({
+        id: p.id,
+        name: p.name || p.guest_name || `Student ${p.id}`,
+        user_id: p.user_id || null,
       }));
   }, [details]);
 
@@ -1674,18 +2094,19 @@ function BreakoutModal({ open, sessionId, details, breakoutActive, onActivated, 
   const buildRooms = () => {
     const cnt = Math.max(1, Math.min(10, Number(roomCount) || 3));
     const buckets = Array.from({ length: cnt }, (_, i) => ({
-      name:  `Group ${String.fromCharCode(65 + i)}`,
+      name: `Group ${String.fromCharCode(65 + i)}`,
       topic: topic.trim() || null,
       participant_ids: [],
     }));
     students.forEach((s, idx) => {
       buckets[idx % cnt].participant_ids.push(s.id);
     });
-    return buckets.filter(b => b.participant_ids.length > 0);
+    return buckets.filter((b) => b.participant_ids.length > 0);
   };
 
   const start = async () => {
-    setBusy(true); setErr('');
+    setBusy(true);
+    setErr('');
     try {
       const rooms = buildRooms();
       if (rooms.length === 0) throw new Error('No students to place in rooms.');
@@ -1694,18 +2115,23 @@ function BreakoutModal({ open, sessionId, details, breakoutActive, onActivated, 
       onClose?.();
     } catch (e) {
       setErr(e.response?.data?.detail || e.message || 'Could not start breakouts.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const endNow = async () => {
-    setBusy(true); setErr('');
+    setBusy(true);
+    setErr('');
     try {
       await api.post(`/live/sessions/${sessionId}/breakout/end`);
       onEnded?.();
       onClose?.();
     } catch (e) {
       setErr(e.response?.data?.detail || 'Could not end breakouts.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!open) return null;
@@ -1714,35 +2140,55 @@ function BreakoutModal({ open, sessionId, details, breakoutActive, onActivated, 
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg p-6 text-white">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold">🤝 Breakout Rooms</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-200">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
+            ✕
+          </button>
         </div>
 
         {breakoutActive ? (
           <div className="space-y-3">
-            <p className="text-sm text-gray-300">Breakouts are currently active. End them to bring everyone back.</p>
-            <button onClick={endNow} disabled={busy}
-              className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-bold disabled:opacity-50">
+            <p className="text-sm text-gray-300">
+              Breakouts are currently active. End them to bring everyone back.
+            </p>
+            <button
+              onClick={endNow}
+              disabled={busy}
+              className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-bold disabled:opacity-50"
+            >
               {busy ? 'Ending…' : 'End all breakouts'}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-gray-400">{students.length} student(s) will be split round-robin.</p>
+            <p className="text-xs text-gray-400">
+              {students.length} student(s) will be split round-robin.
+            </p>
             <div>
               <label className="text-xs text-gray-400 block mb-1">Number of rooms</label>
-              <input type="number" min={1} max={10} value={roomCount}
-                onChange={e => setRoomCount(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm" />
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={roomCount}
+                onChange={(e) => setRoomCount(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+              />
             </div>
             <div>
               <label className="text-xs text-gray-400 block mb-1">Discussion topic</label>
-              <input type="text" value={topic}
-                onChange={e => setTopic(e.target.value)}
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
                 placeholder="e.g. Trees vs. Graphs"
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm" />
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm"
+              />
             </div>
-            <button onClick={start} disabled={busy || students.length === 0}
-              className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-gray-900 rounded-lg text-sm font-bold disabled:opacity-50">
+            <button
+              onClick={start}
+              disabled={busy || students.length === 0}
+              className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-gray-900 rounded-lg text-sm font-bold disabled:opacity-50"
+            >
               {busy ? 'Creating…' : `Start ${roomCount} breakout room${roomCount > 1 ? 's' : ''}`}
             </button>
           </div>
@@ -1760,18 +2206,25 @@ function BreakoutStatusPanel({ sessionId, rooms, setRooms, onEnded }) {
       try {
         const r = await api.get(`/live/sessions/${sessionId}/breakout/status`);
         if (!cancelled) setRooms(r.data?.rooms || []);
-      } catch (_) { /* silent */ }
+      } catch (_) {
+        /* silent */
+      }
     };
     tick();
     const t = setInterval(tick, 15000);
-    return () => { cancelled = true; clearInterval(t); };
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [sessionId, setRooms]);
 
   const endAll = async () => {
     try {
       await api.post(`/live/sessions/${sessionId}/breakout/end`);
       onEnded?.();
-    } catch (_) { /* silent */ }
+    } catch (_) {
+      /* silent */
+    }
   };
 
   if (!rooms || rooms.length === 0) return null;
@@ -1780,26 +2233,35 @@ function BreakoutStatusPanel({ sessionId, rooms, setRooms, onEnded }) {
     <div className="fixed bottom-24 right-4 z-30 w-80 bg-gray-900 border border-gray-700 rounded-2xl p-4 shadow-2xl">
       <div className="flex items-center justify-between mb-3">
         <p className="text-white font-bold text-sm">🤝 Breakout Rooms</p>
-        <button onClick={endAll}
-          className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg">
+        <button
+          onClick={endAll}
+          className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg"
+        >
           End
         </button>
       </div>
       <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto">
-        {rooms.map(room => {
-          const labelColor = room.ai_label === 'productive' ? 'text-green-400'
-                           : room.ai_label === 'stuck'      ? 'text-red-400'
-                           : 'text-yellow-400';
+        {rooms.map((room) => {
+          const labelColor =
+            room.ai_label === 'productive'
+              ? 'text-green-400'
+              : room.ai_label === 'stuck'
+                ? 'text-red-400'
+                : 'text-yellow-400';
           return (
-            <div key={room.room_id}
+            <div
+              key={room.room_id}
               className={`bg-gray-800 rounded-xl p-3 border ${
                 room.ai_label === 'stuck' ? 'border-red-500/40' : 'border-gray-700'
-              }`}>
+              }`}
+            >
               <div className="flex items-center justify-between mb-1">
                 <p className="text-white text-xs font-bold truncate">{room.room_name}</p>
                 <span className={`text-[10px] font-bold ${labelColor}`}>{room.ai_label}</span>
               </div>
-              <p className="text-gray-400 text-[11px]">{room.active}/{room.total} active · {room.engagement_pct}%</p>
+              <p className="text-gray-400 text-[11px]">
+                {room.active}/{room.total} active · {room.engagement_pct}%
+              </p>
               {room.ai_label === 'stuck' && (
                 <p className="text-red-400 text-[11px] mt-1">⚠️ May need help</p>
               )}
@@ -1826,8 +2288,9 @@ export default function TeacherLiveDashboard() {
   const [endedSession, setEndedSession] = useState(null);
 
   const refresh = useCallback(() => {
-    api.get('/live/sessions/my-sessions')
-      .then(r => setSessions(r.data || { live: [], upcoming: [], past: [] }))
+    api
+      .get('/live/sessions/my-sessions')
+      .then((r) => setSessions(r.data || { live: [], upcoming: [], past: [] }))
       .catch(() => {});
   }, []);
 
@@ -1849,7 +2312,9 @@ export default function TeacherLiveDashboard() {
       await api.post(`/live/sessions/${id}/start`);
       setCreatedCard(null);
       refresh();
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   };
   const endSession = async () => {
     if (!activeLive) return;
@@ -1862,39 +2327,43 @@ export default function TeacherLiveDashboard() {
       refresh();
       // PS7-A — navigate teacher to the rich health-report page
       navigate(`/teacher/live/${sess.id}/report`);
-    } catch (e) { /* ignore — UI already updated */ }
+    } catch (e) {
+      /* ignore — UI already updated */
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className={`bg-gradient-to-r ${VIOLET} rounded-2xl p-6 md:p-8 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3`}>
+      <div
+        className={`bg-gradient-to-r ${VIOLET} rounded-2xl p-6 md:p-8 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3`}
+      >
         <div>
           <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3">
             <span className="text-3xl">🔴</span> Live Classes
           </h1>
-          <p className="text-white/80 mt-1 text-sm">Run AI-powered live sessions with attendance, pulse checks & doubt wall.</p>
+          <p className="text-white/80 mt-1 text-sm">
+            Run AI-powered live sessions with attendance, pulse checks & doubt wall.
+          </p>
         </div>
         {!activeLive && !createdCard && (
-          <button onClick={()=>setShowCreate(true)}
-            className="px-5 py-2.5 bg-white text-violet-700 font-bold rounded-xl shadow hover:scale-105 transition">
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-5 py-2.5 bg-white text-violet-700 font-bold rounded-xl shadow hover:scale-105 transition"
+          >
             + Create Session
           </button>
         )}
       </div>
 
       {/* Just-created card */}
-      {createdCard && !activeLive && (
-        <JoinLinkCard session={createdCard} onStart={startSession} />
-      )}
+      {createdCard && !activeLive && <JoinLinkCard session={createdCard} onStart={startSession} />}
 
       {/* Live panel */}
-      {activeLive && (
-        <LivePanel session={activeLive} onEnd={endSession} />
-      )}
+      {activeLive && <LivePanel session={activeLive} onEnd={endSession} />}
 
       {/* Just-ended summary */}
       {endedSession && !activeLive && (
-        <PostSessionView session={endedSession} onClose={()=>setEndedSession(null)} />
+        <PostSessionView session={endedSession} onClose={() => setEndedSession(null)} />
       )}
 
       {/* Past sessions */}
@@ -1902,16 +2371,22 @@ export default function TeacherLiveDashboard() {
         <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-5">
           <h3 className="font-bold text-slate-800 mb-3">📅 Recent Sessions</h3>
           <div className="space-y-2">
-            {(sessions.past || []).slice(0, 10).map(s => (
-              <div key={s.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+            {(sessions.past || []).slice(0, 10).map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between p-3 border border-slate-200 rounded-lg"
+              >
                 <div>
                   <p className="font-semibold text-slate-800">{s.title}</p>
                   <p className="text-xs text-slate-500">
-                    Ended {(s.ended_at||'').slice(0,16).replace('T',' ')} · {s.participant_count||0} participants
+                    Ended {(s.ended_at || '').slice(0, 16).replace('T', ' ')} ·{' '}
+                    {s.participant_count || 0} participants
                   </p>
                 </div>
-                <button onClick={()=>navigate(`/teacher/live/${s.id}/report`)}
-                  className="text-xs px-3 py-1.5 bg-violet-100 text-violet-700 rounded font-semibold">
+                <button
+                  onClick={() => navigate(`/teacher/live/${s.id}/report`)}
+                  className="text-xs px-3 py-1.5 bg-violet-100 text-violet-700 rounded font-semibold"
+                >
                   View Report
                 </button>
               </div>
@@ -1923,8 +2398,14 @@ export default function TeacherLiveDashboard() {
         </div>
       )}
 
-      <CreateSessionModal open={showCreate} onClose={()=>setShowCreate(false)}
-        onCreated={(s)=>{ setShowCreate(false); setCreatedCard(s); }} />
+      <CreateSessionModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={(s) => {
+          setShowCreate(false);
+          setCreatedCard(s);
+        }}
+      />
     </div>
   );
 }

@@ -20,12 +20,12 @@ import * as SplashScreen from 'expo-splash-screen';
 
 import './src/i18n/index.js'; // initialise i18next (English-only infrastructure)
 
-import ErrorBoundary  from './src/components/ErrorBoundary';
-import OfflineBanner  from './src/components/OfflineBanner';
-import BlockedScreen  from './src/screens/shared/BlockedScreen';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import OfflineBanner from './src/components/OfflineBanner';
+import BlockedScreen from './src/screens/shared/BlockedScreen';
 import { AuthProvider } from './src/context/AuthContext';
 import { OfflineQueueProvider } from './src/context/OfflineQueueContext';
-import AppNavigator    from './src/navigation/AppNavigator';
+import AppNavigator from './src/navigation/AppNavigator';
 import { API_BASE_URL, STARTUP_PING_TIMEOUT } from './src/config';
 import { isDeviceCompromised } from './src/utils/securityUtils';
 import {
@@ -41,12 +41,12 @@ const theme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    primary:            '#1a237e',
-    secondary:          '#3b82f6',
-    primaryContainer:   '#e8eaf6',
+    primary: '#1a237e',
+    secondary: '#3b82f6',
+    primaryContainer: '#e8eaf6',
     secondaryContainer: '#dbeafe',
-    surface:            '#ffffff',
-    background:         '#f8fafc',
+    surface: '#ffffff',
+    background: '#f8fafc',
   },
 };
 
@@ -66,7 +66,7 @@ async function pingBackend() {
       isTimeout
         ? 'Could not reach the AutoAttend server within 10 seconds. Check your network.'
         : 'Could not connect to the AutoAttend server. Some features may be unavailable.',
-      [{ text: 'OK' }],
+      [{ text: 'OK' }]
     );
   } finally {
     clearTimeout(tid);

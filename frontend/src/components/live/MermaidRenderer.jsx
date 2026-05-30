@@ -20,7 +20,8 @@ function safeForHtml(code) {
 }
 
 export function MermaidRenderer({ code, minHeight = 200 }) {
-  const srcDoc = useMemo(() => `<!DOCTYPE html>
+  const srcDoc = useMemo(
+    () => `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
@@ -42,7 +43,9 @@ export function MermaidRenderer({ code, minHeight = 200 }) {
   }
 </script>
 </body>
-</html>`, [code]);
+</html>`,
+    [code]
+  );
 
   return (
     <iframe

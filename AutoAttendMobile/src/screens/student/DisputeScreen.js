@@ -15,19 +15,27 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, RefreshControl,
-  SafeAreaView, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import client       from '../../api/client';
+import client from '../../api/client';
 import { addToQueue } from '../../utils/offlineQueue';
-import ErrorState   from '../../components/ErrorState';
+import ErrorState from '../../components/ErrorState';
 
 const PRIMARY = '#1a237e';
 
 const STATUS_COLOR = {
-  pending:  '#f97316',
+  pending: '#f97316',
   approved: '#22c55e',
   rejected: '#ef4444',
 };
@@ -35,16 +43,16 @@ const STATUS_COLOR = {
 export default function DisputeScreen({ route, navigation }) {
   const prefill = route?.params || {};
 
-  const [disputes, setDisputes]     = useState([]);
-  const [loading, setLoading]       = useState(true);
+  const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError]           = useState(false);
+  const [error, setError] = useState(false);
 
-  const [sessionId, setSessionId]   = useState(prefill.session_id ? String(prefill.session_id) : '');
-  const [reason, setReason]         = useState('');
-  const [proofNote, setProofNote]   = useState('');
+  const [sessionId, setSessionId] = useState(prefill.session_id ? String(prefill.session_id) : '');
+  const [reason, setReason] = useState('');
+  const [proofNote, setProofNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [formErr, setFormErr]       = useState('');
+  const [formErr, setFormErr] = useState('');
 
   const fetchDisputes = useCallback(async () => {
     setError(false);
@@ -57,7 +65,9 @@ export default function DisputeScreen({ route, navigation }) {
     }
   }, []);
 
-  useEffect(() => { fetchDisputes().finally(() => setLoading(false)); }, [fetchDisputes]);
+  useEffect(() => {
+    fetchDisputes().finally(() => setLoading(false));
+  }, [fetchDisputes]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -79,7 +89,7 @@ export default function DisputeScreen({ route, navigation }) {
     setSubmitting(true);
     const disputePayload = {
       session_id: sidNum,
-      reason:     reason.trim(),
+      reason: reason.trim(),
       proof_note: proofNote.trim() || undefined,
     };
     try {
@@ -96,7 +106,7 @@ export default function DisputeScreen({ route, navigation }) {
           await addToQueue('dispute', '/student/portal/dispute-attendance', 'post', disputePayload);
           Alert.alert(
             'Saved Offline',
-            'You are offline. Your dispute will be submitted automatically when you reconnect.',
+            'You are offline. Your dispute will be submitted automatically when you reconnect.'
           );
           setReason('');
           setProofNote('');
@@ -118,7 +128,11 @@ export default function DisputeScreen({ route, navigation }) {
   };
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={PRIMARY} /></View>;
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+      </View>
+    );
   }
 
   return (
@@ -127,7 +141,9 @@ export default function DisputeScreen({ route, navigation }) {
         data={disputes}
         keyExtractor={(d) => String(d.dispute_id)}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />
+        }
         ListHeaderComponent={
           <ScrollView keyboardShouldPersistTaps="handled" scrollEnabled={false}>
             <Text style={styles.heading}>⚖️ Raise an Attendance Dispute</Text>
@@ -140,7 +156,8 @@ export default function DisputeScreen({ route, navigation }) {
                 <View style={styles.prefillBanner}>
                   <Ionicons name="information-circle-outline" size={16} color="#3b82f6" />
                   <Text style={styles.prefillText}>
-                    {prefill.subject_name}{prefill.date ? ` · ${prefill.date}` : ''}
+                    {prefill.subject_name}
+                    {prefill.date ? ` · ${prefill.date}` : ''}
                   </Text>
                 </View>
               ) : null}
@@ -185,9 +202,11 @@ export default function DisputeScreen({ route, navigation }) {
                 onPress={submitDispute}
                 disabled={submitting}
               >
-                {submitting
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.submitBtnText}>File Dispute</Text>}
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.submitBtnText}>File Dispute</Text>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -195,14 +214,14 @@ export default function DisputeScreen({ route, navigation }) {
           </ScrollView>
         }
         ListEmptyComponent={
-          error
-            ? <ErrorState message="Unable to load your disputes." onRetry={fetchDisputes} />
-            : (
-              <View style={styles.empty}>
-                <Ionicons name="folder-open-outline" size={48} color="#cbd5e1" />
-                <Text style={styles.emptyTxt}>You haven&apos;t filed any disputes yet.</Text>
-              </View>
-            )
+          error ? (
+            <ErrorState message="Unable to load your disputes." onRetry={fetchDisputes} />
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons name="folder-open-outline" size={48} color="#cbd5e1" />
+              <Text style={styles.emptyTxt}>You haven&apos;t filed any disputes yet.</Text>
+            </View>
+          )
         }
         renderItem={({ item: d }) => {
           const color = STATUS_COLOR[d.status] || '#94a3b8';
@@ -211,16 +230,28 @@ export default function DisputeScreen({ route, navigation }) {
               <View style={styles.cardHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.subject}>{d.subject_name}</Text>
-                  <Text style={styles.metaText}>{d.subject_code} · {d.date}</Text>
+                  <Text style={styles.metaText}>
+                    {d.subject_code} · {d.date}
+                  </Text>
                 </View>
-                <View style={[styles.statusBadge, { backgroundColor: `${color}22`, borderColor: color }]}>
-                  <Text style={[styles.statusBadgeText, { color }]}>{(d.status || '').toUpperCase()}</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    { backgroundColor: `${color}22`, borderColor: color },
+                  ]}
+                >
+                  <Text style={[styles.statusBadgeText, { color }]}>
+                    {(d.status || '').toUpperCase()}
+                  </Text>
                 </View>
               </View>
-              <Text style={styles.reasonText} numberOfLines={4}>{d.reason}</Text>
+              <Text style={styles.reasonText} numberOfLines={4}>
+                {d.reason}
+              </Text>
               {d.resolution_note ? (
                 <Text style={styles.resolutionNote}>
-                  <Text style={{ fontWeight: '700' }}>Teacher: </Text>{d.resolution_note}
+                  <Text style={{ fontWeight: '700' }}>Teacher: </Text>
+                  {d.resolution_note}
                 </Text>
               ) : null}
             </View>
@@ -232,51 +263,87 @@ export default function DisputeScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: '#f8fafc' },
-  list:   { padding: 16 },
+  safe: { flex: 1, backgroundColor: '#f8fafc' },
+  list: { padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   heading: { fontSize: 22, fontWeight: '700', color: PRIMARY, marginBottom: 4 },
-  sub:     { fontSize: 13, color: '#94a3b8', marginBottom: 16 },
+  sub: { fontSize: 13, color: '#94a3b8', marginBottom: 16 },
 
   formCard: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 18,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 18,
   },
   prefillBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#eff6ff', borderRadius: 8, padding: 8, marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 10,
   },
   prefillText: { fontSize: 12, color: '#3b82f6', flex: 1 },
 
-  label: { fontSize: 12, fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginTop: 12, marginBottom: 6, letterSpacing: 0.4 },
+  label: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    marginTop: 12,
+    marginBottom: 6,
+    letterSpacing: 0.4,
+  },
   input: {
-    backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0',
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
-    fontSize: 14, color: '#1e293b',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1e293b',
   },
   textarea: { minHeight: 80, textAlignVertical: 'top' },
   formErr: { color: '#ef4444', fontSize: 13, marginTop: 12 },
   submitBtn: {
-    backgroundColor: PRIMARY, borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center', marginTop: 16,
+    backgroundColor: PRIMARY,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
   },
   submitBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
-  section: { fontSize: 13, fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: 8, marginLeft: 4 },
+  section: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
 
   card: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 10,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 10,
   },
-  cardHeader:  { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  subject:     { fontSize: 14, fontWeight: '700', color: '#1e293b' },
-  metaText:    { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  subject: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  metaText: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
   statusBadge: { borderWidth: 1, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 6 },
   statusBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
   reasonText: { fontSize: 13, color: '#475569', lineHeight: 19 },
   resolutionNote: { fontSize: 12, color: '#64748b', marginTop: 8, fontStyle: 'italic' },
 
-  empty:    { alignItems: 'center', paddingVertical: 40 },
+  empty: { alignItems: 'center', paddingVertical: 40 },
   emptyTxt: { fontSize: 14, color: '#94a3b8', marginTop: 12 },
 });

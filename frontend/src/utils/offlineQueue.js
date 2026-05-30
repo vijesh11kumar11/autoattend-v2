@@ -24,11 +24,11 @@
 
 import api from '../api/axios';
 
-const QUEUE_KEY   = 'offline_queue';
+const QUEUE_KEY = 'offline_queue';
 const MAX_RETRIES = 5;
 
 const PRIORITY = { attendance: 0, leave: 1, dispute: 2 };
-const LABEL    = { attendance: 'attendance', leave: 'leave', dispute: 'dispute' };
+const LABEL = { attendance: 'attendance', leave: 'leave', dispute: 'dispute' };
 
 // ── Subscribers (for badge / indicator counts) ───────────────────────────────
 const listeners = new Set();
@@ -42,7 +42,11 @@ export function subscribe(listener) {
 function emitChange() {
   const len = getQueueLength();
   listeners.forEach((l) => {
-    try { l(len); } catch { /* ignore listener errors */ }
+    try {
+      l(len);
+    } catch {
+      /* ignore listener errors */
+    }
   });
 }
 
@@ -56,7 +60,11 @@ export function setQueueNotifier(fn) {
 
 function notify(message, kind) {
   if (notifier) {
-    try { notifier(message, kind); } catch { /* ignore */ }
+    try {
+      notifier(message, kind);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -90,13 +98,13 @@ export function getQueueLength() {
 export function addToQueue(operation, endpoint, method, body) {
   const items = readQueue();
   items.push({
-    id:        `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     operation,
     endpoint,
-    method:    String(method || 'post').toLowerCase(),
+    method: String(method || 'post').toLowerCase(),
     body,
     timestamp: Date.now(),
-    retries:   0,
+    retries: 0,
   });
   writeQueue(items);
   emitChange();
@@ -117,7 +125,7 @@ export function clearQueue() {
 
 function isRejection(status, payload) {
   if (![400, 409, 410].includes(status)) return false;
-  const detail  = String(payload?.detail  ?? '').toLowerCase();
+  const detail = String(payload?.detail ?? '').toLowerCase();
   const message = String(payload?.message ?? '').toLowerCase();
   const blob = `${detail} ${message}`;
   return blob.includes('session_closed') || blob.includes('window_expired');
@@ -129,9 +137,11 @@ function isPermanentError(status) {
 
 function rejectionMessage(operation, timestamp) {
   const label = LABEL[operation] || 'submission';
-  const when  = new Date(timestamp).toLocaleString();
-  return `Your offline ${label} submission from ${when} was rejected because the ` +
-         `session/window was already closed. Please resubmit.`;
+  const when = new Date(timestamp).toLocaleString();
+  return (
+    `Your offline ${label} submission from ${when} was rejected because the ` +
+    `session/window was already closed. Please resubmit.`
+  );
 }
 
 let processing = false;
@@ -165,7 +175,7 @@ export async function processQueue() {
         clearItem(item.id);
         synced += 1;
       } catch (err) {
-        const status  = err?.response?.status;
+        const status = err?.response?.status;
         const payload = err?.response?.data;
 
         if (!err?.response) {
@@ -175,8 +185,8 @@ export async function processQueue() {
             clearItem(item.id);
             notify(
               `An offline ${LABEL[item.operation] || 'submission'} could not be ` +
-              `delivered after several attempts and was discarded.`,
-              'failed',
+                `delivered after several attempts and was discarded.`,
+              'failed'
             );
           } else {
             persistRetry(item.id, retries);
@@ -191,8 +201,8 @@ export async function processQueue() {
           clearItem(item.id);
           notify(
             `An offline ${LABEL[item.operation] || 'submission'} was rejected by ` +
-            `the server and has been discarded.`,
-            'failed',
+              `the server and has been discarded.`,
+            'failed'
           );
         } else {
           // Transient server error (5xx/429) → bump retry, keep.
@@ -201,8 +211,8 @@ export async function processQueue() {
             clearItem(item.id);
             notify(
               `An offline ${LABEL[item.operation] || 'submission'} could not be ` +
-              `delivered after several attempts and was discarded.`,
-              'failed',
+                `delivered after several attempts and was discarded.`,
+              'failed'
             );
           } else {
             persistRetry(item.id, retries);

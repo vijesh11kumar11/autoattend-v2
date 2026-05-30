@@ -13,31 +13,34 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons }     from '@expo/vector-icons';
-import client           from '../../api/client';
+import { Ionicons } from '@expo/vector-icons';
+import client from '../../api/client';
 
 const PRIMARY = '#1a237e';
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const STATUS_MAP = {
   present: { short: 'P', color: '#22c55e', bg: '#f0fdf4' },
-  late:    { short: 'L', color: '#f59e0b', bg: '#fffbeb' },
+  late: { short: 'L', color: '#f59e0b', bg: '#fffbeb' },
   medical: { short: 'M', color: '#3b82f6', bg: '#eff6ff' },
-  absent:  { short: 'A', color: '#ef4444', bg: '#fef2f2' },
+  absent: { short: 'A', color: '#ef4444', bg: '#fef2f2' },
 };
 
 export default function AttendanceHistoryScreen({ navigation }) {
-  const [subjects,        setSubjects]        = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null); // null = All
-  const [selectedMonth,   setSelectedMonth]   = useState(new Date().getMonth());
-  const [records,         setRecords]         = useState([]);
-  const [loading,         setLoading]         = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Load subjects
   useEffect(() => {
-    client.get('/students/subjects').then(({ data }) => {
-      setSubjects(Array.isArray(data) ? data : (data.subjects ?? []));
-    }).catch(() => {});
+    client
+      .get('/students/subjects')
+      .then(({ data }) => {
+        setSubjects(Array.isArray(data) ? data : (data.subjects ?? []));
+      })
+      .catch(() => {});
   }, []);
 
   // Load attendance records
@@ -48,11 +51,15 @@ export default function AttendanceHistoryScreen({ navigation }) {
       if (selectedSubject) params.subject_id = selectedSubject.id;
       const { data } = await client.get('/students/attendance-history', { params });
       setRecords(Array.isArray(data) ? data : (data.records ?? []));
-    } catch { setRecords([]); }
+    } catch {
+      setRecords([]);
+    }
     setLoading(false);
   }, [selectedSubject, selectedMonth]);
 
-  useEffect(() => { fetchRecords(); }, [fetchRecords]);
+  useEffect(() => {
+    fetchRecords();
+  }, [fetchRecords]);
 
   // Summary counts
   const summary = records.reduce(
@@ -63,16 +70,17 @@ export default function AttendanceHistoryScreen({ navigation }) {
       else if (s === 'absent') acc.a++;
       return acc;
     },
-    { p: 0, a: 0, l: 0 },
+    { p: 0, a: 0, l: 0 }
   );
   const totalSess = summary.p + summary.a + summary.l;
-  const monthPct  = totalSess ? Math.round(((summary.p + summary.l) / totalSess) * 100) : 0;
+  const monthPct = totalSess ? Math.round(((summary.p + summary.l) / totalSess) * 100) : 0;
 
   return (
     <SafeAreaView style={styles.root} edges={['left', 'right']}>
       {/* ── Subject filter tabs ──────────────────────────────────── */}
       <ScrollView
-        horizontal showsHorizontalScrollIndicator={false}
+        horizontal
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabRow}
       >
         <TouchableOpacity
@@ -96,7 +104,8 @@ export default function AttendanceHistoryScreen({ navigation }) {
 
       {/* ── Month picker ─────────────────────────────────────────── */}
       <ScrollView
-        horizontal showsHorizontalScrollIndicator={false}
+        horizontal
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.monthRow}
       >
         {MONTHS.map((m, i) => (
@@ -105,14 +114,18 @@ export default function AttendanceHistoryScreen({ navigation }) {
             style={[styles.monthChip, selectedMonth === i && styles.monthChipActive]}
             onPress={() => setSelectedMonth(i)}
           >
-            <Text style={[styles.monthText, selectedMonth === i && styles.monthTextActive]}>{m}</Text>
+            <Text style={[styles.monthText, selectedMonth === i && styles.monthTextActive]}>
+              {m}
+            </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
       {/* ── Records list ──────────────────────────────────────────── */}
       {loading ? (
-        <View style={styles.centred}><ActivityIndicator size="large" color={PRIMARY} /></View>
+        <View style={styles.centred}>
+          <ActivityIndicator size="large" color={PRIMARY} />
+        </View>
       ) : (
         <FlatList
           data={records}
@@ -128,8 +141,10 @@ export default function AttendanceHistoryScreen({ navigation }) {
             const statusLower = (item.status ?? '').toLowerCase();
             const s = STATUS_MAP[statusLower] ?? STATUS_MAP.absent;
             const d = item.date ? new Date(item.date) : null;
-            const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            const canDispute = navigation && statusLower === 'absent' && item.session_id && d && d >= sevenDaysAgo;
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const canDispute =
+              navigation && statusLower === 'absent' && item.session_id && d && d >= sevenDaysAgo;
             return (
               <View style={styles.row}>
                 <View style={styles.dateCol}>
@@ -142,17 +157,17 @@ export default function AttendanceHistoryScreen({ navigation }) {
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.rowSubject}>{item.subject_name ?? '—'}</Text>
-                  {item.marked_via && (
-                    <Text style={styles.rowVia}>via {item.marked_via}</Text>
-                  )}
+                  {item.marked_via && <Text style={styles.rowVia}>via {item.marked_via}</Text>}
                   {canDispute && (
                     <TouchableOpacity
                       style={styles.disputeBtn}
-                      onPress={() => navigation.navigate('Dispute', {
-                        session_id:   item.session_id,
-                        subject_name: item.subject_name,
-                        date:         item.date,
-                      })}
+                      onPress={() =>
+                        navigation.navigate('Dispute', {
+                          session_id: item.session_id,
+                          subject_name: item.subject_name,
+                          date: item.date,
+                        })
+                      }
                     >
                       <Ionicons name="alert-circle-outline" size={12} color="#ef4444" />
                       <Text style={styles.disputeBtnText}>Raise Dispute</Text>
@@ -171,9 +186,9 @@ export default function AttendanceHistoryScreen({ navigation }) {
       {/* ── Monthly summary ───────────────────────────────────────── */}
       <View style={styles.summaryBar}>
         <Text style={styles.summaryText}>
-          This month: <Text style={{ color: '#22c55e' }}>{summary.p}P</Text>
-          {' '}<Text style={{ color: '#ef4444' }}>{summary.a}A</Text>
-          {' '}<Text style={{ color: '#f59e0b' }}>{summary.l}L</Text>
+          This month: <Text style={{ color: '#22c55e' }}>{summary.p}P</Text>{' '}
+          <Text style={{ color: '#ef4444' }}>{summary.a}A</Text>{' '}
+          <Text style={{ color: '#f59e0b' }}>{summary.l}L</Text>
           {' = '}
           <Text style={{ fontWeight: '900' }}>{monthPct}%</Text>
         </Text>
@@ -183,54 +198,73 @@ export default function AttendanceHistoryScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: '#f8fafc' },
+  root: { flex: 1, backgroundColor: '#f8fafc' },
   centred: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
 
   tabRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
   tab: {
-    paddingHorizontal: 16, paddingVertical: 8,
-    borderRadius: 20, backgroundColor: '#f1f5f9',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
   },
-  tabActive:     { backgroundColor: PRIMARY },
-  tabText:       { fontSize: 13, fontWeight: '700', color: '#64748b' },
+  tabActive: { backgroundColor: PRIMARY },
+  tabText: { fontSize: 13, fontWeight: '700', color: '#64748b' },
   tabTextActive: { color: '#fff' },
 
   monthRow: { paddingHorizontal: 16, gap: 6, marginBottom: 8 },
   monthChip: {
-    paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 16, backgroundColor: '#f1f5f9',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
   },
   monthChipActive: { backgroundColor: '#dbeafe' },
-  monthText:       { fontSize: 12, fontWeight: '700', color: '#94a3b8' },
+  monthText: { fontSize: 12, fontWeight: '700', color: '#94a3b8' },
   monthTextActive: { color: '#1d4ed8' },
 
-  list:      { paddingHorizontal: 16, paddingBottom: 12 },
+  list: { paddingHorizontal: 16, paddingBottom: 12 },
   emptyText: { color: '#94a3b8', fontSize: 13, marginTop: 8 },
 
   row: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
   },
-  dateCol:     { alignItems: 'center', width: 52 },
-  dateDay:     { fontSize: 13, fontWeight: '700', color: '#1e293b' },
+  dateCol: { alignItems: 'center', width: 52 },
+  dateDay: { fontSize: 13, fontWeight: '700', color: '#1e293b' },
   dateWeekday: { fontSize: 10, color: '#94a3b8', marginTop: 1 },
-  rowSubject:  { fontSize: 13, fontWeight: '700', color: '#1e293b' },
-  rowVia:      { fontSize: 10, color: '#94a3b8', marginTop: 1 },
+  rowSubject: { fontSize: 13, fontWeight: '700', color: '#1e293b' },
+  rowVia: { fontSize: 10, color: '#94a3b8', marginTop: 1 },
   statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
-  statusText:  { fontSize: 14, fontWeight: '900' },
+  statusText: { fontSize: 14, fontWeight: '900' },
   disputeBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    alignSelf: 'flex-start', marginTop: 6,
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 6, borderWidth: 1, borderColor: '#fecaca',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fecaca',
     backgroundColor: '#fef2f2',
   },
   disputeBtnText: { fontSize: 10, fontWeight: '700', color: '#ef4444' },
 
   summaryBar: {
-    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0',
-    paddingVertical: 14, paddingHorizontal: 20, alignItems: 'center',
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
   },
   summaryText: { fontSize: 14, fontWeight: '700', color: '#475569' },
 });

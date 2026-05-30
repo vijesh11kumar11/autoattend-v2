@@ -11,41 +11,49 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, RefreshControl,
-  SafeAreaView, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import client      from '../../api/client';
-import ErrorState  from '../../components/ErrorState';
+import client from '../../api/client';
+import ErrorState from '../../components/ErrorState';
 
 const PRIMARY = '#1a237e';
 
 const STATUS_COLORS = {
   present: '#22c55e',
-  absent:  '#ef4444',
-  late:    '#f59e0b',
+  absent: '#ef4444',
+  late: '#f59e0b',
 };
 
 export default function AttendanceManageScreen({ route }) {
-  const subjectId   = route?.params?.subject_id;
+  const subjectId = route?.params?.subject_id;
   const subjectName = route?.params?.subject_name;
 
-  const [sessions, setSessions]         = useState([]);
-  const [loadingSess, setLoadingSess]   = useState(true);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [error, setError]               = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [loadingSess, setLoadingSess] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
 
   const [selectedSession, setSelectedSession] = useState(null);
-  const [studentList, setStudentList]         = useState([]);
-  const [loadingDetail, setLoadingDetail]     = useState(false);
-  const [updatingId, setUpdatingId]           = useState(null);
+  const [studentList, setStudentList] = useState([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
 
   const fetchSessions = useCallback(async () => {
     setError(false);
     try {
       const { data } = await client.get('/faculty/my-sessions');
-      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 14);
       const filtered = (Array.isArray(data) ? data : []).filter((s) => {
         if (subjectId && s.subject_id !== subjectId && s.subject_code !== subjectId) {
           // my-sessions doesn't include subject_id directly; fallback on subject_name match
@@ -61,7 +69,9 @@ export default function AttendanceManageScreen({ route }) {
     }
   }, [subjectId, subjectName]);
 
-  useEffect(() => { fetchSessions().finally(() => setLoadingSess(false)); }, [fetchSessions]);
+  useEffect(() => {
+    fetchSessions().finally(() => setLoadingSess(false));
+  }, [fetchSessions]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -92,12 +102,12 @@ export default function AttendanceManageScreen({ route }) {
       await client.post('/attendance/manual-override', {
         session_id: selectedSession.id,
         student_id: student.student_id,
-        status:     newStatus,
-        reason:     'Manual update from mobile teacher app',
+        status: newStatus,
+        reason: 'Manual update from mobile teacher app',
       });
-      setStudentList((prev) => prev.map((s) =>
-        s.student_id === student.student_id ? { ...s, status: newStatus } : s,
-      ));
+      setStudentList((prev) =>
+        prev.map((s) => (s.student_id === student.student_id ? { ...s, status: newStatus } : s))
+      );
     } catch (err) {
       const detail = err.response?.data?.detail || err?.message || 'Update failed';
       Alert.alert('Override Failed', String(detail));
@@ -108,8 +118,8 @@ export default function AttendanceManageScreen({ route }) {
 
   const stats = useMemo(() => {
     const present = studentList.filter((s) => s.status === 'present').length;
-    const absent  = studentList.filter((s) => s.status === 'absent').length;
-    const late    = studentList.filter((s) => s.status === 'late').length;
+    const absent = studentList.filter((s) => s.status === 'absent').length;
+    const late = studentList.filter((s) => s.status === 'late').length;
     return { present, absent, late, total: studentList.length };
   }, [studentList]);
 
@@ -118,7 +128,13 @@ export default function AttendanceManageScreen({ route }) {
     return (
       <SafeAreaView style={styles.safe} edges={['left', 'right']}>
         <View style={styles.detailHeader}>
-          <TouchableOpacity onPress={() => { setSelectedSession(null); setStudentList([]); }} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => {
+              setSelectedSession(null);
+              setStudentList([]);
+            }}
+            style={styles.backBtn}
+          >
             <Ionicons name="chevron-back" size={20} color="#fff" />
             <Text style={styles.backBtnText}>Back</Text>
           </TouchableOpacity>
@@ -143,14 +159,18 @@ export default function AttendanceManageScreen({ route }) {
         </View>
 
         {loadingDetail ? (
-          <View style={styles.center}><ActivityIndicator size="large" color={PRIMARY} /></View>
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={PRIMARY} />
+          </View>
         ) : (
           <FlatList
             data={studentList}
             keyExtractor={(s) => String(s.student_id)}
             contentContainerStyle={styles.list}
             ListEmptyComponent={
-              <View style={styles.center}><Text style={styles.emptyTxt}>No students enrolled.</Text></View>
+              <View style={styles.center}>
+                <Text style={styles.emptyTxt}>No students enrolled.</Text>
+              </View>
             }
             renderItem={({ item }) => {
               const isUpdating = updatingId === item.student_id;
@@ -158,7 +178,9 @@ export default function AttendanceManageScreen({ route }) {
                 <View style={styles.studentCard}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.studentName}>{item.name}</Text>
-                    {item.roll_number ? <Text style={styles.studentRoll}>{item.roll_number}</Text> : null}
+                    {item.roll_number ? (
+                      <Text style={styles.studentRoll}>{item.roll_number}</Text>
+                    ) : null}
                   </View>
                   <View style={styles.toggleRow}>
                     {['present', 'absent', 'late'].map((st) => {
@@ -170,17 +192,21 @@ export default function AttendanceManageScreen({ route }) {
                           onPress={() => updateStatus(item, st)}
                           style={[
                             styles.toggleBtn,
-                            active && { backgroundColor: STATUS_COLORS[st], borderColor: STATUS_COLORS[st] },
+                            active && {
+                              backgroundColor: STATUS_COLORS[st],
+                              borderColor: STATUS_COLORS[st],
+                            },
                           ]}
                         >
-                          <Text style={[
-                            styles.toggleBtnText,
-                            active && { color: '#fff' },
-                          ]}>{st[0].toUpperCase()}</Text>
+                          <Text style={[styles.toggleBtnText, active && { color: '#fff' }]}>
+                            {st[0].toUpperCase()}
+                          </Text>
                         </TouchableOpacity>
                       );
                     })}
-                    {isUpdating && <ActivityIndicator size="small" color={PRIMARY} style={{ marginLeft: 6 }} />}
+                    {isUpdating && (
+                      <ActivityIndicator size="small" color={PRIMARY} style={{ marginLeft: 6 }} />
+                    )}
                   </View>
                 </View>
               );
@@ -193,7 +219,11 @@ export default function AttendanceManageScreen({ route }) {
 
   // ── SESSION LIST VIEW ──────────────────────────────────────────────
   if (loadingSess) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={PRIMARY} /></View>;
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+      </View>
+    );
   }
 
   return (
@@ -212,7 +242,9 @@ export default function AttendanceManageScreen({ route }) {
           data={sessions}
           keyExtractor={(s) => String(s.id)}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />
+          }
           ListEmptyComponent={
             <View style={styles.center}>
               <Ionicons name="calendar-outline" size={48} color="#cbd5e1" />
@@ -223,7 +255,9 @@ export default function AttendanceManageScreen({ route }) {
             <TouchableOpacity style={styles.sessCard} onPress={() => openSession(item)}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sessSubject}>{item.subject_name}</Text>
-                <Text style={styles.sessMeta}>{item.subject_code} · {item.date}</Text>
+                <Text style={styles.sessMeta}>
+                  {item.subject_code} · {item.date}
+                </Text>
                 <Text style={styles.sessMeta}>
                   {item.present_count}/{item.total_students} present
                 </Text>
@@ -238,42 +272,56 @@ export default function AttendanceManageScreen({ route }) {
 }
 
 const styles = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: '#f8fafc' },
+  safe: { flex: 1, backgroundColor: '#f8fafc' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
-  list:   { padding: 16 },
+  list: { padding: 16 },
 
   heading: { fontSize: 22, fontWeight: '700', color: PRIMARY },
-  sub:     { fontSize: 13, color: '#94a3b8', marginTop: 4, marginBottom: 12 },
+  sub: { fontSize: 13, color: '#94a3b8', marginTop: 4, marginBottom: 12 },
 
   sessCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 10,
   },
   sessSubject: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
-  sessMeta:    { fontSize: 11, color: '#64748b', marginTop: 2 },
+  sessMeta: { fontSize: 11, color: '#64748b', marginTop: 2 },
 
   detailHeader: { backgroundColor: PRIMARY, padding: 16 },
-  backBtn:      { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 8 },
-  backBtnText:  { color: '#fff', fontSize: 13, fontWeight: '600' },
-  detailTitle:  { color: '#fff', fontSize: 17, fontWeight: '700' },
-  warnText:     { color: '#fde68a', fontSize: 11, marginTop: 6 },
-  statRow:      { flexDirection: 'row', gap: 8, marginTop: 12 },
-  statPill:     { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 8 },
+  backBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  detailTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  warnText: { color: '#fde68a', fontSize: 11, marginTop: 6 },
+  statRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  statPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statPillText: { fontSize: 12, fontWeight: '700' },
 
   studentCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
   },
   studentName: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
   studentRoll: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
-  toggleRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   toggleBtn: {
-    minWidth: 30, height: 30, borderRadius: 8,
-    borderWidth: 1, borderColor: '#cbd5e1',
-    alignItems: 'center', justifyContent: 'center',
+    minWidth: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#fff',
   },
   toggleBtnText: { fontSize: 12, fontWeight: '700', color: '#475569' },

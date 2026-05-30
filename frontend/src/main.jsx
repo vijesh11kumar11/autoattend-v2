@@ -21,14 +21,10 @@ if (SENTRY_DSN) {
         tracesSampleRate: 1.0,
         replaysOnErrorSampleRate: 1.0,
         replaysSessionSampleRate: 0.0,
-        integrations: [
-          Sentry.browserTracingIntegration(),
-          Sentry.replayIntegration(),
-        ],
+        integrations: [Sentry.browserTracingIntegration(), Sentry.replayIntegration()],
       });
     })
     .catch((err) => {
-      // eslint-disable-next-line no-console
       console.warn('[sentry] init skipped:', err?.message || err);
     });
 }
@@ -38,6 +34,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <App />
     </BrowserRouter>
-  </React.StrictMode>,
+  </React.StrictMode>
 );
-

@@ -14,9 +14,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons }     from '@expo/vector-icons';
-import client           from '../../api/client';
-import { useAuth }      from '../../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import client from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { CardSkeleton, StatsSkeleton } from '../../components/SkeletonLoader';
 import { downloadAndShare } from '../../utils/secureDownload';
 
@@ -31,23 +31,25 @@ function greetingText() {
 }
 
 function statusInfo(pct) {
-  if (pct >= THRESHOLDS.SAFE)    return { label: 'SAFE',     color: '#22c55e', bg: '#f0fdf4' };
-  if (pct >= THRESHOLDS.WARNING) return { label: 'WARNING',  color: '#f59e0b', bg: '#fffbeb' };
+  if (pct >= THRESHOLDS.SAFE) return { label: 'SAFE', color: '#22c55e', bg: '#f0fdf4' };
+  if (pct >= THRESHOLDS.WARNING) return { label: 'WARNING', color: '#f59e0b', bg: '#fffbeb' };
   if (pct >= THRESHOLDS.CRITICAL) return { label: 'CRITICAL', color: '#ef4444', bg: '#fef2f2' };
   return { label: 'DETAINED', color: '#dc2626', bg: '#fef2f2' };
 }
 
 export default function StudentDashboard({ navigation }) {
   const { user } = useAuth();
-  const [loading,    setLoading]    = useState(true);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [overall,    setOverall]    = useState(0);
-  const [subjects,   setSubjects]   = useState([]);
+  const [overall, setOverall] = useState(0);
+  const [subjects, setSubjects] = useState([]);
   const [todayClasses, setTodayClasses] = useState([]);
   const [criticalCount, setCriticalCount] = useState(0);
 
   const todayStr = new Date().toLocaleDateString('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'short',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
   });
   const firstName = (user?.name ?? user?.sub ?? 'Student').split(' ')[0];
 
@@ -61,10 +63,14 @@ export default function StudentDashboard({ navigation }) {
       setOverall(d.overall_percentage ?? 0);
       setSubjects(d.subjects ?? []);
       setCriticalCount(
-        (d.subjects ?? []).filter((s) => (s.percentage ?? 0) < THRESHOLDS.SAFE).length,
+        (d.subjects ?? []).filter((s) => (s.percentage ?? 0) < THRESHOLDS.SAFE).length
       );
-      setTodayClasses(Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data.classes ?? []));
-    } catch (err) { console.warn("[StudentDashboard] fetch error:", err?.message); }
+      setTodayClasses(
+        Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data.classes ?? [])
+      );
+    } catch (err) {
+      console.warn('[StudentDashboard] fetch error:', err?.message);
+    }
   }, []);
 
   useEffect(() => {
@@ -93,12 +99,16 @@ export default function StudentDashboard({ navigation }) {
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />
+        }
       >
         {/* ── Header ──────────────────────────────────────────────── */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>{greetingText()}, {firstName}! 👋</Text>
+            <Text style={styles.greeting}>
+              {greetingText()}, {firstName}! 👋
+            </Text>
             <Text style={styles.date}>{todayStr}</Text>
           </View>
           <View style={[styles.overallChip, { backgroundColor: overallStatus.bg }]}>
@@ -111,12 +121,15 @@ export default function StudentDashboard({ navigation }) {
 
         {/* ── Critical warning ────────────────────────────────────── */}
         {criticalCount > 0 && (
-          <TouchableOpacity style={styles.warningCard} activeOpacity={0.85}
+          <TouchableOpacity
+            style={styles.warningCard}
+            activeOpacity={0.85}
             onPress={() => navigation.navigate('Attendance')}
           >
             <Ionicons name="warning-outline" size={20} color="#fff" />
             <Text style={styles.warningText}>
-              ⚠️ {criticalCount} subject{criticalCount > 1 ? 's' : ''} below 75%! Tap to view details
+              ⚠️ {criticalCount} subject{criticalCount > 1 ? 's' : ''} below 75%! Tap to view
+              details
             </Text>
           </TouchableOpacity>
         )}
@@ -170,12 +183,21 @@ export default function StudentDashboard({ navigation }) {
             return (
               <View style={[styles.subjectCard, { borderTopColor: st.color }]}>
                 <Text style={styles.subCode}>{item.code ?? ''}</Text>
-                <Text style={styles.subName} numberOfLines={1}>{item.name ?? '—'}</Text>
+                <Text style={styles.subName} numberOfLines={1}>
+                  {item.name ?? '—'}
+                </Text>
                 <View style={styles.subBar}>
-                  <View style={[styles.subBarFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: st.color }]} />
+                  <View
+                    style={[
+                      styles.subBarFill,
+                      { width: `${Math.min(pct, 100)}%`, backgroundColor: st.color },
+                    ]}
+                  />
                 </View>
                 <Text style={styles.subPct}>{pct.toFixed(0)}%</Text>
-                <Text style={styles.subCount}>{item.present ?? 0} / {item.total ?? 0}</Text>
+                <Text style={styles.subCount}>
+                  {item.present ?? 0} / {item.total ?? 0}
+                </Text>
                 <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
                   <Text style={[styles.statusLabel, { color: st.color }]}>{st.label}</Text>
                 </View>
@@ -205,12 +227,14 @@ export default function StudentDashboard({ navigation }) {
 
         <TouchableOpacity
           style={[styles.bottomBtn, { backgroundColor: '#22c55e', marginTop: 10 }]}
-          onPress={() => downloadAndShare({
-            path: `/api/reports/student/${user?.id}/pdf`,
-            fileName: `attendance_${user?.id}`,
-            fallbackExt: 'pdf',
-            title: 'My Attendance Report',
-          })}
+          onPress={() =>
+            downloadAndShare({
+              path: `/api/reports/student/${user?.id}/pdf`,
+              fileName: `attendance_${user?.id}`,
+              fallbackExt: 'pdf',
+              title: 'My Attendance Report',
+            })
+          }
           activeOpacity={0.85}
         >
           <Ionicons name="download-outline" size={18} color="#fff" />
@@ -220,7 +244,10 @@ export default function StudentDashboard({ navigation }) {
         {/* ── Quick links grid (S1-S6) ────────────────────────────── */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>More</Text>
         <View style={styles.gridRow}>
-          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('AttendanceForecast')}>
+          <TouchableOpacity
+            style={styles.gridCard}
+            onPress={() => navigation.navigate('AttendanceForecast')}
+          >
             <Ionicons name="trending-up-outline" size={24} color={PRIMARY} />
             <Text style={styles.gridTxt}>Forecast</Text>
           </TouchableOpacity>
@@ -228,17 +255,26 @@ export default function StudentDashboard({ navigation }) {
             <Ionicons name="person-circle-outline" size={24} color={PRIMARY} />
             <Text style={styles.gridTxt}>My Tutor</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('CareerRoadmap')}>
+          <TouchableOpacity
+            style={styles.gridCard}
+            onPress={() => navigation.navigate('CareerRoadmap')}
+          >
             <Ionicons name="rocket-outline" size={24} color={PRIMARY} />
             <Text style={styles.gridTxt}>Career</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('KnowledgeGraph')}>
+          <TouchableOpacity
+            style={styles.gridCard}
+            onPress={() => navigation.navigate('KnowledgeGraph')}
+          >
             <Ionicons name="git-network-outline" size={24} color={PRIMARY} />
             <Text style={styles.gridTxt}>Knowledge</Text>
           </TouchableOpacity>
         </View>
         <View style={[styles.gridRow, { marginTop: 10 }]}>
-          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('MySessions')}>
+          <TouchableOpacity
+            style={styles.gridCard}
+            onPress={() => navigation.navigate('MySessions')}
+          >
             <Ionicons name="calendar-outline" size={24} color={PRIMARY} />
             <Text style={styles.gridTxt}>Sessions</Text>
           </TouchableOpacity>
@@ -246,7 +282,10 @@ export default function StudentDashboard({ navigation }) {
             <Ionicons name="newspaper-outline" size={24} color={PRIMARY} />
             <Text style={styles.gridTxt}>Feed</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.gridCard} onPress={() => navigation.navigate('SuggestionBox')}>
+          <TouchableOpacity
+            style={styles.gridCard}
+            onPress={() => navigation.navigate('SuggestionBox')}
+          >
             <Ionicons name="bulb-outline" size={24} color={PRIMARY} />
             <Text style={styles.gridTxt}>Suggest</Text>
           </TouchableOpacity>
@@ -261,22 +300,30 @@ export default function StudentDashboard({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: '#f8fafc' },
+  root: { flex: 1, backgroundColor: '#f8fafc' },
   centred: { justifyContent: 'center', alignItems: 'center' },
-  scroll:  { padding: 20, paddingBottom: 40 },
+  scroll: { padding: 20, paddingBottom: 40 },
 
-  header:     { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  greeting:   { fontSize: 20, fontWeight: '800', color: '#1e293b' },
-  date:       { fontSize: 13, color: '#64748b', marginTop: 3 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  greeting: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
+  date: { fontSize: 13, color: '#64748b', marginTop: 3 },
   overallChip: {
-    alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  overallPct:   { fontSize: 18, fontWeight: '900' },
+  overallPct: { fontSize: 18, fontWeight: '900' },
   overallLabel: { fontSize: 10, fontWeight: '700', marginTop: 1 },
 
   warningCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#ef4444', borderRadius: 12, padding: 14, marginBottom: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ef4444',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 18,
   },
   warningText: { color: '#fff', fontWeight: '700', fontSize: 13, flex: 1 },
 
@@ -286,39 +333,86 @@ const styles = StyleSheet.create({
   emptyText: { color: '#94a3b8', fontSize: 13 },
 
   classCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 10,
   },
-  classTime:     { backgroundColor: '#e8eaf6', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginRight: 12 },
+  classTime: {
+    backgroundColor: '#e8eaf6',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 12,
+  },
   classTimeText: { fontSize: 12, fontWeight: '700', color: PRIMARY },
-  className:     { fontSize: 14, fontWeight: '700', color: '#1e293b' },
-  classTeacher:  { fontSize: 11, color: '#94a3b8', marginTop: 2 },
-  markBtn:       { backgroundColor: PRIMARY, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  markBtnText:   { color: '#fff', fontWeight: '700', fontSize: 12 },
-  noSession:     { fontSize: 11, color: '#94a3b8', fontStyle: 'italic' },
+  className: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  classTeacher: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  markBtn: { backgroundColor: PRIMARY, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  markBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  noSession: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic' },
 
   subjectCard: {
-    width: 150, backgroundColor: '#fff', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#e2e8f0', borderTopWidth: 3, gap: 4,
+    width: 150,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderTopWidth: 3,
+    gap: 4,
   },
-  subCode:  { fontSize: 11, color: '#94a3b8', fontWeight: '700' },
-  subName:  { fontSize: 13, fontWeight: '700', color: '#1e293b' },
-  subBar:   { height: 6, backgroundColor: '#e2e8f0', borderRadius: 3, marginTop: 4, overflow: 'hidden' },
+  subCode: { fontSize: 11, color: '#94a3b8', fontWeight: '700' },
+  subName: { fontSize: 13, fontWeight: '700', color: '#1e293b' },
+  subBar: {
+    height: 6,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 3,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
   subBarFill: { height: '100%', borderRadius: 3 },
-  subPct:   { fontSize: 18, fontWeight: '900', color: '#1e293b' },
+  subPct: { fontSize: 18, fontWeight: '900', color: '#1e293b' },
   subCount: { fontSize: 11, color: '#64748b' },
-  statusBadge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginTop: 2 },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 2,
+  },
   statusLabel: { fontSize: 10, fontWeight: '800' },
 
   bottomBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: PRIMARY, borderRadius: 14, height: 52, marginTop: 24,
-    elevation: 3, shadowColor: PRIMARY, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25, shadowRadius: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: PRIMARY,
+    borderRadius: 14,
+    height: 52,
+    marginTop: 24,
+    elevation: 3,
+    shadowColor: PRIMARY,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   bottomBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   gridRow: { flexDirection: 'row', gap: 8 },
-  gridCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', gap: 6 },
-  gridTxt:  { fontSize: 11, color: '#1e293b', fontWeight: '700', textAlign: 'center' },
+  gridCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 6,
+  },
+  gridTxt: { fontSize: 11, color: '#1e293b', fontWeight: '700', textAlign: 'center' },
 });

@@ -48,7 +48,11 @@ export function subscribe(listener) {
 async function _emitChange() {
   const len = await getQueueLength();
   _listeners.forEach((fn) => {
-    try { fn(len); } catch { /* listener errors are non-fatal */ }
+    try {
+      fn(len);
+    } catch {
+      /* listener errors are non-fatal */
+    }
   });
 }
 
@@ -65,7 +69,11 @@ export function setQueueNotifier(fn) {
 
 function _notify(message, kind) {
   if (_notifier) {
-    try { _notifier(message, kind); } catch { /* non-fatal */ }
+    try {
+      _notifier(message, kind);
+    } catch {
+      /* non-fatal */
+    }
   }
 }
 
@@ -100,13 +108,13 @@ function _newId() {
  */
 export async function addToQueue(operation, endpoint, method, body) {
   const item = {
-    id:        _newId(),
+    id: _newId(),
     operation,
     endpoint,
-    method:    (method || 'post').toLowerCase(),
-    body:      body ?? {},
+    method: (method || 'post').toLowerCase(),
+    body: body ?? {},
     timestamp: Date.now(),
-    retries:   0,
+    retries: 0,
   };
   const items = await _readQueue();
   items.push(item);
@@ -141,7 +149,11 @@ export async function clearQueue() {
 let _processing = false;
 
 function _formatTime(ts) {
-  try { return new Date(ts).toLocaleString(); } catch { return ''; }
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return '';
+  }
 }
 
 function _isRejection(status, payload) {
@@ -179,23 +191,22 @@ export async function processQueue() {
     // Highest-priority operations first, then oldest first.
     items = [...items].sort(
       (a, b) =>
-        (PRIORITY[a.operation] ?? 9) - (PRIORITY[b.operation] ?? 9) ||
-        a.timestamp - b.timestamp,
+        (PRIORITY[a.operation] ?? 9) - (PRIORITY[b.operation] ?? 9) || a.timestamp - b.timestamp
     );
 
     for (const item of items) {
       processed += 1;
       try {
         await client.request({
-          url:    item.endpoint,
+          url: item.endpoint,
           method: item.method,
-          data:   item.body,
+          data: item.body,
         });
         // 2xx → success.
         await clearItem(item.id);
         synced += 1;
       } catch (err) {
-        const status  = err?.response?.status;
+        const status = err?.response?.status;
         const payload = err?.response?.data;
 
         if (status && _isRejection(status, payload)) {
@@ -203,9 +214,9 @@ export async function processQueue() {
           await clearItem(item.id);
           _notify(
             `Your offline ${LABEL[item.operation] ?? 'submission'} from ` +
-            `${_formatTime(item.timestamp)} was rejected because the ` +
-            `session/window was already closed. Please resubmit.`,
-            'rejected',
+              `${_formatTime(item.timestamp)} was rejected because the ` +
+              `session/window was already closed. Please resubmit.`,
+            'rejected'
           );
         } else if (!err?.response) {
           // Network error — keep and retry later (bounded).
@@ -214,9 +225,9 @@ export async function processQueue() {
             await clearItem(item.id);
             _notify(
               `Your offline ${LABEL[item.operation] ?? 'submission'} from ` +
-              `${_formatTime(item.timestamp)} could not be submitted after ` +
-              `several attempts. Please try again.`,
-              'failed',
+                `${_formatTime(item.timestamp)} could not be submitted after ` +
+                `several attempts. Please try again.`,
+              'failed'
             );
           } else {
             await _persistRetry(item);
@@ -228,9 +239,9 @@ export async function processQueue() {
           await clearItem(item.id);
           _notify(
             `Your offline ${LABEL[item.operation] ?? 'submission'} from ` +
-            `${_formatTime(item.timestamp)} could not be submitted ` +
-            `(${payload?.detail ?? payload?.message ?? 'rejected by server'}).`,
-            'failed',
+              `${_formatTime(item.timestamp)} could not be submitted ` +
+              `(${payload?.detail ?? payload?.message ?? 'rejected by server'}).`,
+            'failed'
           );
         } else {
           // Transient server error (5xx/429/timeout) — retry later (bounded).
@@ -239,9 +250,9 @@ export async function processQueue() {
             await clearItem(item.id);
             _notify(
               `Your offline ${LABEL[item.operation] ?? 'submission'} from ` +
-              `${_formatTime(item.timestamp)} could not be submitted after ` +
-              `several attempts. Please try again.`,
-              'failed',
+                `${_formatTime(item.timestamp)} could not be submitted after ` +
+                `several attempts. Please try again.`,
+              'failed'
             );
           } else {
             await _persistRetry(item);

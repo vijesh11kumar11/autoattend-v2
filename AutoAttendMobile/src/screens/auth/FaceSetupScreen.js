@@ -15,12 +15,7 @@
  * Camera API: expo-camera ~16 (SDK 54) — uses CameraView + useCameraPermissions
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,16 +27,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView }              from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Ionicons }                  from '@expo/vector-icons';
-import AsyncStorage                  from '@react-native-async-storage/async-storage';
-import { useAuth }                   from '../../context/AuthContext';
-import client                        from '../../api/client';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../../context/AuthContext';
+import client from '../../api/client';
 
-const CHALLENGES       = ['BLINK', 'SMILE'];
+const CHALLENGES = ['BLINK', 'SMILE'];
 const CHALLENGE_WINDOW = 5; // countdown seconds
-const SKIP_KEY         = 'aa_face_skip_ts';
+const SKIP_KEY = 'aa_face_skip_ts';
 
 /** AsyncStorage key recording that this device has completed face setup. */
 function faceRegisteredKey(userId) {
@@ -54,7 +49,9 @@ function decodeJWT(token) {
     const [, payload] = token.split('.');
     const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
     return JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,12 +62,12 @@ export default function FaceSetupScreen({ navigation, route }) {
   const [permission, requestPermission] = useCameraPermissions();
 
   // Screen state machine
-  const [screen,    setScreen]    = useState('intro');
+  const [screen, setScreen] = useState('intro');
   const [challenge, setChallenge] = useState(null);
   const [countdown, setCountdown] = useState(CHALLENGE_WINDOW);
-  const [photoUri,  setPhotoUri]  = useState(null);
+  const [photoUri, setPhotoUri] = useState(null);
 
-  const cameraRef    = useRef(null);
+  const cameraRef = useRef(null);
   const countdownRef = useRef(null);
 
   useEffect(() => {
@@ -86,7 +83,7 @@ export default function FaceSetupScreen({ navigation, route }) {
       if (!result.granted) {
         Alert.alert(
           'Camera Permission Needed',
-          'AutoAttend AI needs camera access to enroll your face for attendance.',
+          'AutoAttend AI needs camera access to enroll your face for attendance.'
         );
         return;
       }
@@ -144,7 +141,7 @@ export default function FaceSetupScreen({ navigation, route }) {
 
     const formData = new FormData();
     formData.append('image', {
-      uri:  photoUri,
+      uri: photoUri,
       type: 'image/jpeg',
       name: 'face_enrollment.jpg',
     });
@@ -152,8 +149,8 @@ export default function FaceSetupScreen({ navigation, route }) {
     try {
       await client.post(`/students/${payload.id}/enroll-face`, formData, {
         headers: {
-          'Content-Type':  'multipart/form-data',
-          'Authorization': `Bearer ${temp_token}`,
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${temp_token}`,
         },
       });
       // Record device-local face setup completion (issues #15 / #87) so the
@@ -161,7 +158,9 @@ export default function FaceSetupScreen({ navigation, route }) {
       try {
         await AsyncStorage.setItem(faceRegisteredKey(payload.id), Date.now().toString());
         await AsyncStorage.removeItem(SKIP_KEY);
-      } catch { /* non-fatal */ }
+      } catch {
+        /* non-fatal */
+      }
       setScreen('success');
       // Auto-navigate to dashboard after brief pause
       setTimeout(async () => {
@@ -176,7 +175,7 @@ export default function FaceSetupScreen({ navigation, route }) {
         [
           { text: 'Retake', onPress: retake },
           { text: 'Cancel', style: 'cancel' },
-        ],
+        ]
       );
     }
   }, [photoUri, temp_token, login, navigation, retake]);
@@ -197,19 +196,13 @@ export default function FaceSetupScreen({ navigation, route }) {
   if (screen === 'camera') {
     return (
       <View style={styles.cameraRoot}>
-        <CameraView
-          ref={cameraRef}
-          style={StyleSheet.absoluteFill}
-          facing="front"
-        />
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front" />
         <SafeAreaView style={styles.cameraOverlay}>
           {/* Liveness challenge banner */}
           <View style={styles.challengeBanner}>
             <Text style={styles.challengeLabel}>Liveness Challenge</Text>
             <Text style={styles.challengeAction}>Please {challenge} now</Text>
-            {countdown > 0 && (
-              <Text style={styles.challengeCountdown}>{countdown}s</Text>
-            )}
+            {countdown > 0 && <Text style={styles.challengeCountdown}>{countdown}s</Text>}
           </View>
 
           {/* Oval face guide */}
@@ -217,16 +210,10 @@ export default function FaceSetupScreen({ navigation, route }) {
 
           {/* Capture controls */}
           <View style={styles.captureArea}>
-            <TouchableOpacity
-              style={styles.captureBtn}
-              onPress={takePicture}
-              activeOpacity={0.85}
-            >
+            <TouchableOpacity style={styles.captureBtn} onPress={takePicture} activeOpacity={0.85}>
               <View style={styles.captureInner} />
             </TouchableOpacity>
-            <Text style={styles.captureHint}>
-              Tap after completing the challenge
-            </Text>
+            <Text style={styles.captureHint}>Tap after completing the challenge</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -241,15 +228,9 @@ export default function FaceSetupScreen({ navigation, route }) {
       <SafeAreaView style={styles.container}>
         <View style={styles.previewContent}>
           <Text style={styles.screenTitle}>Preview Photo</Text>
-          <Text style={styles.screenSub}>
-            Make sure your face is clear, centred, and well-lit.
-          </Text>
+          <Text style={styles.screenSub}>Make sure your face is clear, centred, and well-lit.</Text>
           {photoUri && (
-            <Image
-              source={{ uri: photoUri }}
-              style={styles.photoPreview}
-              resizeMode="cover"
-            />
+            <Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="cover" />
           )}
           <View style={styles.previewActions}>
             <TouchableOpacity
@@ -294,9 +275,7 @@ export default function FaceSetupScreen({ navigation, route }) {
     return (
       <SafeAreaView style={[styles.container, styles.centred]}>
         <Ionicons name="checkmark-circle" size={80} color="#22c55e" style={{ marginBottom: 16 }} />
-        <Text style={[styles.screenTitle, { color: '#15803d' }]}>
-          Face Enrolled Successfully!
-        </Text>
+        <Text style={[styles.screenTitle, { color: '#15803d' }]}>Face Enrolled Successfully!</Text>
         <Text style={styles.screenSub}>Redirecting to your dashboard...</Text>
       </SafeAreaView>
     );
@@ -307,10 +286,7 @@ export default function FaceSetupScreen({ navigation, route }) {
   // ══════════════════════════════════════════════════════════════════════════
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.introContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.introContent} showsVerticalScrollIndicator={false}>
         {/* Icon */}
         <View style={styles.introIconCircle}>
           <Ionicons name="scan-circle-outline" size={56} color="#1a237e" />
@@ -318,15 +294,15 @@ export default function FaceSetupScreen({ navigation, route }) {
 
         <Text style={styles.screenTitle}>Setup Face Recognition</Text>
         <Text style={styles.introPara}>
-          Your face is used to verify your identity when marking attendance. This
-          is a one-time setup and your face data is securely stored on the server.
+          Your face is used to verify your identity when marking attendance. This is a one-time
+          setup and your face data is securely stored on the server.
         </Text>
 
         {/* Steps */}
         <View style={styles.stepList}>
           {[
-            { icon: 'camera-outline',          text: 'Take a clear selfie in good lighting' },
-            { icon: 'eye-outline',              text: 'Complete the on-screen liveness challenge' },
+            { icon: 'camera-outline', text: 'Take a clear selfie in good lighting' },
+            { icon: 'eye-outline', text: 'Complete the on-screen liveness challenge' },
             { icon: 'shield-checkmark-outline', text: 'Your face data is encrypted and secure' },
           ].map((s, i) => (
             <View key={i} style={styles.stepRow}>
@@ -369,7 +345,7 @@ const PRIMARY = '#1a237e';
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
-  centred:   { justifyContent: 'center', alignItems: 'center', padding: 32 },
+  centred: { justifyContent: 'center', alignItems: 'center', padding: 32 },
 
   // ── Intro ─────────────────────────────────────────────────────────────────
   introContent: {
@@ -453,16 +429,16 @@ const styles = StyleSheet.create({
     borderColor: PRIMARY,
     backgroundColor: '#ffffff',
   },
-  btnText:        { color: '#ffffff', fontWeight: '700', fontSize: 14 },
+  btnText: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
   btnTextOutline: { color: PRIMARY },
 
   // ── Skip ──────────────────────────────────────────────────────────────────
-  skipBtn:  { marginTop: 18, padding: 4 },
+  skipBtn: { marginTop: 18, padding: 4 },
   skipText: { color: '#94a3b8', fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
   skipHint: { fontSize: 11, color: '#cbd5e1', textAlign: 'center', marginTop: 6, maxWidth: 260 },
 
   // ── Camera ────────────────────────────────────────────────────────────────
-  cameraRoot:    { flex: 1, backgroundColor: '#000' },
+  cameraRoot: { flex: 1, backgroundColor: '#000' },
   cameraOverlay: { flex: 1, justifyContent: 'space-between' },
 
   challengeBanner: {
@@ -471,8 +447,8 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
   },
-  challengeLabel:     { color: 'rgba(255,255,255,0.65)', fontSize: 12, marginBottom: 2 },
-  challengeAction:    { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: 1 },
+  challengeLabel: { color: 'rgba(255,255,255,0.65)', fontSize: 12, marginBottom: 2 },
+  challengeAction: { color: '#ffffff', fontSize: 22, fontWeight: '800', letterSpacing: 1 },
   challengeCountdown: { color: '#facc15', fontSize: 30, fontWeight: '900', marginTop: 4 },
 
   faceGuide: {

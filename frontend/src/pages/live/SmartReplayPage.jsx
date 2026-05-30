@@ -50,14 +50,21 @@ function eventLabel(t) {
 function Timeline({ events, onSelect, selectedId, highlight }) {
   const maxOffset = useMemo(
     () => Math.max(1, ...events.map((e) => e.offset_seconds || 0)),
-    [events],
+    [events]
   );
   if (!events.length) {
-    return <p className="text-slate-400 text-sm py-6 text-center">No events recorded for this session.</p>;
+    return (
+      <p className="text-slate-400 text-sm py-6 text-center">
+        No events recorded for this session.
+      </p>
+    );
   }
   return (
     <div className="relative py-10 px-2 overflow-x-auto">
-      <div className="relative h-1.5 bg-slate-200 rounded-full min-w-full" style={{ minWidth: 520 }}>
+      <div
+        className="relative h-1.5 bg-slate-200 rounded-full min-w-full"
+        style={{ minWidth: 520 }}
+      >
         {highlight && (
           <div
             className="absolute h-1.5 bg-emerald-400/60 rounded-full"
@@ -83,7 +90,10 @@ function Timeline({ events, onSelect, selectedId, highlight }) {
           );
         })}
       </div>
-      <div className="flex justify-between text-[10px] text-slate-400 mt-3" style={{ minWidth: 520 }}>
+      <div
+        className="flex justify-between text-[10px] text-slate-400 mt-3"
+        style={{ minWidth: 520 }}
+      >
         <span>0:00</span>
         <span>{fmtOffset(maxOffset)}</span>
       </div>
@@ -134,7 +144,9 @@ function AskTopicModal({ sessionId, onClose, onResult }) {
           placeholder="e.g. Newton's second law"
           className="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3 text-sm focus:ring-2 focus:ring-violet-400 outline-none"
         />
-        <label className="block text-xs font-semibold text-slate-600 mb-1">Your doubt (optional)</label>
+        <label className="block text-xs font-semibold text-slate-600 mb-1">
+          Your doubt (optional)
+        </label>
         <textarea
           value={doubt}
           onChange={(e) => setDoubt(e.target.value)}
@@ -145,7 +157,10 @@ function AskTopicModal({ sessionId, onClose, onResult }) {
         />
         {err && <p className="text-red-600 text-xs mb-2">{err}</p>}
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-slate-600 hover:bg-slate-100">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg text-slate-600 hover:bg-slate-100"
+          >
             Cancel
           </button>
           <button
@@ -223,7 +238,8 @@ export default function SmartReplayPage() {
   }, [sessionId]);
 
   if (loading) return <div className="p-10 text-center text-slate-400">Loading replay…</div>;
-  if (err) return <div className="bg-red-50 text-red-700 p-4 rounded-lg max-w-3xl mx-auto">{err}</div>;
+  if (err)
+    return <div className="bg-red-50 text-red-700 p-4 rounded-lg max-w-3xl mx-auto">{err}</div>;
   if (!data) return null;
 
   const meta = data.session || {};
@@ -272,12 +288,19 @@ export default function SmartReplayPage() {
             </button>
           )}
         </div>
-        <Timeline events={events} onSelect={setSelected} selectedId={selected?.id} highlight={highlight} />
+        <Timeline
+          events={events}
+          onSelect={setSelected}
+          selectedId={selected?.id}
+          highlight={highlight}
+        />
 
         {selected && (
           <div className="mt-2 border border-violet-100 rounded-xl p-4 bg-violet-50/40">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-slate-800 text-sm">{eventLabel(selected.event_type)}</p>
+              <p className="font-semibold text-slate-800 text-sm">
+                {eventLabel(selected.event_type)}
+              </p>
               <span className="text-xs text-slate-500">{fmtOffset(selected.offset_seconds)}</span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">by {selected.actor_name}</p>
@@ -311,7 +334,11 @@ export default function SmartReplayPage() {
       </div>
 
       {showAsk && (
-        <AskTopicModal sessionId={sessionId} onClose={() => setShowAsk(false)} onResult={onClipResult} />
+        <AskTopicModal
+          sessionId={sessionId}
+          onClose={() => setShowAsk(false)}
+          onResult={onClipResult}
+        />
       )}
     </div>
   );

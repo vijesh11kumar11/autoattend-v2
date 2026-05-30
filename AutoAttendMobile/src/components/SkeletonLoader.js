@@ -20,7 +20,7 @@ function ShimmerBlock({ width, height = 14, borderRadius = 6, style }) {
     opacity.value = withRepeat(
       withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
       -1,
-      true,
+      true
     );
   }, [opacity]);
 

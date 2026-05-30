@@ -18,9 +18,9 @@ import api from '../api/axios';
 // ── Role badge classes ────────────────────────────────────────────────
 const ROLE_BADGE = {
   principal: 'badge-principal',
-  hod:       'badge-hod',
-  teacher:   'badge-teacher',
-  student:   'badge-student',
+  hod: 'badge-hod',
+  teacher: 'badge-teacher',
+  student: 'badge-student',
 };
 const ROLE_LABEL = { principal: 'Principal', hod: 'HOD', teacher: 'Teacher', student: 'Student' };
 
@@ -33,12 +33,12 @@ function ISTClock() {
       const now = new Date();
       setTime(
         now.toLocaleTimeString('en-IN', {
-          timeZone:   'Asia/Kolkata',
-          hour:       '2-digit',
-          minute:     '2-digit',
-          second:     '2-digit',
-          hour12:     true,
-        }),
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        })
       );
     }
     tick();
@@ -47,11 +47,11 @@ function ISTClock() {
   }, []);
 
   const date = new Date().toLocaleDateString('en-IN', {
-    timeZone:  'Asia/Kolkata',
-    weekday:   'short',
-    day:       '2-digit',
-    month:     'short',
-    year:      'numeric',
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
   });
 
   return (
@@ -66,24 +66,28 @@ function ISTClock() {
 function BellIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11
                a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341
                C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436
-               L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+               L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+      />
     </svg>
   );
 }
 
 // ── Notifications dropdown ───────────────────────────────────────────
-const NOTIF_POLL_MS   = 60_000;            // poll every 60 s
-const SEEN_TS_KEY     = 'aa_notif_seen_ts';
+const NOTIF_POLL_MS = 60_000; // poll every 60 s
+const SEEN_TS_KEY = 'aa_notif_seen_ts';
 
 function NotificationBell() {
-  const [open,    setOpen]    = useState(false);
-  const [items,   setItems]   = useState([]);
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [unread,  setUnread]  = useState(0);
+  const [unread, setUnread] = useState(0);
   const wrapRef = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -125,7 +129,9 @@ function NotificationBell() {
     setOpen((v) => !v);
     if (!open) {
       // Marking as 'seen' clears the unread badge until newer items arrive.
-      try { localStorage.setItem(SEEN_TS_KEY, String(Date.now())); } catch (_) {}
+      try {
+        localStorage.setItem(SEEN_TS_KEY, String(Date.now()));
+      } catch (_) {}
       setUnread(0);
     }
   }
@@ -136,12 +142,12 @@ function NotificationBell() {
     if (Number.isNaN(d.getTime())) return '';
     const diffMs = Date.now() - d.getTime();
     const min = Math.round(diffMs / 60000);
-    if (min < 1)   return 'just now';
-    if (min < 60)  return `${min}m ago`;
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min}m ago`;
     const hr = Math.round(min / 60);
-    if (hr < 24)   return `${hr}h ago`;
+    if (hr < 24) return `${hr}h ago`;
     const day = Math.round(hr / 24);
-    if (day < 7)   return `${day}d ago`;
+    if (day < 7) return `${day}d ago`;
     return d.toLocaleDateString();
   }
 
@@ -155,29 +161,32 @@ function NotificationBell() {
       >
         <BellIcon />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1
+          <span
+            className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1
                            rounded-full bg-red-500 text-white text-[10px] font-bold
-                           flex items-center justify-center">
+                           flex items-center justify-center"
+          >
             {unread > 99 ? '99+' : unread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-h-[420px] bg-white
+        <div
+          className="absolute right-0 mt-2 w-80 max-h-[420px] bg-white
                         border border-slate-200 rounded-xl shadow-lg
-                        overflow-hidden z-50 flex flex-col">
+                        overflow-hidden z-50 flex flex-col"
+        >
           <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
             <span className="text-sm font-semibold text-slate-700">Notifications</span>
-            <button onClick={refresh}
-                    className="text-xs text-slate-500 hover:text-slate-700">
+            <button onClick={refresh} className="text-xs text-slate-500 hover:text-slate-700">
               {loading ? '…' : 'Refresh'}
             </button>
           </div>
           <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
             {items.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-slate-400">
-                {loading ? 'Loading…' : 'You\'re all caught up.'}
+                {loading ? 'Loading…' : "You're all caught up."}
               </div>
             ) : (
               items.map((it, idx) => (
@@ -190,9 +199,7 @@ function NotificationBell() {
                       {formatTime(it.created_at)}
                     </span>
                   </div>
-                  {it.body && (
-                    <p className="text-xs text-slate-500 mt-1 line-clamp-2">{it.body}</p>
-                  )}
+                  {it.body && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{it.body}</p>}
                 </div>
               ))
             )}
@@ -209,14 +216,19 @@ function NotificationBell() {
 
 const CANCEL_TIMEOUT_MS = 4000;
 
-export default function Navbar({ title = 'Dashboard', collapsed = false, isMobile = false, onHamburger }) {
+export default function Navbar({
+  title = 'Dashboard',
+  collapsed = false,
+  isMobile = false,
+  onHamburger,
+}) {
   const { user, logout } = useAuth();
   const role = user?.role || 'student';
 
   // Two-click logout state
-  const [confirmState, setConfirmState]   = useState('idle'); // idle | confirming
-  const [countdown,    setCountdown]      = useState(CANCEL_TIMEOUT_MS / 1000);
-  const timerRef    = useRef(null);
+  const [confirmState, setConfirmState] = useState('idle'); // idle | confirming
+  const [countdown, setCountdown] = useState(CANCEL_TIMEOUT_MS / 1000);
+  const timerRef = useRef(null);
   const intervalRef = useRef(null);
 
   const clearTimers = useCallback(() => {
@@ -256,7 +268,9 @@ export default function Navbar({ title = 'Dashboard', collapsed = false, isMobil
 
   const leftOffset = isMobile
     ? 0
-    : (collapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)');
+    : collapsed
+      ? 'var(--sidebar-collapsed-width)'
+      : 'var(--sidebar-width)';
 
   return (
     <header
@@ -264,7 +278,7 @@ export default function Navbar({ title = 'Dashboard', collapsed = false, isMobil
                  px-5 border-b border-slate-200 bg-white/95 backdrop-blur-sm
                  transition-all duration-200"
       style={{
-        left:   leftOffset,
+        left: leftOffset,
         height: 'var(--navbar-height)',
       }}
     >
@@ -279,7 +293,12 @@ export default function Navbar({ title = 'Dashboard', collapsed = false, isMobil
                        transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
             </svg>
           </button>
         )}
@@ -288,7 +307,6 @@ export default function Navbar({ title = 'Dashboard', collapsed = false, isMobil
 
       {/* ── Right: clock · bell · user · logout ── */}
       <div className="flex items-center gap-4">
-
         {/* IST clock */}
         <div className="hidden sm:block">
           <ISTClock />
@@ -305,9 +323,7 @@ export default function Navbar({ title = 'Dashboard', collapsed = false, isMobil
           <span className="text-sm font-semibold text-slate-800 truncate max-w-[120px]">
             {user?.name || 'User'}
           </span>
-          <span className={`mt-0.5 ${ROLE_BADGE[role]}`}>
-            {ROLE_LABEL[role]}
-          </span>
+          <span className={`mt-0.5 ${ROLE_BADGE[role]}`}>{ROLE_LABEL[role]}</span>
         </div>
 
         {/* Logout / Cancel */}
@@ -329,10 +345,7 @@ export default function Navbar({ title = 'Dashboard', collapsed = false, isMobil
             >
               Confirm ({countdown}s)
             </button>
-            <button
-              onClick={handleCancel}
-              className="btn-ghost text-xs px-3 py-1.5"
-            >
+            <button onClick={handleCancel} className="btn-ghost text-xs px-3 py-1.5">
               Cancel
             </button>
           </div>
@@ -341,4 +354,3 @@ export default function Navbar({ title = 'Dashboard', collapsed = false, isMobil
     </header>
   );
 }
-

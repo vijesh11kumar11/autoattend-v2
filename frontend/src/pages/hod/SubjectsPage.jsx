@@ -6,13 +6,14 @@ export default function SubjectsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [semFilter, setSemFilter] = useState('all');
-  const [editing, setEditing] = useState(null);   // subject id being edited
+  const [editing, setEditing] = useState(null); // subject id being edited
   const [editVal, setEditVal] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.get('/reports/hod/subjects')
-      .then(r => setSubjects(r.data || []))
+    api
+      .get('/reports/hod/subjects')
+      .then((r) => setSubjects(r.data || []))
       .catch(() => setError('Failed to load subjects.'))
       .finally(() => setLoading(false));
   }, []);
@@ -23,9 +24,11 @@ export default function SubjectsPage() {
     setSaving(true);
     try {
       await api.patch(`/hod/subjects/${id}/total-lectures?total_lectures=${val}`);
-      setSubjects(prev => prev.map(s => s.id === id ? { ...s, total_lectures: val } : s));
+      setSubjects((prev) => prev.map((s) => (s.id === id ? { ...s, total_lectures: val } : s)));
       setEditing(null);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setSaving(false);
   };
 
@@ -40,21 +43,28 @@ export default function SubjectsPage() {
 
   if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
 
-  const semesters = [...new Set(subjects.map(s => s.semester))].sort((a, b) => a - b);
-  const filtered = semFilter === 'all' ? subjects : subjects.filter(s => s.semester === Number(semFilter));
+  const semesters = [...new Set(subjects.map((s) => s.semester))].sort((a, b) => a - b);
+  const filtered =
+    semFilter === 'all' ? subjects : subjects.filter((s) => s.semester === Number(semFilter));
 
   return (
     <div className="space-y-6">
       <div className="card overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b flex items-center justify-between flex-wrap gap-3">
-          <span className="font-semibold text-slate-700">📚 Department Subjects ({filtered.length})</span>
+          <span className="font-semibold text-slate-700">
+            📚 Department Subjects ({filtered.length})
+          </span>
           <select
             className="text-sm border rounded-lg px-3 py-1.5 text-slate-600"
             value={semFilter}
-            onChange={e => setSemFilter(e.target.value)}
+            onChange={(e) => setSemFilter(e.target.value)}
           >
             <option value="all">All Semesters</option>
-            {semesters.map(s => <option key={s} value={s}>Semester {s}</option>)}
+            {semesters.map((s) => (
+              <option key={s} value={s}>
+                Semester {s}
+              </option>
+            ))}
           </select>
         </div>
         {filtered.length > 0 ? (
@@ -70,7 +80,7 @@ export default function SubjectsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map(s => (
+                {filtered.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3 text-sm font-medium text-slate-700">{s.name}</td>
                     <td className="px-5 py-3 text-sm text-slate-500">{s.code}</td>
@@ -83,17 +93,37 @@ export default function SubjectsPage() {
                     <td className="px-5 py-3">
                       {editing === s.id ? (
                         <span className="inline-flex items-center gap-1">
-                          <input type="number" min="0" className="w-20 border rounded px-2 py-1 text-sm"
-                            value={editVal} onChange={e => setEditVal(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && saveTotalLectures(s.id)} autoFocus />
-                          <button onClick={() => saveTotalLectures(s.id)} disabled={saving}
-                            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">✓</button>
-                          <button onClick={() => setEditing(null)}
-                            className="text-xs px-2 py-1 bg-slate-200 text-slate-600 rounded hover:bg-slate-300">✕</button>
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-20 border rounded px-2 py-1 text-sm"
+                            value={editVal}
+                            onChange={(e) => setEditVal(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && saveTotalLectures(s.id)}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveTotalLectures(s.id)}
+                            disabled={saving}
+                            className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => setEditing(null)}
+                            className="text-xs px-2 py-1 bg-slate-200 text-slate-600 rounded hover:bg-slate-300"
+                          >
+                            ✕
+                          </button>
                         </span>
                       ) : (
-                        <button onClick={() => { setEditing(s.id); setEditVal(String(s.total_lectures || 0)); }}
-                          className="text-sm text-indigo-600 hover:underline">
+                        <button
+                          onClick={() => {
+                            setEditing(s.id);
+                            setEditVal(String(s.total_lectures || 0));
+                          }}
+                          className="text-sm text-indigo-600 hover:underline"
+                        >
                           {s.total_lectures || <span className="text-slate-400 italic">set</span>}
                         </button>
                       )}

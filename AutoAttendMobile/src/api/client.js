@@ -19,15 +19,10 @@ import axios from 'axios';
 import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, API_TIMEOUT } from '../config';
-import {
-  isPinningConfigured,
-  urlMatchesPinnedDomain,
-  PINNED_DOMAIN,
-} from '../utils/sslPinning';
 
-const TOKEN_KEY         = 'aa_auth_token';
+const TOKEN_KEY = 'aa_auth_token';
 const REFRESH_TOKEN_KEY = 'aa_refresh_token';
-const DEVICE_ID_KEY     = 'aa_device_id';
+const DEVICE_ID_KEY = 'aa_device_id';
 
 /**
  * Persist both tokens after login or rotation.
@@ -43,8 +38,12 @@ export async function saveAuthTokens(accessToken, refreshToken) {
 }
 
 export async function clearAuthTokens() {
-  try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch {}
-  try { await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY); } catch {}
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch {}
+  try {
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+  } catch {}
 }
 
 // ── JWT helpers ───────────────────────────────────────────────────────
@@ -53,7 +52,7 @@ export function decodeJWTPayload(token) {
   try {
     const [, payload] = String(token || '').split('.');
     if (!payload) return null;
-    const padded  = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
     const decoded = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
     return JSON.parse(decoded);
   } catch {
@@ -73,13 +72,18 @@ let _expiryAlertShown = false;
 function notifyExpiredOnce() {
   if (_expiryAlertShown) return;
   _expiryAlertShown = true;
-  Alert.alert(
-    'Session Expired',
-    'Your session has expired. Please log in again.',
-    [{ text: 'OK', onPress: () => { _expiryAlertShown = false; } }],
-  );
+  Alert.alert('Session Expired', 'Your session has expired. Please log in again.', [
+    {
+      text: 'OK',
+      onPress: () => {
+        _expiryAlertShown = false;
+      },
+    },
+  ]);
 }
-export function resetExpiryAlert() { _expiryAlertShown = false; }
+export function resetExpiryAlert() {
+  _expiryAlertShown = false;
+}
 
 // ── Unauthorized callback (set by AuthContext on mount) ───────────────
 let _onUnauthorized = null;
@@ -94,23 +98,19 @@ async function getDeviceId() {
 
   try {
     const Device = await import('expo-device');
-    const raw = [
-      Device.modelId,
-      Device.osVersion,
-      Device.deviceName,
-    ].filter(Boolean).join('|');
+    const raw = [Device.modelId, Device.osVersion, Device.deviceName].filter(Boolean).join('|');
 
     try {
       const Crypto = await import('expo-crypto');
-      id = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        raw,
-      );
+      id = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, raw);
     } catch {
       // expo-crypto not installed — use fast FNV-1a hash
-      id = raw.split('').reduce((h, c) => {
-        return (((h ^ c.charCodeAt(0)) >>> 0) * 0x01000193) >>> 0;
-      }, 0x811c9dc5).toString(16);
+      id = raw
+        .split('')
+        .reduce((h, c) => {
+          return (((h ^ c.charCodeAt(0)) >>> 0) * 0x01000193) >>> 0;
+        }, 0x811c9dc5)
+        .toString(16);
     }
   } catch {
     // expo-device not installed — generate a stable random UUID
@@ -135,22 +135,9 @@ const client = axios.create({
 client.interceptors.request.use(
   async (config) => {
     // ── SSL pin awareness (issue #10) ──────────────────────────────────
-    // Expo Go cannot terminate the TLS handshake, so we only LOG that pinning
-    // is configured for the production domain. This never blocks the request
-    // and is a no-op in development (Expo Go compatibility).
-    // TODO: Upgrade to full native SSL pinning with react-native-ssl-pinning
-    // when an EAS dev build is ready. Current implementation is JS-level
-    // awareness only.
-    if (!__DEV__ && isPinningConfigured()) {
-      const absoluteUrl = config.url?.startsWith('http')
-        ? config.url
-        : `${config.baseURL || ''}${config.url || ''}`;
-      if (urlMatchesPinnedDomain(absoluteUrl)) {
-        // eslint-disable-next-line no-console
-        console.log(`[ssl-pinning] active for ${PINNED_DOMAIN} (JS-level awareness)`);
-      }
-    }
-
+    // Expo Go cannot terminate the TLS handshake, so JS-level pinning is a
+    // no-op here. Full native SSL pinning is handled by the EAS native build
+    // configuration; this interceptor only attaches auth/device headers.
     const [token, deviceId] = await Promise.all([
       SecureStore.getItemAsync(TOKEN_KEY),
       getDeviceId(),
@@ -158,20 +145,24 @@ client.interceptors.request.use(
     if (token) {
       // Pre-flight expiry guard — never send a request with a dead token.
       if (isTokenExpired(token)) {
-        try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch {}
+        try {
+          await SecureStore.deleteItemAsync(TOKEN_KEY);
+        } catch {}
         notifyExpiredOnce();
         if (_onUnauthorized) {
-          try { await _onUnauthorized(); } catch {}
+          try {
+            await _onUnauthorized();
+          } catch {}
         }
         return Promise.reject(new axios.Cancel('Session expired'));
       }
       config.headers.Authorization = `Bearer ${token}`;
     }
-    config.headers['X-Device-ID']   = deviceId;
+    config.headers['X-Device-ID'] = deviceId;
     config.headers['X-Client-Type'] = 'mobile';
     return config;
   },
-  (error) => Promise.reject(error),
+  (error) => Promise.reject(error)
 );
 
 // ── Response interceptor ──────────────────────────────────────────────
@@ -190,15 +181,17 @@ async function tryRefreshToken() {
       {
         timeout: API_TIMEOUT,
         headers: {
-          'Content-Type':  'application/json',
-          'X-Device-ID':   deviceId,
+          'Content-Type': 'application/json',
+          'X-Device-ID': deviceId,
           'X-Client-Type': 'mobile',
         },
-      },
+      }
     );
     await saveAuthTokens(data.access_token, data.refresh_token);
     return data.access_token;
-  })().finally(() => { _refreshInFlight = null; });
+  })().finally(() => {
+    _refreshInFlight = null;
+  });
   return _refreshInFlight;
 }
 
@@ -206,8 +199,8 @@ client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error.response?.status;
-    const cfg    = error.config || {};
-    const url    = cfg.url || '';
+    const cfg = error.config || {};
+    const url = cfg.url || '';
     const isAuthCall =
       url.includes('/auth/login') ||
       url.includes('/auth/refresh') ||
@@ -217,7 +210,7 @@ client.interceptors.response.use(
       try {
         const newAccess = await tryRefreshToken();
         cfg._retried = true;
-        cfg.headers  = { ...(cfg.headers || {}), Authorization: `Bearer ${newAccess}` };
+        cfg.headers = { ...(cfg.headers || {}), Authorization: `Bearer ${newAccess}` };
         return client.request(cfg);
       } catch {
         await clearAuthTokens();
@@ -237,12 +230,12 @@ client.interceptors.response.use(
       Alert.alert(
         'Server Maintenance',
         'AutoAttend AI is currently under maintenance. Please try again later.',
-        [{ text: 'OK' }],
+        [{ text: 'OK' }]
       );
     }
 
     return Promise.reject(error);
-  },
+  }
 );
 
 export default client;

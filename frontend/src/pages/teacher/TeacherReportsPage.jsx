@@ -11,10 +11,7 @@ export default function TeacherReportsPage() {
   const [subjectFilter, setSubjectFilter] = useState('all');
 
   useEffect(() => {
-    Promise.all([
-      api.get('/faculty/my-sessions'),
-      api.get(`/faculty/${user.id}/classes`),
-    ])
+    Promise.all([api.get('/faculty/my-sessions'), api.get(`/faculty/${user.id}/classes`)])
       .then(([sesRes, clsRes]) => {
         setSessions(sesRes.data || []);
         setSubjects(clsRes.data || []);
@@ -36,13 +33,12 @@ export default function TeacherReportsPage() {
     return <div className="card p-8 text-center text-red-500">{error}</div>;
   }
 
-  const filtered = subjectFilter === 'all'
-    ? sessions
-    : sessions.filter(s => s.subject_code === subjectFilter);
+  const filtered =
+    subjectFilter === 'all' ? sessions : sessions.filter((s) => s.subject_code === subjectFilter);
 
   // Summary stats
   const totalSessions = filtered.length;
-  const endedSessions = filtered.filter(s => s.status === 'ended');
+  const endedSessions = filtered.filter((s) => s.status === 'ended');
   const totalStudentSlots = endedSessions.reduce((a, s) => a + (s.total_students || 0), 0);
   const totalPresent = endedSessions.reduce((a, s) => a + (s.present_count || 0), 0);
   const avgPct = totalStudentSlots > 0 ? Math.round((totalPresent / totalStudentSlots) * 100) : 0;
@@ -66,11 +62,17 @@ export default function TeacherReportsPage() {
     for (const s of filtered) {
       const pct = s.total_students ? Math.round((s.present_count / s.total_students) * 100) : 0;
       rows.push([
-        s.subject_name, s.subject_code, s.date, s.start_time?.slice(0, 5) || '',
-        s.status, s.present_count, s.total_students, `${pct}%`,
+        s.subject_name,
+        s.subject_code,
+        s.date,
+        s.start_time?.slice(0, 5) || '',
+        s.status,
+        s.present_count,
+        s.total_students,
+        `${pct}%`,
       ]);
     }
-    const csv = rows.map(r => r.join(',')).join('\n');
+    const csv = rows.map((r) => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -97,7 +99,11 @@ export default function TeacherReportsPage() {
           <p className="text-sm text-slate-500">Total Student Slots</p>
         </div>
         <div className="card p-4 text-center">
-          <p className={`text-2xl font-bold ${avgPct >= 75 ? 'text-emerald-600' : avgPct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{avgPct}%</p>
+          <p
+            className={`text-2xl font-bold ${avgPct >= 75 ? 'text-emerald-600' : avgPct >= 60 ? 'text-amber-500' : 'text-red-500'}`}
+          >
+            {avgPct}%
+          </p>
           <p className="text-sm text-slate-500">Avg Attendance</p>
         </div>
       </div>
@@ -109,13 +115,17 @@ export default function TeacherReportsPage() {
             📊 Subject-wise Breakdown
           </div>
           <div className="divide-y">
-            {Object.values(subjectStats).map(ss => {
+            {Object.values(subjectStats).map((ss) => {
               const pct = ss.total > 0 ? Math.round((ss.present / ss.total) * 100) : 0;
               return (
                 <div key={ss.code} className="px-5 py-3 flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-slate-700">{ss.name} <span className="text-slate-400 text-sm">({ss.code})</span></p>
-                    <p className="text-xs text-slate-400">{ss.sessions} session{ss.sessions !== 1 ? 's' : ''}</p>
+                    <p className="font-medium text-slate-700">
+                      {ss.name} <span className="text-slate-400 text-sm">({ss.code})</span>
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {ss.sessions} session{ss.sessions !== 1 ? 's' : ''}
+                    </p>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="w-32 bg-slate-200 rounded-full h-2 hidden sm:block">
@@ -124,7 +134,9 @@ export default function TeacherReportsPage() {
                         style={{ width: `${Math.min(pct, 100)}%` }}
                       />
                     </div>
-                    <span className={`text-sm font-bold min-w-[3rem] text-right ${pct >= 75 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
+                    <span
+                      className={`text-sm font-bold min-w-[3rem] text-right ${pct >= 75 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}
+                    >
                       {pct}%
                     </span>
                   </div>
@@ -143,11 +155,13 @@ export default function TeacherReportsPage() {
             <select
               className="text-sm border rounded-lg px-3 py-1.5 text-slate-600"
               value={subjectFilter}
-              onChange={e => setSubjectFilter(e.target.value)}
+              onChange={(e) => setSubjectFilter(e.target.value)}
             >
               <option value="all">All Subjects</option>
-              {subjects.map(s => (
-                <option key={s.id} value={s.code}>{s.name} ({s.code})</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.code}>
+                  {s.name} ({s.code})
+                </option>
               ))}
             </select>
           </div>
@@ -173,23 +187,38 @@ export default function TeacherReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.map(s => {
-                  const pct = s.total_students ? Math.round((s.present_count / s.total_students) * 100) : 0;
+                {filtered.map((s) => {
+                  const pct = s.total_students
+                    ? Math.round((s.present_count / s.total_students) * 100)
+                    : 0;
                   return (
                     <tr key={s.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3 text-sm font-medium text-slate-700">
                         {s.subject_name} <span className="text-slate-400">({s.subject_code})</span>
                       </td>
                       <td className="px-5 py-3 text-sm text-slate-500">{s.date}</td>
-                      <td className="px-5 py-3 text-sm text-slate-500">{s.start_time?.slice(0, 5)}</td>
-                      <td className="px-5 py-3">
-                        <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full ${
-                          s.status === 'active' ? 'bg-green-100 text-green-700' :
-                          s.status === 'ended'  ? 'bg-blue-100 text-blue-700'  : 'bg-amber-100 text-amber-700'
-                        }`}>{s.status}</span>
+                      <td className="px-5 py-3 text-sm text-slate-500">
+                        {s.start_time?.slice(0, 5)}
                       </td>
-                      <td className="px-5 py-3 text-sm">{s.present_count}/{s.total_students}</td>
-                      <td className={`px-5 py-3 text-sm font-bold ${pct >= 75 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
+                      <td className="px-5 py-3">
+                        <span
+                          className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full ${
+                            s.status === 'active'
+                              ? 'bg-green-100 text-green-700'
+                              : s.status === 'ended'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {s.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-sm">
+                        {s.present_count}/{s.total_students}
+                      </td>
+                      <td
+                        className={`px-5 py-3 text-sm font-bold ${pct >= 75 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}
+                      >
                         {pct}%
                       </td>
                     </tr>

@@ -20,8 +20,8 @@ export default function BlockedScreen() {
       </View>
       <Text style={styles.title}>Security Warning</Text>
       <Text style={styles.message}>
-        AutoAttend cannot run on rooted or jailbroken devices. This policy
-        protects the integrity of attendance records.
+        AutoAttend cannot run on rooted or jailbroken devices. This policy protects the integrity of
+        attendance records.
       </Text>
     </View>
   );

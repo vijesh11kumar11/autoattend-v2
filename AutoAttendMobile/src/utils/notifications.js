@@ -16,7 +16,7 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge:  true,
+    shouldSetBadge: true,
   }),
 });
 
@@ -72,18 +72,16 @@ export async function registerForPushNotifications() {
  * Returns a cleanup function.
  */
 export function setupNotificationResponseListener() {
-  const subscription = Notifications.addNotificationResponseReceivedListener(
-    (response) => {
-      const data = response.notification.request.content.data ?? {};
+  const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+    const data = response.notification.request.content.data ?? {};
 
-      // Deep link: if the notification says to open ScanQR, navigate there
-      if (data.screen === 'ScanQR' || data.type === 'session_started') {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('ScanQR');
-        }
+    // Deep link: if the notification says to open ScanQR, navigate there
+    if (data.screen === 'ScanQR' || data.type === 'session_started') {
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('ScanQR');
       }
-    },
-  );
+    }
+  });
 
   return () => subscription.remove();
 }

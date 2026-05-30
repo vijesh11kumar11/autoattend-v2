@@ -19,14 +19,19 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
 // ── Constants ─────────────────────────────────────────────────────────
-const QR_POLL_MS         = 4000;
+const QR_POLL_MS = 4000;
 const ATTENDANCE_POLL_MS = 10000;
-const QR_SLOT_SECONDS    = 5;
-const END_CONFIRM_SECS   = 4;
+const QR_SLOT_SECONDS = 5;
+const END_CONFIRM_SECS = 4;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 function initials(name = '') {
-  return name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
 }
 
 function formatClock(seconds) {
@@ -39,16 +44,21 @@ function formatIST(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleTimeString('en-IN', {
     timeZone: 'Asia/Kolkata',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
   });
 }
 
 // ── Avatar ────────────────────────────────────────────────────────────
 function Avatar({ name }) {
   return (
-    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0
+    <div
+      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0
                     text-white text-xs font-bold select-none"
-         style={{ background: '#1a237e' }}>
+      style={{ background: '#1a237e' }}
+    >
       {initials(name)}
     </div>
   );
@@ -56,7 +66,7 @@ function Avatar({ name }) {
 
 // ── Countdown bar (0 → 5 seconds) ─────────────────────────────────────
 function CountdownBar({ countdown }) {
-  const pct    = (countdown / QR_SLOT_SECONDS) * 100;
+  const pct = (countdown / QR_SLOT_SECONDS) * 100;
   const urgent = countdown <= 1;
   return (
     <div className="space-y-1.5">
@@ -79,11 +89,11 @@ function CountdownBar({ countdown }) {
 
 // ── Manual Override Dialog ────────────────────────────────────────────
 const OVERRIDE_OPTIONS = [
-  { value: 'present',       label: '✅ Present'       },
-  { value: 'late',          label: '⏰ Late'           },
-  { value: 'medical_leave', label: '🏥 Medical Leave'  },
-  { value: 'duty_leave',    label: '📋 Duty Leave'     },
-  { value: 'absent',        label: '❌ Absent'         },
+  { value: 'present', label: '✅ Present' },
+  { value: 'late', label: '⏰ Late' },
+  { value: 'medical_leave', label: '🏥 Medical Leave' },
+  { value: 'duty_leave', label: '📋 Duty Leave' },
+  { value: 'absent', label: '❌ Absent' },
 ];
 
 function OverrideDialog({ student, onConfirm, onClose, loading }) {
@@ -93,7 +103,9 @@ function OverrideDialog({ student, onConfirm, onClose, loading }) {
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 fade-in">
         <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
@@ -115,7 +127,9 @@ function OverrideDialog({ student, onConfirm, onClose, loading }) {
             disabled={loading}
           >
             {OVERRIDE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
         </div>
@@ -147,7 +161,14 @@ function OverrideDialog({ student, onConfirm, onClose, loading }) {
             onClick={() => onConfirm(status, reason)}
             disabled={reason.trim().length < 5 || loading}
           >
-            {loading ? <><div className="spinner" />Saving…</> : 'Confirm Override'}
+            {loading ? (
+              <>
+                <div className="spinner" />
+                Saving…
+              </>
+            ) : (
+              'Confirm Override'
+            )}
           </button>
         </div>
       </div>
@@ -169,49 +190,50 @@ export default function GenerateQRPage() {
   const [phase, setPhase] = useState('setup');
 
   // ── Setup form ────────────────────────────────────────────────────
-  const [subjects,        setSubjects]        = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [subjectsLoading, setSubjectsLoading] = useState(true);
-  const [subjectsError,   setSubjectsError]   = useState(false);
-  const [selectedSubId,   setSelectedSubId]   = useState('');
-  const [room,            setRoom]            = useState('');
-  const [gpsStatus,       setGpsStatus]       = useState('idle'); // idle|getting|got|error
-  const [gpsCoords,       setGpsCoords]       = useState(null);
-  const [startLoading,    setStartLoading]    = useState(false);
-  const [startError,      setStartError]      = useState('');
+  const [subjectsError, setSubjectsError] = useState(false);
+  const [selectedSubId, setSelectedSubId] = useState('');
+  const [room, setRoom] = useState('');
+  const [gpsStatus, setGpsStatus] = useState('idle'); // idle|getting|got|error
+  const [gpsCoords, setGpsCoords] = useState(null);
+  const [startLoading, setStartLoading] = useState(false);
+  const [startError, setStartError] = useState('');
 
   // ── Timetable class selector ──────────────────────────────────────
-  const [todayClasses, setTodayClasses]       = useState([]);
-  const [selectedTTId, setSelectedTTId]       = useState(null);  // timetable_id for start-from-timetable
-  const [setupMode, setSetupMode]             = useState('timetable'); // 'timetable' | 'adhoc'
+  const [todayClasses, setTodayClasses] = useState([]);
+  const [selectedTTId, setSelectedTTId] = useState(null); // timetable_id for start-from-timetable
+  const [setupMode, setSetupMode] = useState('timetable'); // 'timetable' | 'adhoc'
 
   // ── Active session ────────────────────────────────────────────────
-  const [session,        setSession]        = useState(null);  // StartSessionResponse
-  const [qrData,         setQrData]         = useState('');
-  const [countdown,      setCountdown]      = useState(QR_SLOT_SECONDS);
+  const [session, setSession] = useState(null); // StartSessionResponse
+  const [qrData, setQrData] = useState('');
+  const [countdown, setCountdown] = useState(QR_SLOT_SECONDS);
   const [sessionElapsed, setSessionElapsed] = useState(0);
 
   // ── End confirm ───────────────────────────────────────────────────
-  const [endState,     setEndState]     = useState('idle'); // idle|confirming
+  const [endState, setEndState] = useState('idle'); // idle|confirming
   const [endCountdown, setEndCountdown] = useState(END_CONFIRM_SECS);
 
   // ── Attendance board ──────────────────────────────────────────────
-  const [attendance,      setAttendance]      = useState(null); // SessionStatusResponse
-  const [activeTab,       setActiveTab]       = useState('present');
+  const [attendance, setAttendance] = useState(null); // SessionStatusResponse
+  const [activeTab, setActiveTab] = useState('present');
   const [overrideStudent, setOverrideStudent] = useState(null);
   const [overrideLoading, setOverrideLoading] = useState(false);
 
   // ── Refs (timers/pollers) ─────────────────────────────────────────
-  const qrPollRef         = useRef(null);
+  const qrPollRef = useRef(null);
   const attendancePollRef = useRef(null);
-  const countdownRef      = useRef(null);
-  const sessionTimerRef   = useRef(null);
-  const sessionStartRef   = useRef(null);
-  const endTimerRef       = useRef(null);
-  const endIntervalRef    = useRef(null);
+  const countdownRef = useRef(null);
+  const sessionTimerRef = useRef(null);
+  const sessionStartRef = useRef(null);
+  const endTimerRef = useRef(null);
+  const endIntervalRef = useRef(null);
 
   // ── Load teacher's subjects ────────────────────────────────────────
   useEffect(() => {
-    api.get(`/faculty/${user.id}/classes`)
+    api
+      .get(`/faculty/${user.id}/classes`)
       .then(({ data }) => {
         setSubjects(data);
         if (data.length === 1) setSelectedSubId(String(data[0].id));
@@ -222,7 +244,8 @@ export default function GenerateQRPage() {
 
   // ── Load today's timetable classes ─────────────────────────────────
   useEffect(() => {
-    api.get('/timetable/my-today')
+    api
+      .get('/timetable/my-today')
       .then(({ data }) => {
         setTodayClasses(data || []);
         if (!data || data.length === 0) setSetupMode('adhoc');
@@ -257,7 +280,9 @@ export default function GenerateQRPage() {
     try {
       const { data } = await api.get(`/qr/token/${sid}`);
       if (data.qr_data) setQrData(data.qr_data);
-    } catch { /* silent — old QR still displayed */ }
+    } catch {
+      /* silent — old QR still displayed */
+    }
   }, []);
 
   // ── Attendance fetch ──────────────────────────────────────────────
@@ -265,7 +290,9 @@ export default function GenerateQRPage() {
     try {
       const { data } = await api.get(`/attendance/session/${sid}`);
       setAttendance(data);
-    } catch { /* silent */ }
+    } catch {
+      /* silent */
+    }
   }, []);
 
   // ── Start polling once session becomes active ─────────────────────
@@ -274,7 +301,7 @@ export default function GenerateQRPage() {
     const sid = session.session_id;
     fetchQR(sid);
     fetchAttendance(sid);
-    qrPollRef.current         = setInterval(() => fetchQR(sid),         QR_POLL_MS);
+    qrPollRef.current = setInterval(() => fetchQR(sid), QR_POLL_MS);
     attendancePollRef.current = setInterval(() => fetchAttendance(sid), ATTENDANCE_POLL_MS);
     return () => {
       clearInterval(qrPollRef.current);
@@ -283,13 +310,22 @@ export default function GenerateQRPage() {
   }, [phase, session, fetchQR, fetchAttendance]);
 
   // ── Global cleanup on unmount ─────────────────────────────────────
-  useEffect(() => () => {
-    [qrPollRef, attendancePollRef, countdownRef,
-     sessionTimerRef, endTimerRef, endIntervalRef].forEach((r) => {
-      clearInterval(r.current);
-      clearTimeout(r.current);
-    });
-  }, []);
+  useEffect(
+    () => () => {
+      [
+        qrPollRef,
+        attendancePollRef,
+        countdownRef,
+        sessionTimerRef,
+        endTimerRef,
+        endIntervalRef,
+      ].forEach((r) => {
+        clearInterval(r.current);
+        clearTimeout(r.current);
+      });
+    },
+    []
+  );
 
   // ── GPS ───────────────────────────────────────────────────────────
   function requestGPS() {
@@ -300,13 +336,16 @@ export default function GenerateQRPage() {
         setGpsStatus('got');
       },
       () => setGpsStatus('error'),
-      { enableHighAccuracy: true, timeout: 10000 },
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   }
 
   const getGPSCoords = () =>
     new Promise((resolve) => {
-      if (gpsCoords) { resolve(gpsCoords); return; }
+      if (gpsCoords) {
+        resolve(gpsCoords);
+        return;
+      }
       setGpsStatus('getting');
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => {
@@ -315,8 +354,11 @@ export default function GenerateQRPage() {
           setGpsStatus('got');
           resolve(c);
         },
-        () => { setGpsStatus('error'); resolve(null); },
-        { enableHighAccuracy: true, timeout: 10000 },
+        () => {
+          setGpsStatus('error');
+          resolve(null);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
       );
     });
 
@@ -335,7 +377,7 @@ export default function GenerateQRPage() {
       }
       try {
         const { data } = await api.post(`/timetable/start-from-timetable/${selectedTTId}`, {
-          teacher_latitude:  coords.latitude,
+          teacher_latitude: coords.latitude,
           teacher_longitude: coords.longitude,
         });
         setSession(data);
@@ -349,7 +391,10 @@ export default function GenerateQRPage() {
     }
 
     // Ad-hoc start
-    if (!selectedSubId) { setStartError('Please select a subject.'); return; }
+    if (!selectedSubId) {
+      setStartError('Please select a subject.');
+      return;
+    }
 
     setStartLoading(true);
     const coords = await getGPSCoords();
@@ -361,9 +406,9 @@ export default function GenerateQRPage() {
 
     try {
       const { data } = await api.post('/attendance/start-session', {
-        subject_id:        parseInt(selectedSubId),
-        date:              today,
-        teacher_latitude:  coords.latitude,
+        subject_id: parseInt(selectedSubId),
+        date: today,
+        teacher_latitude: coords.latitude,
         teacher_longitude: coords.longitude,
       });
       setSession(data);
@@ -380,8 +425,7 @@ export default function GenerateQRPage() {
     if (endState === 'idle') {
       setEndState('confirming');
       setEndCountdown(END_CONFIRM_SECS);
-      endIntervalRef.current = setInterval(() =>
-        setEndCountdown((c) => Math.max(0, c - 1)), 1000);
+      endIntervalRef.current = setInterval(() => setEndCountdown((c) => Math.max(0, c - 1)), 1000);
       endTimerRef.current = setTimeout(doEndSession, END_CONFIRM_SECS * 1000);
     } else {
       clearTimeout(endTimerRef.current);
@@ -402,9 +446,12 @@ export default function GenerateQRPage() {
     setEndState('idle');
     try {
       await api.post(`/attendance/end-session/${session.session_id}`);
-    } catch { /* ignore — session may already have timed out */ }
+    } catch {
+      /* ignore — session may already have timed out */
+    }
     [qrPollRef, attendancePollRef, sessionTimerRef, countdownRef].forEach((r) =>
-      clearInterval(r.current));
+      clearInterval(r.current)
+    );
     await fetchAttendance(session.session_id);
     setPhase('ended');
   }
@@ -421,30 +468,33 @@ export default function GenerateQRPage() {
       });
       setOverrideStudent(null);
       await fetchAttendance(session.session_id);
-    } catch { /* handle silently for now */ }
-    finally { setOverrideLoading(false); }
+    } catch {
+      /* handle silently for now */
+    } finally {
+      setOverrideLoading(false);
+    }
   }
 
   // ── Download CSV ──────────────────────────────────────────────────
   function handleDownload() {
     if (!attendance?.students) return;
-    const header  = ['Roll No', 'Name', 'Status', 'Marked At (IST)', 'Face', 'GPS', 'Bluetooth'];
-    const rows    = attendance.students.map((s) => [
+    const header = ['Roll No', 'Name', 'Status', 'Marked At (IST)', 'Face', 'GPS', 'Bluetooth'];
+    const rows = attendance.students.map((s) => [
       s.roll_number ?? '',
       s.name,
       s.status,
       formatIST(s.marked_at),
-      s.face_verified      ? 'Yes' : 'No',
-      s.gps_verified       ? 'Yes' : 'No',
+      s.face_verified ? 'Yes' : 'No',
+      s.gps_verified ? 'Yes' : 'No',
       s.bluetooth_verified ? 'Yes' : 'No',
     ]);
-    const csv  = [header, ...rows]
+    const csv = [header, ...rows]
       .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement('a'), {
-      href:     url,
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), {
+      href: url,
       download: `attendance_session_${session.session_id}_${today}.csv`,
     });
     document.body.appendChild(a);
@@ -454,28 +504,29 @@ export default function GenerateQRPage() {
   }
 
   // ── Derived attendance numbers ───────────────────────────────────
-  const allStudents    = attendance?.students ?? [];
-  const presentStud    = allStudents.filter((s) => s.status === 'present');
-  const absentStud     = allStudents.filter((s) => s.status !== 'present');
-  const totalCount     = attendance?.total_students  ?? session?.total_students ?? 0;
-  const presentCount   = attendance?.present_count   ?? presentStud.length;
-  const presentPct     = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+  const allStudents = attendance?.students ?? [];
+  const presentStud = allStudents.filter((s) => s.status === 'present');
+  const absentStud = allStudents.filter((s) => s.status !== 'present');
+  const totalCount = attendance?.total_students ?? session?.total_students ?? 0;
+  const presentCount = attendance?.present_count ?? presentStud.length;
+  const presentPct = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
-  const pctTextColor = presentPct >= 75 ? 'text-success'
-    : presentPct >= 50 ? 'text-warning' : 'text-danger';
-  const pctBarColor  = presentPct >= 75 ? 'bg-success'
-    : presentPct >= 50 ? 'bg-warning'   : 'bg-danger';
+  const pctTextColor =
+    presentPct >= 75 ? 'text-success' : presentPct >= 50 ? 'text-warning' : 'text-danger';
+  const pctBarColor =
+    presentPct >= 75 ? 'bg-success' : presentPct >= 50 ? 'bg-warning' : 'bg-danger';
 
   // ─────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-
       {/* ── Session-ended success banner ── */}
       {phase === 'ended' && (
-        <div className="bg-green-50 border border-green-200 text-green-800 rounded-xl
-                        px-5 py-4 flex items-center gap-3 fade-in">
+        <div
+          className="bg-green-50 border border-green-200 text-green-800 rounded-xl
+                        px-5 py-4 flex items-center gap-3 fade-in"
+        >
           <span className="text-2xl">✅</span>
           <div>
             <p className="font-semibold">Session Ended</p>
@@ -501,12 +552,10 @@ export default function GenerateQRPage() {
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-
         {/* ══════════════════════════════════════════
             LEFT COLUMN — Setup / QR Display
         ══════════════════════════════════════════ */}
         <div className="space-y-4">
-
           {/* ── SETUP CARD ── */}
           {phase === 'setup' && (
             <div className="card space-y-5 fade-in">
@@ -516,25 +565,36 @@ export default function GenerateQRPage() {
               </div>
 
               {startError && (
-                <div role="alert"
-                     className="bg-red-50 border border-red-200 text-red-700 rounded-lg
-                                px-4 py-3 text-sm flex gap-2">
-                  <span>⚠️</span>{startError}
+                <div
+                  role="alert"
+                  className="bg-red-50 border border-red-200 text-red-700 rounded-lg
+                                px-4 py-3 text-sm flex gap-2"
+                >
+                  <span>⚠️</span>
+                  {startError}
                 </div>
               )}
 
               {/* Mode toggle: timetable vs ad-hoc */}
               <div className="flex rounded-lg bg-slate-100 p-1">
                 <button
-                  onClick={() => { setSetupMode('timetable'); setSelectedTTId(null); }}
+                  onClick={() => {
+                    setSetupMode('timetable');
+                    setSelectedTTId(null);
+                  }}
                   className={`flex-1 text-sm font-medium py-2 rounded-md transition ${
-                    setupMode === 'timetable' ? 'bg-white text-[#1a237e] shadow-sm' : 'text-slate-500'
+                    setupMode === 'timetable'
+                      ? 'bg-white text-[#1a237e] shadow-sm'
+                      : 'text-slate-500'
                   }`}
                 >
                   📅 Today's Classes
                 </button>
                 <button
-                  onClick={() => { setSetupMode('adhoc'); setSelectedSubId(''); }}
+                  onClick={() => {
+                    setSetupMode('adhoc');
+                    setSelectedSubId('');
+                  }}
                   className={`flex-1 text-sm font-medium py-2 rounded-md transition ${
                     setupMode === 'adhoc' ? 'bg-white text-[#1a237e] shadow-sm' : 'text-slate-500'
                   }`}
@@ -549,45 +609,60 @@ export default function GenerateQRPage() {
                   <label className="label">Select today's class</label>
                   {todayClasses.length > 0 ? (
                     <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {todayClasses.map(slot => (
+                      {todayClasses.map((slot) => (
                         <button
                           key={slot.timetable_id}
-                          onClick={() => { setSelectedTTId(slot.timetable_id); setRoom(slot.room || ''); }}
-                          disabled={slot.session_status === 'active' || slot.session_status === 'ended'}
+                          onClick={() => {
+                            setSelectedTTId(slot.timetable_id);
+                            setRoom(slot.room || '');
+                          }}
+                          disabled={
+                            slot.session_status === 'active' || slot.session_status === 'ended'
+                          }
                           className={`w-full text-left px-4 py-3 rounded-lg border transition ${
                             selectedTTId === slot.timetable_id
                               ? 'border-[#1a237e] bg-blue-50 ring-1 ring-[#1a237e]'
                               : slot.session_status === 'active'
-                              ? 'border-green-200 bg-green-50 opacity-60 cursor-not-allowed'
-                              : slot.session_status === 'ended'
-                              ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
-                              : 'border-slate-200 hover:border-[#1a237e] hover:bg-blue-50/50'
+                                ? 'border-green-200 bg-green-50 opacity-60 cursor-not-allowed'
+                                : slot.session_status === 'ended'
+                                  ? 'border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed'
+                                  : 'border-slate-200 hover:border-[#1a237e] hover:bg-blue-50/50'
                           }`}
                         >
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-medium text-slate-700 text-sm">
                                 {slot.subject_name}
-                                <span className="text-slate-400 text-xs ml-1">({slot.subject_code})</span>
+                                <span className="text-slate-400 text-xs ml-1">
+                                  ({slot.subject_code})
+                                </span>
                               </p>
                               <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
-                                <span className="font-mono">{slot.start_time} – {slot.end_time}</span>
+                                <span className="font-mono">
+                                  {slot.start_time} – {slot.end_time}
+                                </span>
                                 {slot.room && <span>🏫 {slot.room}</span>}
                                 {slot.section_name && <span>👥 {slot.section_name}</span>}
                               </div>
                             </div>
                             {slot.session_status === 'active' && (
-                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Active</span>
+                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                                Active
+                              </span>
                             )}
                             {slot.session_status === 'ended' && (
-                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Done</span>
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                                Done
+                              </span>
                             )}
                           </div>
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-400 py-2">No classes scheduled today. Use ad-hoc mode.</p>
+                    <p className="text-sm text-slate-400 py-2">
+                      No classes scheduled today. Use ad-hoc mode.
+                    </p>
                   )}
                 </div>
               )}
@@ -598,9 +673,16 @@ export default function GenerateQRPage() {
                   <label className="label">Subject</label>
                   {subjectsLoading ? (
                     <div className="input-field text-slate-400 flex items-center gap-2">
-                      <div style={{ width: 16, height: 16, borderRadius: '50%',
-                                    border: '2px solid #e2e8f0', borderTopColor: '#64748b',
-                                    animation: 'spin 0.7s linear infinite' }} />
+                      <div
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: '50%',
+                          border: '2px solid #e2e8f0',
+                          borderTopColor: '#64748b',
+                          animation: 'spin 0.7s linear infinite',
+                        }}
+                      />
                       Loading your subjects…
                     </div>
                   ) : subjectsError || subjects.length === 0 ? (
@@ -657,30 +739,35 @@ export default function GenerateQRPage() {
               </div>
 
               {/* GPS status pill */}
-              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm
+              <div
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm
                               border ${
                                 gpsStatus === 'got'
                                   ? 'bg-green-50 border-green-200 text-green-700'
                                   : gpsStatus === 'error'
-                                  ? 'bg-red-50 border-red-200 text-red-700'
-                                  : gpsStatus === 'getting'
-                                  ? 'bg-blue-50 border-blue-200 text-blue-700'
-                                  : 'bg-slate-50 border-slate-200 text-slate-500'
-                              }`}>
+                                    ? 'bg-red-50 border-red-200 text-red-700'
+                                    : gpsStatus === 'getting'
+                                      ? 'bg-blue-50 border-blue-200 text-blue-700'
+                                      : 'bg-slate-50 border-slate-200 text-slate-500'
+                              }`}
+              >
                 <span>
-                  {gpsStatus === 'got' ? '📍'
-                    : gpsStatus === 'error' ? '⚠️'
-                    : gpsStatus === 'getting' ? '🔄'
-                    : '🗺️'}
+                  {gpsStatus === 'got'
+                    ? '📍'
+                    : gpsStatus === 'error'
+                      ? '⚠️'
+                      : gpsStatus === 'getting'
+                        ? '🔄'
+                        : '🗺️'}
                 </span>
                 <span className="flex-1">
                   {gpsStatus === 'got'
                     ? `GPS ready — (${gpsCoords.latitude.toFixed(5)}, ${gpsCoords.longitude.toFixed(5)})`
                     : gpsStatus === 'getting'
-                    ? 'Getting your location…'
-                    : gpsStatus === 'error'
-                    ? 'Location access denied — will retry when session starts'
-                    : 'GPS will be requested when session starts'}
+                      ? 'Getting your location…'
+                      : gpsStatus === 'error'
+                        ? 'Location access denied — will retry when session starts'
+                        : 'GPS will be requested when session starts'}
                 </span>
                 {(gpsStatus === 'idle' || gpsStatus === 'error') && (
                   <button
@@ -696,11 +783,21 @@ export default function GenerateQRPage() {
                 className="btn-primary w-full py-3 text-base"
                 style={{ background: '#1a237e' }}
                 onClick={handleStart}
-                disabled={startLoading || (setupMode === 'adhoc' && (subjectsLoading || subjects.length === 0 || !selectedSubId)) || (setupMode === 'timetable' && !selectedTTId)}
+                disabled={
+                  startLoading ||
+                  (setupMode === 'adhoc' &&
+                    (subjectsLoading || subjects.length === 0 || !selectedSubId)) ||
+                  (setupMode === 'timetable' && !selectedTTId)
+                }
               >
-                {startLoading
-                  ? <><div className="spinner" />Starting session…</>
-                  : '▶ Start Session'}
+                {startLoading ? (
+                  <>
+                    <div className="spinner" />
+                    Starting session…
+                  </>
+                ) : (
+                  '▶ Start Session'
+                )}
               </button>
             </div>
           )}
@@ -708,7 +805,6 @@ export default function GenerateQRPage() {
           {/* ── QR DISPLAY CARD ── */}
           {(phase === 'active' || phase === 'ended') && session && (
             <div className="card space-y-5 fade-in">
-
               {/* Header row */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -722,11 +818,15 @@ export default function GenerateQRPage() {
                 </div>
 
                 {phase === 'active' ? (
-                  <div className="flex items-center gap-1.5 bg-green-50 border border-green-200
-                                  rounded-full px-3 py-1 flex-shrink-0">
+                  <div
+                    className="flex items-center gap-1.5 bg-green-50 border border-green-200
+                                  rounded-full px-3 py-1 flex-shrink-0"
+                  >
                     <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full
-                                       rounded-full bg-green-400 opacity-75" />
+                      <span
+                        className="animate-ping absolute inline-flex h-full w-full
+                                       rounded-full bg-green-400 opacity-75"
+                      />
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
                     </span>
                     <span className="text-xs font-semibold text-green-700">LIVE</span>
@@ -751,11 +851,18 @@ export default function GenerateQRPage() {
                     />
                   ) : (
                     <div className="w-[280px] h-[280px] flex items-center justify-center">
-                      <div style={{
-                        width: 48, height: 48, borderRadius: '50%', borderWidth: 4,
-                        borderStyle: 'solid', borderColor: '#e2e8f0',
-                        borderTopColor: '#1a237e', animation: 'spin 0.7s linear infinite',
-                      }} />
+                      <div
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
+                          borderWidth: 4,
+                          borderStyle: 'solid',
+                          borderColor: '#e2e8f0',
+                          borderTopColor: '#1a237e',
+                          animation: 'spin 0.7s linear infinite',
+                        }}
+                      />
                     </div>
                   )}
                 </div>
@@ -769,18 +876,22 @@ export default function GenerateQRPage() {
               </div>
 
               {/* Security notice */}
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5
-                              flex gap-2 text-xs text-amber-800">
+              <div
+                className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5
+                              flex gap-2 text-xs text-amber-800"
+              >
                 <span className="flex-shrink-0 mt-0.5">🔒</span>
                 <span>
-                  This QR is cryptographically protected and changes every 5 seconds.
-                  Screenshots and screen recording are blocked on mobile devices.
+                  This QR is cryptographically protected and changes every 5 seconds. Screenshots
+                  and screen recording are blocked on mobile devices.
                 </span>
               </div>
 
               {/* BLE status — always unavailable on web */}
-              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5
-                              flex gap-2 text-xs text-red-700">
+              <div
+                className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5
+                              flex gap-2 text-xs text-red-700"
+              >
                 <span className="flex-shrink-0 mt-0.5">📡</span>
                 <div>
                   <p className="font-semibold">Bluetooth Beacon: NOT AVAILABLE</p>
@@ -792,17 +903,17 @@ export default function GenerateQRPage() {
 
               {/* Session timer row */}
               {phase === 'active' && (
-                <div className="flex items-center justify-between text-sm pt-2
-                                border-t border-slate-100">
+                <div
+                  className="flex items-center justify-between text-sm pt-2
+                                border-t border-slate-100"
+                >
                   <span className="text-slate-500">
                     ⏱ Session active:{' '}
                     <span className="font-mono font-semibold text-slate-700">
                       {formatClock(sessionElapsed)}
                     </span>
                   </span>
-                  <span className="text-slate-500">
-                    {session.total_students} enrolled
-                  </span>
+                  <span className="text-slate-500">{session.total_students} enrolled</span>
                 </div>
               )}
 
@@ -833,11 +944,12 @@ export default function GenerateQRPage() {
             RIGHT COLUMN — Live Attendance Board
         ══════════════════════════════════════════ */}
         <div className="space-y-4">
-
           {/* Placeholder before session starts */}
           {phase === 'setup' && (
-            <div className="card flex flex-col items-center justify-center py-20
-                            text-center space-y-3 fade-in">
+            <div
+              className="card flex flex-col items-center justify-center py-20
+                            text-center space-y-3 fade-in"
+            >
               <span className="text-6xl">📊</span>
               <p className="font-semibold text-slate-600">Live attendance appears here</p>
               <p className="text-sm text-slate-400">Start a session to see real-time data.</p>
@@ -847,7 +959,6 @@ export default function GenerateQRPage() {
           {/* Live board */}
           {(phase === 'active' || phase === 'ended') && (
             <div className="card space-y-4 fade-in">
-
               {/* Header */}
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold text-slate-800">Live Attendance</h2>
@@ -864,9 +975,9 @@ export default function GenerateQRPage() {
               {/* Stats grid */}
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: 'Present', value: presentCount,               color: 'text-success' },
-                  { label: 'Absent',  value: totalCount - presentCount,  color: 'text-danger'  },
-                  { label: 'Total',   value: totalCount,                 color: 'text-slate-700' },
+                  { label: 'Present', value: presentCount, color: 'text-success' },
+                  { label: 'Absent', value: totalCount - presentCount, color: 'text-danger' },
+                  { label: 'Total', value: totalCount, color: 'text-slate-700' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="bg-slate-50 rounded-xl p-3 text-center">
                     <p className={`text-2xl font-extrabold tabular-nums ${color}`}>{value}</p>
@@ -877,9 +988,7 @@ export default function GenerateQRPage() {
 
               {/* Large percentage */}
               <div className="text-center">
-                <p className={`text-6xl font-black tabular-nums ${pctTextColor}`}>
-                  {presentPct}%
-                </p>
+                <p className={`text-6xl font-black tabular-nums ${pctTextColor}`}>{presentPct}%</p>
                 <p className="text-xs text-slate-400 mt-1">Attendance rate</p>
               </div>
 
@@ -895,15 +1004,17 @@ export default function GenerateQRPage() {
               <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
                 {[
                   { key: 'present', label: `✅ Present (${presentStud.length})` },
-                  { key: 'absent',  label: `❌ Absent  (${absentStud.length})`  },
+                  { key: 'absent', label: `❌ Absent  (${absentStud.length})` },
                 ].map(({ key, label }) => (
                   <button
                     key={key}
                     onClick={() => setActiveTab(key)}
                     className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors
-                                ${activeTab === key
-                                  ? 'bg-white text-slate-800 shadow-sm'
-                                  : 'text-slate-500 hover:text-slate-700'}`}
+                                ${
+                                  activeTab === key
+                                    ? 'bg-white text-slate-800 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-700'
+                                }`}
                   >
                     {label}
                   </button>
@@ -912,17 +1023,18 @@ export default function GenerateQRPage() {
 
               {/* Student list */}
               <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
-                {activeTab === 'present' && (
-                  presentStud.length === 0
-                    ? (
-                      <p className="text-center text-slate-400 text-sm py-10">
-                        No students marked present yet.
-                      </p>
-                    )
-                    : presentStud.map((s) => (
-                      <div key={s.student_id}
-                           className="flex items-center gap-3 px-3 py-2.5 rounded-xl
-                                      bg-green-50 border border-green-100">
+                {activeTab === 'present' &&
+                  (presentStud.length === 0 ? (
+                    <p className="text-center text-slate-400 text-sm py-10">
+                      No students marked present yet.
+                    </p>
+                  ) : (
+                    presentStud.map((s) => (
+                      <div
+                        key={s.student_id}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl
+                                      bg-green-50 border border-green-100"
+                      >
                         <Avatar name={s.name} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800 truncate">{s.name}</p>
@@ -932,25 +1044,24 @@ export default function GenerateQRPage() {
                           <p className="text-xs text-slate-500 tabular-nums">
                             {formatIST(s.marked_at)}
                           </p>
-                          <span className="badge-safe text-[10px] px-1.5 py-0.5">
-                            QR Scan
-                          </span>
+                          <span className="badge-safe text-[10px] px-1.5 py-0.5">QR Scan</span>
                         </div>
                       </div>
                     ))
-                )}
+                  ))}
 
-                {activeTab === 'absent' && (
-                  absentStud.length === 0
-                    ? (
-                      <p className="text-center text-slate-400 text-sm py-10">
-                        🎉 All students have marked attendance!
-                      </p>
-                    )
-                    : absentStud.map((s) => (
-                      <div key={s.student_id}
-                           className="flex items-center gap-3 px-3 py-2.5 rounded-xl
-                                      bg-red-50 border border-red-100">
+                {activeTab === 'absent' &&
+                  (absentStud.length === 0 ? (
+                    <p className="text-center text-slate-400 text-sm py-10">
+                      🎉 All students have marked attendance!
+                    </p>
+                  ) : (
+                    absentStud.map((s) => (
+                      <div
+                        key={s.student_id}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl
+                                      bg-red-50 border border-red-100"
+                      >
                         <Avatar name={s.name} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-slate-800 truncate">{s.name}</p>
@@ -969,7 +1080,7 @@ export default function GenerateQRPage() {
                         )}
                       </div>
                     ))
-                )}
+                  ))}
               </div>
 
               {/* Bottom controls */}
@@ -982,8 +1093,8 @@ export default function GenerateQRPage() {
                   📥 Download CSV
                 </button>
 
-                {phase === 'active' && (
-                  endState === 'idle' ? (
+                {phase === 'active' &&
+                  (endState === 'idle' ? (
                     <button className="btn-danger flex-1 text-sm" onClick={handleEndClick}>
                       ⬛ End Session
                     </button>
@@ -991,8 +1102,7 @@ export default function GenerateQRPage() {
                     <button className="btn-danger flex-1 text-sm" onClick={handleEndClick}>
                       Confirm ({endCountdown}s)
                     </button>
-                  )
-                )}
+                  ))}
               </div>
             </div>
           )}
@@ -1011,4 +1121,3 @@ export default function GenerateQRPage() {
     </div>
   );
 }
-

@@ -11,9 +11,9 @@
 import { useEffect, useRef } from 'react';
 
 const SIZE_CLASSES = {
-  large:     'w-full h-full min-h-[400px]',
-  medium:    'w-full aspect-video',
-  small:     'w-44 h-28',
+  large: 'w-full h-full min-h-[400px]',
+  medium: 'w-full aspect-video',
+  small: 'w-44 h-28',
   thumbnail: 'w-24 h-16',
 };
 
@@ -31,18 +31,28 @@ function networkIcon(q) {
 }
 
 const ATTENTION_RING = {
-  high:   'ring-2 ring-emerald-500',
+  high: 'ring-2 ring-emerald-500',
   medium: 'ring-2 ring-amber-400',
-  low:    'ring-2 ring-red-500 ring-opacity-70',
+  low: 'ring-2 ring-red-500 ring-opacity-70',
 };
 
 export function VideoTile({
-  track, uid, name, role,
-  isSpeaking, isLocal,
-  videoEnabled, audioEnabled,
-  networkQuality, aiObservation, attentionLevel,
-  isHandRaised, isPinned,
-  onPin, onMute, size = 'medium',
+  track,
+  uid,
+  name,
+  role,
+  isSpeaking,
+  isLocal,
+  videoEnabled,
+  audioEnabled,
+  networkQuality,
+  aiObservation,
+  attentionLevel,
+  isHandRaised,
+  isPinned,
+  onPin,
+  onMute,
+  size = 'medium',
 }) {
   const videoRef = useRef(null);
 
@@ -50,8 +60,16 @@ export function VideoTile({
   useEffect(() => {
     const node = videoRef.current;
     if (!track || !node || !videoEnabled) return undefined;
-    try { track.play(node, { fit: 'cover' }); } catch (e) { /* ignore */ }
-    return () => { try { track.stop(); } catch (_) {} };
+    try {
+      track.play(node, { fit: 'cover' });
+    } catch (e) {
+      /* ignore */
+    }
+    return () => {
+      try {
+        track.stop();
+      } catch (_) {}
+    };
   }, [track, videoEnabled]);
 
   const initial = (name || '?').charAt(0).toUpperCase();
@@ -62,9 +80,11 @@ export function VideoTile({
         'relative bg-gray-900 rounded-xl overflow-hidden transition-all duration-200 group',
         SIZE_CLASSES[size] || SIZE_CLASSES.medium,
         isSpeaking ? 'ring-2 ring-violet-400' : '',
-        attentionLevel ? (ATTENTION_RING[attentionLevel] || '') : '',
+        attentionLevel ? ATTENTION_RING[attentionLevel] || '' : '',
         isPinned ? 'ring-2 ring-amber-400' : '',
-      ].filter(Boolean).join(' ')}
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {/* Video element — Agora SDK injects a <video> here */}
       {videoEnabled && track ? (
@@ -84,7 +104,7 @@ export function VideoTile({
       {/* Speaking equaliser */}
       {isSpeaking && audioEnabled && (
         <div className="absolute bottom-9 left-2 flex gap-0.5 items-end pointer-events-none">
-          {[0, 1, 2, 3].map(i => (
+          {[0, 1, 2, 3].map((i) => (
             <div
               key={i}
               className="w-1 bg-violet-300 rounded-full animate-pulse"
@@ -98,14 +118,16 @@ export function VideoTile({
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5">
         <div className="flex items-center justify-between">
           <span className="text-white text-xs font-medium truncate">
-            {isLocal ? `${name || 'You'} (You)` : (name || `User ${uid}`)}
+            {isLocal ? `${name || 'You'} (You)` : name || `User ${uid}`}
             {role === 'teacher' && ' 👩‍🏫'}
-            {role === 'guest'   && ' 👤'}
+            {role === 'guest' && ' 👤'}
           </span>
           <div className="flex items-center gap-1.5 shrink-0">
             {!audioEnabled && <span className="text-red-400 text-xs">🔇</span>}
             {isHandRaised && <span className="text-amber-400 text-xs animate-bounce">✋</span>}
-            <span className={`text-xs ${networkColor(networkQuality)}`}>{networkIcon(networkQuality)}</span>
+            <span className={`text-xs ${networkColor(networkQuality)}`}>
+              {networkIcon(networkQuality)}
+            </span>
           </div>
         </div>
       </div>
@@ -128,9 +150,11 @@ export function VideoTile({
           <div
             className={[
               'w-2.5 h-2.5 rounded-full',
-              attentionLevel === 'high'   ? 'bg-emerald-400' :
-              attentionLevel === 'medium' ? 'bg-amber-400'   :
-              'bg-red-400 animate-pulse',
+              attentionLevel === 'high'
+                ? 'bg-emerald-400'
+                : attentionLevel === 'medium'
+                  ? 'bg-amber-400'
+                  : 'bg-red-400 animate-pulse',
             ].join(' ')}
             title={`Attention: ${attentionLevel}`}
           />

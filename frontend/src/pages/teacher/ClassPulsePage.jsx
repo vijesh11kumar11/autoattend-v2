@@ -18,41 +18,56 @@ import api from '../../api/axios';
    ═══════════════════════════════════════════════════════════════════════ */
 
 const TABS = [
-  { key: 'overview',  icon: '🏠', label: 'Overview'   },
-  { key: 'capsules',  icon: '📦', label: 'Capsules'   },
-  { key: 'wall',      icon: '💬', label: 'Class Wall' },
-  { key: 'analytics', icon: '📊', label: 'Analytics'  },
+  { key: 'overview', icon: '🏠', label: 'Overview' },
+  { key: 'capsules', icon: '📦', label: 'Capsules' },
+  { key: 'wall', icon: '💬', label: 'Class Wall' },
+  { key: 'analytics', icon: '📊', label: 'Analytics' },
 ];
 
 const CAPSULE_TYPES = [
-  { key: 'notes',  icon: '📝', label: 'Notes',     desc: 'PDF / DOC reading material' },
-  { key: 'slides', icon: '🎞️', label: 'Slides',   desc: 'Lecture slides (PDF / PPT)' },
-  { key: 'video',  icon: '🎬', label: 'Video',     desc: 'Recorded lecture or clip'   },
-  { key: 'audio',  icon: '🎙️', label: 'Audio',    desc: 'Voice memo / podcast'       },
-  { key: 'quiz',   icon: '🧠', label: 'Quiz',      desc: 'Assessment-only capsule'    },
-  { key: 'link',   icon: '🔗', label: 'Link',      desc: 'External reading'           },
+  { key: 'notes', icon: '📝', label: 'Notes', desc: 'PDF / DOC reading material' },
+  { key: 'slides', icon: '🎞️', label: 'Slides', desc: 'Lecture slides (PDF / PPT)' },
+  { key: 'video', icon: '🎬', label: 'Video', desc: 'Recorded lecture or clip' },
+  { key: 'audio', icon: '🎙️', label: 'Audio', desc: 'Voice memo / podcast' },
+  { key: 'quiz', icon: '🧠', label: 'Quiz', desc: 'Assessment-only capsule' },
+  { key: 'link', icon: '🔗', label: 'Link', desc: 'External reading' },
 ];
 
 const UNLOCK_MODES = [
-  { key: 'always',          icon: '🔓', label: 'Always',           desc: 'Open to everyone, anytime'                  },
-  { key: 'attendance_gated', icon: '🎟️', label: 'Attendance Gated', desc: 'Requires N% attendance to unlock'           },
-  { key: 'session_only',    icon: '🪟', label: 'Session Only',     desc: 'Unlocked only during the live class window' },
-  { key: 'after_class',     icon: '🕒', label: 'After Class',      desc: 'Auto-unlocks once the class ends'            },
+  { key: 'always', icon: '🔓', label: 'Always', desc: 'Open to everyone, anytime' },
+  {
+    key: 'attendance_gated',
+    icon: '🎟️',
+    label: 'Attendance Gated',
+    desc: 'Requires N% attendance to unlock',
+  },
+  {
+    key: 'session_only',
+    icon: '🪟',
+    label: 'Session Only',
+    desc: 'Unlocked only during the live class window',
+  },
+  {
+    key: 'after_class',
+    icon: '🕒',
+    label: 'After Class',
+    desc: 'Auto-unlocks once the class ends',
+  },
 ];
 
 const STATUS_FILTERS = [
-  { key: 'all',         label: 'All' },
-  { key: 'open',        label: 'Open' },
-  { key: 'answered',    label: 'Answered' },
+  { key: 'all', label: 'All' },
+  { key: 'open', label: 'Open' },
+  { key: 'answered', label: 'Answered' },
   { key: 'auto_resolved', label: 'Auto-resolved' },
-  { key: 'flagged',     label: 'Flagged' },
+  { key: 'flagged', label: 'Flagged' },
 ];
 
 const STATUS_BADGE = {
-  open:           'bg-amber-100  text-amber-700',
-  answered:       'bg-emerald-100 text-emerald-700',
-  auto_resolved:  'bg-blue-100   text-blue-700',
-  flagged:        'bg-red-100    text-red-700',
+  open: 'bg-amber-100  text-amber-700',
+  answered: 'bg-emerald-100 text-emerald-700',
+  auto_resolved: 'bg-blue-100   text-blue-700',
+  flagged: 'bg-red-100    text-red-700',
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -67,7 +82,8 @@ export default function ClassPulsePage() {
   const [analyticsCapsuleId, setAnalyticsCapsuleId] = useState(null);
 
   const loadDashboard = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
       const r = await api.get('/classpulse/teacher/dashboard');
       setDashboard(r.data);
@@ -81,7 +97,9 @@ export default function ClassPulsePage() {
     }
   }, [activeSubjectId]);
 
-  useEffect(() => { loadDashboard(); }, []); // eslint-disable-line
+  useEffect(() => {
+    loadDashboard();
+  }, []); // eslint-disable-line
 
   const subjects = dashboard?.subjects || [];
 
@@ -93,7 +111,8 @@ export default function ClassPulsePage() {
           <span className="text-3xl">📚</span> ClassPulse
         </h1>
         <p className="text-white/80 mt-1 text-sm">
-          Build attendance-gated learning capsules · listen to your class wall · spot students who need help
+          Build attendance-gated learning capsules · listen to your class wall · spot students who
+          need help
         </p>
       </div>
 
@@ -106,7 +125,8 @@ export default function ClassPulsePage() {
             className={`flex-1 min-w-[120px] py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5
               ${tab === t.key ? 'bg-white shadow-sm text-violet-700' : 'text-slate-500 hover:text-slate-700'}`}
           >
-            <span>{t.icon}</span>{t.label}
+            <span>{t.icon}</span>
+            {t.label}
           </button>
         ))}
       </div>
@@ -124,8 +144,14 @@ export default function ClassPulsePage() {
           {tab === 'overview' && (
             <OverviewTab
               dashboard={dashboard}
-              onJumpSubject={(id) => { setActiveSubjectId(id); setTab('capsules'); }}
-              onJumpCapsule={(id) => { setAnalyticsCapsuleId(id); setTab('analytics'); }}
+              onJumpSubject={(id) => {
+                setActiveSubjectId(id);
+                setTab('capsules');
+              }}
+              onJumpCapsule={(id) => {
+                setAnalyticsCapsuleId(id);
+                setTab('analytics');
+              }}
             />
           )}
           {tab === 'capsules' && (
@@ -134,7 +160,10 @@ export default function ClassPulsePage() {
               activeSubjectId={activeSubjectId}
               setActiveSubjectId={setActiveSubjectId}
               onUploaded={loadDashboard}
-              onOpenAnalytics={(id) => { setAnalyticsCapsuleId(id); setTab('analytics'); }}
+              onOpenAnalytics={(id) => {
+                setAnalyticsCapsuleId(id);
+                setTab('analytics');
+              }}
             />
           )}
           {tab === 'wall' && (
@@ -195,15 +224,20 @@ function OverviewTab({ dashboard, onJumpSubject, onJumpCapsule }) {
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-center">
-              <Stat label="Capsules"    value={s.capsule_count} />
-              <Stat label="Students"    value={s.total_students} />
-              <Stat label="Engagement"  value={`${s.avg_engagement_pct}%`} accent="violet" />
-              <Stat label="Hot doubts"  value={s.hot_doubts_count} accent={s.hot_doubts_count > 0 ? 'red' : null} />
+              <Stat label="Capsules" value={s.capsule_count} />
+              <Stat label="Students" value={s.total_students} />
+              <Stat label="Engagement" value={`${s.avg_engagement_pct}%`} accent="violet" />
+              <Stat
+                label="Hot doubts"
+                value={s.hot_doubts_count}
+                accent={s.hot_doubts_count > 0 ? 'red' : null}
+              />
             </div>
 
             {s.unanswered_doubts_count > 0 && (
               <div className="mt-3 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
-                ⏳ {s.unanswered_doubts_count} unanswered doubt{s.unanswered_doubts_count > 1 ? 's' : ''}
+                ⏳ {s.unanswered_doubts_count} unanswered doubt
+                {s.unanswered_doubts_count > 1 ? 's' : ''}
               </div>
             )}
           </button>
@@ -257,8 +291,8 @@ function OverviewTab({ dashboard, onJumpSubject, onJumpCapsule }) {
                 <span className="text-lg">{actionIcon(r.action)}</span>
                 <div className="min-w-0 flex-1">
                   <p className="text-slate-800 truncate">
-                    <span className="font-medium">{r.student_name || 'Someone'}</span>
-                    {' '}{actionVerb(r.action)}{' '}
+                    <span className="font-medium">{r.student_name || 'Someone'}</span>{' '}
+                    {actionVerb(r.action)}{' '}
                     <span className="text-slate-500">— {r.capsule_title}</span>
                   </p>
                   {r.deny_reason && (
@@ -278,7 +312,13 @@ function OverviewTab({ dashboard, onJumpSubject, onJumpCapsule }) {
 /* ═══════════════════════════════════════════════════════════════════════
    CAPSULES TAB
    ═══════════════════════════════════════════════════════════════════════ */
-function CapsulesTab({ subjects, activeSubjectId, setActiveSubjectId, onUploaded, onOpenAnalytics }) {
+function CapsulesTab({
+  subjects,
+  activeSubjectId,
+  setActiveSubjectId,
+  onUploaded,
+  onOpenAnalytics,
+}) {
   const [capsules, setCapsules] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -296,7 +336,9 @@ function CapsulesTab({ subjects, activeSubjectId, setActiveSubjectId, onUploaded
     }
   }, [activeSubjectId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const activeSubject = subjects.find((s) => s.subject_id === activeSubjectId);
 
@@ -334,7 +376,9 @@ function CapsulesTab({ subjects, activeSubjectId, setActiveSubjectId, onUploaded
           <h2 className="text-lg font-bold text-slate-800">
             {activeSubject?.subject_name || 'Capsules'}
           </h2>
-          <p className="text-xs text-slate-500">{capsules.length} capsule{capsules.length !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-slate-500">
+            {capsules.length} capsule{capsules.length !== 1 ? 's' : ''}
+          </p>
         </div>
         <button
           onClick={() => setShowUpload(true)}
@@ -390,7 +434,8 @@ function CapsulesTab({ subjects, activeSubjectId, setActiveSubjectId, onUploaded
   );
 }
 
-function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  const tcfg = CAPSULE_TYPES.find((t) => t.key === capsule.capsule_type) || CAPSULE_TYPES[0];
+function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {
+  const tcfg = CAPSULE_TYPES.find((t) => t.key === capsule.capsule_type) || CAPSULE_TYPES[0];
   const ucfg = UNLOCK_MODES.find((u) => u.key === capsule.unlock_mode) || UNLOCK_MODES[0];
   const s = capsule.interactions_summary || {};
   const opened = s.read_count || 0;
@@ -398,7 +443,9 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  cons
   const pct = total > 0 ? Math.round((opened / total) * 100) : 0;
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm p-5 transition-all ${capsule.is_active ? 'border-slate-100' : 'border-slate-200 opacity-60'}`}>
+    <div
+      className={`bg-white rounded-2xl border shadow-sm p-5 transition-all ${capsule.is_active ? 'border-slate-100' : 'border-slate-200 opacity-60'}`}
+    >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-start gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center text-xl flex-shrink-0">
@@ -407,7 +454,9 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  cons
           <div className="min-w-0">
             <h3 className="font-semibold text-slate-800 truncate">{capsule.title}</h3>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">{tcfg.label}</span>
+              <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                {tcfg.label}
+              </span>
               <span className="text-xs px-2 py-0.5 rounded-md bg-violet-50 text-violet-700">
                 {ucfg.icon} {ucfg.label}
                 {capsule.unlock_mode === 'attendance_gated' && ` · ${capsule.min_attendance_pct}%`}
@@ -418,15 +467,26 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  cons
                 </span>
               )}
               {capsule.is_auto_generated && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700" title={capsule.source_session_date ? `From session on ${new Date(capsule.source_session_date).toLocaleDateString()}` : ''}>
+                <span
+                  className="text-xs px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700"
+                  title={
+                    capsule.source_session_date
+                      ? `From session on ${new Date(capsule.source_session_date).toLocaleDateString()}`
+                      : ''
+                  }
+                >
                   🤖 Auto-generated
                 </span>
               )}
               {capsule.has_recording && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700">📹 Recording</span>
+                <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700">
+                  📹 Recording
+                </span>
               )}
               {(capsule.chapters_count || 0) > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-slate-50 text-slate-600">📑 {capsule.chapters_count} chapters</span>
+                <span className="text-xs px-2 py-0.5 rounded-md bg-slate-50 text-slate-600">
+                  📑 {capsule.chapters_count} chapters
+                </span>
               )}
             </div>
           </div>
@@ -436,7 +496,9 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  cons
       {/* Engagement bar */}
       <div className="mb-3">
         <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-          <span>Read by {opened} / {total} students</span>
+          <span>
+            Read by {opened} / {total} students
+          </span>
           <span className="font-medium">{pct}%</span>
         </div>
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -449,8 +511,8 @@ function CapsuleCard({ capsule, onAnalytics, onToggleActive, onDelete }) {  cons
 
       {/* Mini stats */}
       <div className="grid grid-cols-3 gap-2 mb-4 text-center">
-        <MiniStat label="Views"      value={capsule.view_count || 0} />
-        <MiniStat label="Downloads"  value={capsule.download_count || 0} />
+        <MiniStat label="Views" value={capsule.view_count || 0} />
+        <MiniStat label="Downloads" value={capsule.download_count || 0} />
         <MiniStat
           label="Avg quiz"
           value={s.avg_quiz_score ? `${s.avg_quiz_score}` : '—'}
@@ -541,7 +603,8 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
   const [dragHover, setDragHover] = useState(false);
 
   const onDrop = (e) => {
-    e.preventDefault(); setDragHover(false);
+    e.preventDefault();
+    setDragHover(false);
     const f = e.dataTransfer.files?.[0];
     if (f) setFile(f);
   };
@@ -576,7 +639,8 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
 
   const submit = async () => {
     if (submitting) return;
-    setError(''); setSubmitting(true);
+    setError('');
+    setSubmitting(true);
     try {
       const fd = new FormData();
       fd.append('subject_id', subjectId);
@@ -606,21 +670,29 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
             <h2 className="font-bold text-slate-800">New Capsule</h2>
             <p className="text-xs text-slate-500">{subjectName}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl">
+            ✕
+          </button>
         </div>
 
         {/* Stepper */}
         <div className="px-6 py-3 flex items-center gap-2 border-b border-slate-50">
           {[1, 2, 3].map((n) => (
             <div key={n} className="flex items-center gap-2 flex-1">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-                ${step === n ? 'bg-violet-600 text-white' : step > n ? 'bg-violet-100 text-violet-600' : 'bg-slate-100 text-slate-400'}`}>
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
+                ${step === n ? 'bg-violet-600 text-white' : step > n ? 'bg-violet-100 text-violet-600' : 'bg-slate-100 text-slate-400'}`}
+              >
                 {step > n ? '✓' : n}
               </div>
-              <span className={`text-xs font-medium ${step >= n ? 'text-slate-700' : 'text-slate-400'}`}>
+              <span
+                className={`text-xs font-medium ${step >= n ? 'text-slate-700' : 'text-slate-400'}`}
+              >
                 {n === 1 ? 'Details' : n === 2 ? 'Content' : 'Access'}
               </span>
-              {n < 3 && <div className={`flex-1 h-px ${step > n ? 'bg-violet-300' : 'bg-slate-200'}`} />}
+              {n < 3 && (
+                <div className={`flex-1 h-px ${step > n ? 'bg-violet-300' : 'bg-slate-200'}`} />
+              )}
             </div>
           ))}
         </div>
@@ -649,7 +721,9 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Description (optional)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Description (optional)
+                </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -660,7 +734,9 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Capsule type</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Capsule type
+                </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {CAPSULE_TYPES.map((t) => (
                     <button
@@ -683,33 +759,56 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
           {step === 2 && (
             <>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Upload file</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Upload file
+                </label>
                 <label
-                  onDragOver={(e) => { e.preventDefault(); if (!dragOver.current) { dragOver.current = true; setDragHover(true); } }}
-                  onDragLeave={() => { dragOver.current = false; setDragHover(false); }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!dragOver.current) {
+                      dragOver.current = true;
+                      setDragHover(true);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    dragOver.current = false;
+                    setDragHover(false);
+                  }}
                   onDrop={onDrop}
                   className={`block border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition
                     ${dragHover ? 'border-violet-400 bg-violet-50' : 'border-slate-200 hover:border-slate-300 bg-slate-50/40'}`}
                 >
-                  <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
                   {file ? (
                     <div>
                       <div className="text-2xl mb-1">📄</div>
                       <div className="text-sm font-medium text-slate-800 truncate">{file.name}</div>
-                      <div className="text-xs text-slate-500">{(file.size / 1024).toFixed(1)} KB · click to change</div>
+                      <div className="text-xs text-slate-500">
+                        {(file.size / 1024).toFixed(1)} KB · click to change
+                      </div>
                     </div>
                   ) : (
                     <div>
                       <div className="text-3xl mb-1">⬆️</div>
-                      <div className="text-sm font-medium text-slate-700">Drag & drop, or click to browse</div>
-                      <div className="text-xs text-slate-500 mt-1">PDF, DOC, PPT, MP4, MP3 — up to ~25 MB</div>
+                      <div className="text-sm font-medium text-slate-700">
+                        Drag & drop, or click to browse
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        PDF, DOC, PPT, MP4, MP3 — up to ~25 MB
+                      </div>
                     </div>
                   )}
                 </label>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Voice memo (optional)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Voice memo (optional)
+                </label>
                 <div className="flex items-center gap-3 p-3 border border-slate-200 rounded-xl">
                   {!recording ? (
                     <button
@@ -731,11 +830,18 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
                   {voiceMemo && (
                     <div className="flex-1 text-xs text-slate-600 truncate">
                       ✅ {voiceMemo.name} ({(voiceMemo.size / 1024).toFixed(1)} KB)
-                      <button onClick={() => setVoiceMemo(null)} className="ml-2 text-red-500 hover:text-red-700">remove</button>
+                      <button
+                        onClick={() => setVoiceMemo(null)}
+                        className="ml-2 text-red-500 hover:text-red-700"
+                      >
+                        remove
+                      </button>
                     </div>
                   )}
                   {!voiceMemo && !recording && (
-                    <span className="text-xs text-slate-400">Add a personal note for your students</span>
+                    <span className="text-xs text-slate-400">
+                      Add a personal note for your students
+                    </span>
                   )}
                 </div>
               </div>
@@ -746,7 +852,9 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
           {step === 3 && (
             <>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Unlock mode</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Unlock mode
+                </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {UNLOCK_MODES.map((u) => (
                     <button
@@ -780,15 +888,26 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
                     className="w-full accent-violet-600"
                   />
                   <div className="flex justify-between text-xs text-slate-500 mt-1">
-                    <span>0%</span><span>50%</span><span>100%</span>
+                    <span>0%</span>
+                    <span>50%</span>
+                    <span>100%</span>
                   </div>
                 </div>
               )}
 
               <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-1">
-                <p>✓ <span className="font-medium">{title || 'Untitled'}</span> · {CAPSULE_TYPES.find(t => t.key === capsuleType)?.label}</p>
-                <p>✓ {file ? `File: ${file.name}` : 'No file'}{voiceMemo ? ' · 🎙️ voice memo' : ''}</p>
-                <p>✓ Unlock: {UNLOCK_MODES.find(u => u.key === unlockMode)?.label}{unlockMode === 'attendance_gated' ? ` (≥${minAttendance}%)` : ''}</p>
+                <p>
+                  ✓ <span className="font-medium">{title || 'Untitled'}</span> ·{' '}
+                  {CAPSULE_TYPES.find((t) => t.key === capsuleType)?.label}
+                </p>
+                <p>
+                  ✓ {file ? `File: ${file.name}` : 'No file'}
+                  {voiceMemo ? ' · 🎙️ voice memo' : ''}
+                </p>
+                <p>
+                  ✓ Unlock: {UNLOCK_MODES.find((u) => u.key === unlockMode)?.label}
+                  {unlockMode === 'attendance_gated' ? ` (≥${minAttendance}%)` : ''}
+                </p>
               </div>
             </>
           )}
@@ -797,7 +916,7 @@ function CapsuleUploadModal({ subjectId, subjectName, onClose, onUploaded }) {
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
           <button
-            onClick={() => step === 1 ? onClose() : setStep(step - 1)}
+            onClick={() => (step === 1 ? onClose() : setStep(step - 1))}
             className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
           >
             {step === 1 ? 'Cancel' : '← Back'}
@@ -852,9 +971,11 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
     }
   }, [activeSubjectId, statusFilter, hotOnly]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const useAISuggestion = (p) => {
+  const applyAISuggestion = (p) => {
     setActivePostId(p.id);
     setDraftAnswer(p.ai_suggested_answer || '');
   };
@@ -864,8 +985,10 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
     setSubmitting(true);
     try {
       await api.post(`/classpulse/teacher/wall/${postId}/answer`, { answer: draftAnswer.trim() });
-      setActivePostId(null); setDraftAnswer('');
-      load(); onAnswered?.();
+      setActivePostId(null);
+      setDraftAnswer('');
+      load();
+      onAnswered?.();
     } catch (e) {
       alert(e.response?.data?.detail || 'Failed to post answer');
     } finally {
@@ -916,9 +1039,15 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span className="text-sm font-semibold text-slate-800">{p.student_name || 'Anonymous'}</span>
-                    {p.student_roll_no && <span className="text-xs text-slate-400">· {p.student_roll_no}</span>}
-                    <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${STATUS_BADGE[p.status] || 'bg-slate-100 text-slate-600'}`}>
+                    <span className="text-sm font-semibold text-slate-800">
+                      {p.student_name || 'Anonymous'}
+                    </span>
+                    {p.student_roll_no && (
+                      <span className="text-xs text-slate-400">· {p.student_roll_no}</span>
+                    )}
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-md font-medium ${STATUS_BADGE[p.status] || 'bg-slate-100 text-slate-600'}`}
+                    >
                       {p.status}
                     </span>
                     {p.is_hot && (
@@ -935,7 +1064,9 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
                     </p>
                   )}
                 </div>
-                <span className="text-xs text-slate-400 flex-shrink-0">{timeAgo(p.created_at)}</span>
+                <span className="text-xs text-slate-400 flex-shrink-0">
+                  {timeAgo(p.created_at)}
+                </span>
               </div>
 
               {p.ai_suggested_answer && !p.teacher_answer && (
@@ -948,13 +1079,15 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
                       </span>
                     </p>
                     <button
-                      onClick={() => useAISuggestion(p)}
+                      onClick={() => applyAISuggestion(p)}
                       className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
                     >
                       Use this →
                     </button>
                   </div>
-                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{p.ai_suggested_answer}</p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                    {p.ai_suggested_answer}
+                  </p>
                 </div>
               )}
 
@@ -978,7 +1111,10 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
                       />
                       <div className="flex justify-end gap-2">
                         <button
-                          onClick={() => { setActivePostId(null); setDraftAnswer(''); }}
+                          onClick={() => {
+                            setActivePostId(null);
+                            setDraftAnswer('');
+                          }}
                           className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800"
                         >
                           Cancel
@@ -994,7 +1130,10 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
                     </div>
                   ) : (
                     <button
-                      onClick={() => { setActivePostId(p.id); setDraftAnswer(''); }}
+                      onClick={() => {
+                        setActivePostId(p.id);
+                        setDraftAnswer('');
+                      }}
                       className="text-xs text-violet-700 hover:text-violet-800 font-medium"
                     >
                       ✍️ Write a reply
@@ -1013,12 +1152,20 @@ function WallTab({ subjects, activeSubjectId, setActiveSubjectId, onAnswered }) 
 /* ═══════════════════════════════════════════════════════════════════════
    ANALYTICS TAB
    ═══════════════════════════════════════════════════════════════════════ */
-function AnalyticsTab({ subjects, activeSubjectId, setActiveSubjectId, focusCapsuleId, clearFocus }) {
+function AnalyticsTab({
+  subjects,
+  activeSubjectId,
+  setActiveSubjectId,
+  focusCapsuleId,
+  clearFocus,
+}) {
   const [capsules, setCapsules] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openCapsuleId, setOpenCapsuleId] = useState(focusCapsuleId);
 
-  useEffect(() => { setOpenCapsuleId(focusCapsuleId); }, [focusCapsuleId]);
+  useEffect(() => {
+    setOpenCapsuleId(focusCapsuleId);
+  }, [focusCapsuleId]);
 
   const load = useCallback(async () => {
     if (!activeSubjectId) return;
@@ -1033,7 +1180,9 @@ function AnalyticsTab({ subjects, activeSubjectId, setActiveSubjectId, focusCaps
     }
   }, [activeSubjectId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <div className="space-y-4">
@@ -1066,7 +1215,7 @@ function AnalyticsTab({ subjects, activeSubjectId, setActiveSubjectId, focusCaps
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800">{c.title}</div>
                       <div className="text-xs text-slate-500">
-                        {(CAPSULE_TYPES.find(t => t.key === c.capsule_type) || {}).label}
+                        {(CAPSULE_TYPES.find((t) => t.key === c.capsule_type) || {}).label}
                       </div>
                     </td>
                     <td className="text-center px-4 py-3">
@@ -1075,10 +1224,14 @@ function AnalyticsTab({ subjects, activeSubjectId, setActiveSubjectId, focusCaps
                     <td className="text-center px-4 py-3 font-medium text-violet-700">
                       {s.avg_quiz_score || '—'}
                     </td>
-                    <td className={`text-center px-4 py-3 font-medium ${(s.failed_comprehension_count || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                    <td
+                      className={`text-center px-4 py-3 font-medium ${(s.failed_comprehension_count || 0) > 0 ? 'text-red-600' : 'text-slate-400'}`}
+                    >
                       {s.failed_comprehension_count || 0}
                     </td>
-                    <td className={`text-center px-4 py-3 font-medium ${(s.not_opened_count || 0) > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                    <td
+                      className={`text-center px-4 py-3 font-medium ${(s.not_opened_count || 0) > 0 ? 'text-amber-600' : 'text-slate-400'}`}
+                    >
                       {s.not_opened_count || 0}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -1100,7 +1253,10 @@ function AnalyticsTab({ subjects, activeSubjectId, setActiveSubjectId, focusCaps
       {openCapsuleId && (
         <CapsuleAnalyticsPanel
           capsuleId={openCapsuleId}
-          onClose={() => { setOpenCapsuleId(null); clearFocus(); }}
+          onClose={() => {
+            setOpenCapsuleId(null);
+            clearFocus();
+          }}
         />
       )}
     </div>
@@ -1117,30 +1273,59 @@ function CapsuleAnalyticsPanel({ capsuleId, onClose }) {
 
   useEffect(() => {
     let alive = true;
-    setLoading(true); setError('');
-    api.get(`/classpulse/teacher/capsule/${capsuleId}/analytics`)
-      .then((r) => { if (alive) setData(r.data); })
-      .catch((e) => { if (alive) setError(e.response?.data?.detail || 'Failed to load analytics'); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    setLoading(true);
+    setError('');
+    api
+      .get(`/classpulse/teacher/capsule/${capsuleId}/analytics`)
+      .then((r) => {
+        if (alive) setData(r.data);
+      })
+      .catch((e) => {
+        if (alive) setError(e.response?.data?.detail || 'Failed to load analytics');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [capsuleId]);
 
   const exportCSV = () => {
     if (!data) return;
     const rows = [
-      ['Roll No', 'Name', 'Section', 'Opened', 'Time (sec)', 'Completion %', 'Quiz Score', 'Quiz Passed', 'Last Opened'],
+      [
+        'Roll No',
+        'Name',
+        'Section',
+        'Opened',
+        'Time (sec)',
+        'Completion %',
+        'Quiz Score',
+        'Quiz Passed',
+        'Last Opened',
+      ],
       ...data.per_student_breakdown.map((s) => [
-        s.roll_no || '', s.name || '', s.section_name || '',
-        s.opened ? 'Yes' : 'No', s.time_spent_sec || 0, s.completion_pct || 0,
-        s.quiz_score ?? '', s.quiz_passed === null || s.quiz_passed === undefined ? '' : (s.quiz_passed ? 'Yes' : 'No'),
+        s.roll_no || '',
+        s.name || '',
+        s.section_name || '',
+        s.opened ? 'Yes' : 'No',
+        s.time_spent_sec || 0,
+        s.completion_pct || 0,
+        s.quiz_score ?? '',
+        s.quiz_passed === null || s.quiz_passed === undefined ? '' : s.quiz_passed ? 'Yes' : 'No',
         s.last_opened_at || '',
       ]),
     ];
-    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csv = rows
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `capsule-${capsuleId}-analytics.csv`; a.click();
+    a.href = url;
+    a.download = `capsule-${capsuleId}-analytics.csv`;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -1150,7 +1335,9 @@ function CapsuleAnalyticsPanel({ capsuleId, onClose }) {
       <div className="w-full max-w-2xl bg-white shadow-2xl flex flex-col h-full">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <div className="min-w-0">
-            <h2 className="font-bold text-slate-800 truncate">{data?.capsule?.title || 'Loading…'}</h2>
+            <h2 className="font-bold text-slate-800 truncate">
+              {data?.capsule?.title || 'Loading…'}
+            </h2>
             <p className="text-xs text-slate-500">Capsule deep dive</p>
           </div>
           <div className="flex items-center gap-2">
@@ -1162,26 +1349,43 @@ function CapsuleAnalyticsPanel({ capsuleId, onClose }) {
                 ⬇️ CSV
               </button>
             )}
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl">
+              ✕
+            </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {loading && <SkeletonGrid />}
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4">{error}</div>}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4">
+              {error}
+            </div>
+          )}
 
           {data && (
             <>
               {/* Summary stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <BigStat label="Enrolled"  value={data.summary.total_enrolled} />
-                <BigStat label="Opened"    value={data.summary.opened_count}  accent="violet" />
-                <BigStat label="Avg time"  value={`${Math.round((data.summary.avg_time_sec || 0) / 60)}m`} />
-                <BigStat label="Avg done"  value={`${data.summary.avg_completion_pct}%`} />
-                <BigStat label="Passed"    value={data.summary.pass_count}  accent="emerald" />
-                <BigStat label="Failed"    value={data.summary.fail_count}  accent={data.summary.fail_count > 0 ? 'red' : null} />
-                <BigStat label="Not opened" value={data.summary.not_opened_count} accent={data.summary.not_opened_count > 0 ? 'amber' : null} />
-                <BigStat label="Views"     value={data.capsule.view_count} />
+                <BigStat label="Enrolled" value={data.summary.total_enrolled} />
+                <BigStat label="Opened" value={data.summary.opened_count} accent="violet" />
+                <BigStat
+                  label="Avg time"
+                  value={`${Math.round((data.summary.avg_time_sec || 0) / 60)}m`}
+                />
+                <BigStat label="Avg done" value={`${data.summary.avg_completion_pct}%`} />
+                <BigStat label="Passed" value={data.summary.pass_count} accent="emerald" />
+                <BigStat
+                  label="Failed"
+                  value={data.summary.fail_count}
+                  accent={data.summary.fail_count > 0 ? 'red' : null}
+                />
+                <BigStat
+                  label="Not opened"
+                  value={data.summary.not_opened_count}
+                  accent={data.summary.not_opened_count > 0 ? 'amber' : null}
+                />
+                <BigStat label="Views" value={data.capsule.view_count} />
               </div>
 
               {/* Students who need help */}
@@ -1192,10 +1396,15 @@ function CapsuleAnalyticsPanel({ capsuleId, onClose }) {
                   </h3>
                   <ul className="space-y-1.5">
                     {data.comprehension_issues.map((s) => (
-                      <li key={s.student_id} className="flex items-center justify-between text-sm bg-white rounded-lg px-3 py-2 border border-red-100">
+                      <li
+                        key={s.student_id}
+                        className="flex items-center justify-between text-sm bg-white rounded-lg px-3 py-2 border border-red-100"
+                      >
                         <div>
                           <span className="font-medium text-slate-800">{s.name}</span>
-                          {s.roll_no && <span className="text-xs text-slate-500 ml-2">{s.roll_no}</span>}
+                          {s.roll_no && (
+                            <span className="text-xs text-slate-500 ml-2">{s.roll_no}</span>
+                          )}
                         </div>
                         <span className="text-xs px-2 py-0.5 rounded-md bg-red-100 text-red-700 font-medium">
                           {s.quiz_score} on quiz
@@ -1224,10 +1433,16 @@ function CapsuleAnalyticsPanel({ capsuleId, onClose }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {data.per_student_breakdown.map((s) => (
-                        <tr key={s.student_id} className={`${
-                          s.quiz_passed === false ? 'bg-red-50/30' :
-                          s.quiz_passed === true  ? 'bg-emerald-50/20' : ''
-                        }`}>
+                        <tr
+                          key={s.student_id}
+                          className={`${
+                            s.quiz_passed === false
+                              ? 'bg-red-50/30'
+                              : s.quiz_passed === true
+                                ? 'bg-emerald-50/20'
+                                : ''
+                          }`}
+                        >
                           <td className="px-4 py-2">
                             <div className="font-medium text-slate-800 text-sm">{s.name}</div>
                             {s.roll_no && <div className="text-xs text-slate-400">{s.roll_no}</div>}
@@ -1245,7 +1460,9 @@ function CapsuleAnalyticsPanel({ capsuleId, onClose }) {
                             {s.quiz_score === null || s.quiz_score === undefined ? (
                               <span className="text-slate-300">—</span>
                             ) : (
-                              <span className={`font-medium ${s.quiz_passed ? 'text-emerald-700' : 'text-red-600'}`}>
+                              <span
+                                className={`font-medium ${s.quiz_passed ? 'text-emerald-700' : 'text-red-600'}`}
+                              >
                                 {s.quiz_score}
                               </span>
                             )}
@@ -1277,9 +1494,11 @@ function SubjectSelector({ subjects, value, onChange }) {
           key={s.subject_id}
           onClick={() => onChange(s.subject_id)}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap border transition
-            ${value === s.subject_id
-              ? 'bg-violet-600 border-violet-600 text-white'
-              : 'bg-white border-slate-200 text-slate-700 hover:border-violet-300'}`}
+            ${
+              value === s.subject_id
+                ? 'bg-violet-600 border-violet-600 text-white'
+                : 'bg-white border-slate-200 text-slate-700 hover:border-violet-300'
+            }`}
         >
           {s.subject_name}
         </button>
@@ -1290,11 +1509,15 @@ function SubjectSelector({ subjects, value, onChange }) {
 
 function Stat({ label, value, accent }) {
   const cls =
-    accent === 'red'    ? 'text-red-600' :
-    accent === 'violet' ? 'text-violet-700' :
-    accent === 'amber'  ? 'text-amber-600' :
-    accent === 'emerald'? 'text-emerald-700' :
-                          'text-slate-800';
+    accent === 'red'
+      ? 'text-red-600'
+      : accent === 'violet'
+        ? 'text-violet-700'
+        : accent === 'amber'
+          ? 'text-amber-600'
+          : accent === 'emerald'
+            ? 'text-emerald-700'
+            : 'text-slate-800';
   return (
     <div>
       <div className={`text-lg font-bold ${cls}`}>{value}</div>
@@ -1315,11 +1538,15 @@ function MiniStat({ label, value, accent }) {
 
 function BigStat({ label, value, accent }) {
   const cls =
-    accent === 'red'    ? 'text-red-600 bg-red-50/50 border-red-100' :
-    accent === 'amber'  ? 'text-amber-700 bg-amber-50/50 border-amber-100' :
-    accent === 'violet' ? 'text-violet-700 bg-violet-50/50 border-violet-100' :
-    accent === 'emerald'? 'text-emerald-700 bg-emerald-50/50 border-emerald-100' :
-                          'text-slate-800 bg-slate-50 border-slate-100';
+    accent === 'red'
+      ? 'text-red-600 bg-red-50/50 border-red-100'
+      : accent === 'amber'
+        ? 'text-amber-700 bg-amber-50/50 border-amber-100'
+        : accent === 'violet'
+          ? 'text-violet-700 bg-violet-50/50 border-violet-100'
+          : accent === 'emerald'
+            ? 'text-emerald-700 bg-emerald-50/50 border-emerald-100'
+            : 'text-slate-800 bg-slate-50 border-slate-100';
   return (
     <div className={`rounded-xl border p-3 ${cls}`}>
       <div className="text-xl font-bold">{value}</div>
@@ -1343,7 +1570,10 @@ function SkeletonGrid() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 animate-pulse">
+        <div
+          key={i}
+          className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 animate-pulse"
+        >
           <div className="h-4 bg-slate-100 rounded w-1/2 mb-3" />
           <div className="h-3 bg-slate-100 rounded w-1/3 mb-4" />
           <div className="h-20 bg-slate-100 rounded mb-2" />
@@ -1360,32 +1590,46 @@ function timeAgo(iso) {
   if (!iso) return '';
   const t = new Date(iso).getTime();
   const s = Math.max(1, Math.floor((Date.now() - t) / 1000));
-  if (s < 60)    return `${s}s ago`;
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
 
 function actionIcon(action) {
   switch (action) {
-    case 'open':       return '👁️';
-    case 'download':   return '⬇️';
-    case 'quiz_pass':  return '✅';
-    case 'quiz_fail':  return '❌';
-    case 'denied':     return '🚫';
-    case 'completed':  return '🎉';
-    default:           return '•';
+    case 'open':
+      return '👁️';
+    case 'download':
+      return '⬇️';
+    case 'quiz_pass':
+      return '✅';
+    case 'quiz_fail':
+      return '❌';
+    case 'denied':
+      return '🚫';
+    case 'completed':
+      return '🎉';
+    default:
+      return '•';
   }
 }
 
 function actionVerb(action) {
   switch (action) {
-    case 'open':       return 'opened';
-    case 'download':   return 'downloaded';
-    case 'quiz_pass':  return 'passed quiz on';
-    case 'quiz_fail':  return 'failed quiz on';
-    case 'denied':     return 'was denied access to';
-    case 'completed':  return 'completed';
-    default:           return 'interacted with';
+    case 'open':
+      return 'opened';
+    case 'download':
+      return 'downloaded';
+    case 'quiz_pass':
+      return 'passed quiz on';
+    case 'quiz_fail':
+      return 'failed quiz on';
+    case 'denied':
+      return 'was denied access to';
+    case 'completed':
+      return 'completed';
+    default:
+      return 'interacted with';
   }
 }

@@ -5,22 +5,11 @@
  * Closes issues #88 / #121. Wraps the app alongside AuthProvider.
  */
 
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 
-import {
-  getQueueLength,
-  processQueue,
-  subscribe,
-  setQueueNotifier,
-} from '../utils/offlineQueue';
+import { getQueueLength, processQueue, subscribe, setQueueNotifier } from '../utils/offlineQueue';
 
 const OfflineQueueContext = createContext({
   queueLength: 0,
@@ -38,10 +27,13 @@ export function OfflineQueueProvider({ children }) {
   useEffect(() => {
     setQueueNotifier((message, kind) => {
       const title =
-        kind === 'rejected' ? 'Submission Rejected'
-        : kind === 'synced' ? 'Back Online'
-        : kind === 'failed' ? 'Submission Failed'
-        : 'AutoAttend';
+        kind === 'rejected'
+          ? 'Submission Rejected'
+          : kind === 'synced'
+            ? 'Back Online'
+            : kind === 'failed'
+              ? 'Submission Failed'
+              : 'AutoAttend';
       Alert.alert(title, message);
     });
     return () => setQueueNotifier(null);
@@ -50,9 +42,16 @@ export function OfflineQueueProvider({ children }) {
   // Track queue length for badge display.
   useEffect(() => {
     let mounted = true;
-    getQueueLength().then((len) => { if (mounted) setQueueLength(len); });
-    const unsub = subscribe((len) => { if (mounted) setQueueLength(len); });
-    return () => { mounted = false; unsub(); };
+    getQueueLength().then((len) => {
+      if (mounted) setQueueLength(len);
+    });
+    const unsub = subscribe((len) => {
+      if (mounted) setQueueLength(len);
+    });
+    return () => {
+      mounted = false;
+      unsub();
+    };
   }, []);
 
   // Listen to connectivity; auto-process the queue when we come back online.
@@ -81,11 +80,7 @@ export function OfflineQueueProvider({ children }) {
     syncNow: () => processQueue(),
   };
 
-  return (
-    <OfflineQueueContext.Provider value={value}>
-      {children}
-    </OfflineQueueContext.Provider>
-  );
+  return <OfflineQueueContext.Provider value={value}>{children}</OfflineQueueContext.Provider>;
 }
 
 export function useOfflineQueue() {

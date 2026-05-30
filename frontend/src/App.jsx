@@ -15,37 +15,45 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineQueueProvider } from './context/OfflineQueueContext';
 
 // ── Eager imports (always needed) ─────────────────────────────────────
-import LoginPage      from './pages/LoginPage';
-import UnauthorizedPage from './pages/UnauthorizedPage';import NotFoundPage   from './pages/NotFoundPage';
-import ErrorBoundary  from './components/ErrorBoundary';
+import LoginPage from './pages/LoginPage';
+import UnauthorizedPage from './pages/UnauthorizedPage';
+import NotFoundPage from './pages/NotFoundPage';
+import ErrorBoundary from './components/ErrorBoundary';
 // ── Lazy dashboard imports ────────────────────────────────────────────
 const PrincipalDashboard = lazy(() => import('./pages/principal/PrincipalDashboard'));
-const HODDashboard       = lazy(() => import('./pages/hod/HODDashboard'));
-const TeacherDashboard   = lazy(() => import('./pages/teacher/TeacherDashboard'));
-const StudentDashboard   = lazy(() => import('./pages/student/StudentDashboard'));
+const HODDashboard = lazy(() => import('./pages/hod/HODDashboard'));
+const TeacherDashboard = lazy(() => import('./pages/teacher/TeacherDashboard'));
+const StudentDashboard = lazy(() => import('./pages/student/StudentDashboard'));
 const FaceEnrollmentPage = lazy(() => import('./pages/student/FaceEnrollmentPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
-const TOTPSetupPage      = lazy(() => import('./pages/TOTPSetupPage'));
+const TOTPSetupPage = lazy(() => import('./pages/TOTPSetupPage'));
 
 // Live session pages (Prompts 4 + 5)
-const JoinSessionPage    = lazy(() => import('./pages/live/JoinSessionPage'));
+const JoinSessionPage = lazy(() => import('./pages/live/JoinSessionPage'));
 const StudentLiveSession = lazy(() => import('./pages/live/StudentLiveSession'));
 
 // Super-admin console (Issue #108) — fully isolated from role dashboards.
 const SuperAdminLoginPage = lazy(() => import('./pages/superadmin/SuperAdminLoginPage'));
-const SuperAdminLayout    = lazy(() => import('./pages/superadmin/SuperAdminLayout'));
-const SuperAdminColleges  = lazy(() => import('./pages/superadmin/CollegesPage'));
-const SuperAdminStats     = lazy(() => import('./pages/superadmin/StatsPage'));
+const SuperAdminLayout = lazy(() => import('./pages/superadmin/SuperAdminLayout'));
+const SuperAdminColleges = lazy(() => import('./pages/superadmin/CollegesPage'));
+const SuperAdminStats = lazy(() => import('./pages/superadmin/StatsPage'));
 
 // ── Loading fallback ──────────────────────────────────────────────────
 function PageLoading() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-surface">
       <div className="flex flex-col items-center gap-4">
-        <div className="spinner !border-secondary !border-t-transparent w-10 h-10
+        <div
+          className="spinner !border-secondary !border-t-transparent w-10 h-10
                         !border-4 !w-10 !h-10"
-             style={{ borderColor: '#e2e8f0', borderTopColor: 'var(--color-secondary)',
-                      width: 40, height: 40, borderWidth: 4 }} />
+          style={{
+            borderColor: '#e2e8f0',
+            borderTopColor: 'var(--color-secondary)',
+            width: 40,
+            height: 40,
+            borderWidth: 4,
+          }}
+        />
         <p className="text-slate-500 text-sm font-medium">Loading…</p>
       </div>
     </div>
@@ -86,9 +94,9 @@ function RoleRedirect() {
 
   const destinations = {
     principal: '/principal/dashboard',
-    hod:       '/hod/dashboard',
-    teacher:   '/teacher/dashboard',
-    student:   '/student/dashboard',
+    hod: '/hod/dashboard',
+    teacher: '/teacher/dashboard',
+    student: '/student/dashboard',
   };
   return <Navigate to={destinations[user?.role] ?? '/login'} replace />;
 }
@@ -99,24 +107,27 @@ function AppRoutes() {
     <Suspense fallback={<PageLoading />}>
       <Routes>
         {/* Public */}
-        <Route path="/login"           element={<LoginPage />} />
-        <Route path="/unauthorized"    element={<UnauthorizedPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
         {/* Public live-session join (no auth required) */}
-        <Route path="/live/:joinCode"  element={<JoinSessionPage />} />
+        <Route path="/live/:joinCode" element={<JoinSessionPage />} />
 
         {/* Full-screen live session — public to support guest join */}
         <Route path="/student/live/:sessionId" element={<StudentLiveSession />} />
-        <Route path="/session-ended" element={
-          <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-            <div className="text-center space-y-4">
-              <p className="text-6xl">✅</p>
-              <h1 className="text-3xl font-bold">Session Ended</h1>
-              <p className="text-slate-400">Thank you for attending. You may close this tab.</p>
+        <Route
+          path="/session-ended"
+          element={
+            <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+              <div className="text-center space-y-4">
+                <p className="text-6xl">✅</p>
+                <h1 className="text-3xl font-bold">Session Ended</h1>
+                <p className="text-slate-400">Thank you for attending. You may close this tab.</p>
+              </div>
             </div>
-          </div>
-        } />
+          }
+        />
 
         {/* Root — dispatch by role */}
         <Route path="/" element={<RoleRedirect />} />
@@ -126,9 +137,9 @@ function AppRoutes() {
             wrapped in PrivateRoute and unaffected by RoleRedirect. */}
         <Route path="/admin/login" element={<SuperAdminLoginPage />} />
         <Route path="/admin" element={<SuperAdminLayout />}>
-          <Route index             element={<Navigate to="colleges" replace />} />
-          <Route path="colleges"   element={<SuperAdminColleges />} />
-          <Route path="stats"      element={<SuperAdminStats />} />
+          <Route index element={<Navigate to="colleges" replace />} />
+          <Route path="colleges" element={<SuperAdminColleges />} />
+          <Route path="stats" element={<SuperAdminStats />} />
         </Route>
 
         {/* Principal */}
@@ -211,4 +222,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-

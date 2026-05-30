@@ -23,20 +23,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const SPEAKING_VOLUME_THRESHOLD = 15;
 
 export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
-  const clientRef            = useRef(null);
-  const localVideoTrackRef   = useRef(null);
-  const localAudioTrackRef   = useRef(null);
+  const clientRef = useRef(null);
+  const localVideoTrackRef = useRef(null);
+  const localAudioTrackRef = useRef(null);
   const cameraTrackBackupRef = useRef(null); // saved while screen-sharing
 
-  const [remoteUsers,        setRemoteUsers]        = useState([]);
-  const [localVideoEnabled,  setLocalVideoEnabled]  = useState(true);
-  const [localAudioEnabled,  setLocalAudioEnabled]  = useState(true);
-  const [isJoined,           setIsJoined]           = useState(false);
-  const [isLoading,          setIsLoading]          = useState(false);
-  const [error,              setError]              = useState(null);
-  const [networkQuality,     setNetworkQuality]     = useState(null);
-  const [speakingUsers,      setSpeakingUsers]      = useState(new Set());
-  const [activeSpeakerUid,   setActiveSpeakerUid]   = useState(null);
+  const [remoteUsers, setRemoteUsers] = useState([]);
+  const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
+  const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
+  const [isJoined, setIsJoined] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [networkQuality, setNetworkQuality] = useState(null);
+  const [speakingUsers, setSpeakingUsers] = useState(new Set());
+  const [activeSpeakerUid, setActiveSpeakerUid] = useState(null);
 
   // ─── INIT ────────────────────────────────────────────────────────────
   const initClient = useCallback(async () => {
@@ -65,56 +65,68 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
           return;
         }
         if (mediaType === 'video') {
-          setRemoteUsers(prev => {
-            const idx = prev.findIndex(u => u.uid === user.uid);
+          setRemoteUsers((prev) => {
+            const idx = prev.findIndex((u) => u.uid === user.uid);
             const patch = { videoTrack: user.videoTrack, hasVideo: true };
             if (idx >= 0) {
               const copy = [...prev];
               copy[idx] = { ...copy[idx], ...patch };
               return copy;
             }
-            return [...prev, {
-              uid: user.uid,
-              videoTrack: user.videoTrack,
-              audioTrack: null,
-              hasVideo: true,
-              hasAudio: false,
-            }];
+            return [
+              ...prev,
+              {
+                uid: user.uid,
+                videoTrack: user.videoTrack,
+                audioTrack: null,
+                hasVideo: true,
+                hasAudio: false,
+              },
+            ];
           });
         }
         if (mediaType === 'audio') {
-          try { user.audioTrack?.play(); } catch (_) { /* ignore */ }
-          setRemoteUsers(prev => {
-            const idx = prev.findIndex(u => u.uid === user.uid);
+          try {
+            user.audioTrack?.play();
+          } catch (_) {
+            /* ignore */
+          }
+          setRemoteUsers((prev) => {
+            const idx = prev.findIndex((u) => u.uid === user.uid);
             const patch = { audioTrack: user.audioTrack, hasAudio: true };
             if (idx >= 0) {
               const copy = [...prev];
               copy[idx] = { ...copy[idx], ...patch };
               return copy;
             }
-            return [...prev, {
-              uid: user.uid,
-              videoTrack: null,
-              audioTrack: user.audioTrack,
-              hasVideo: false,
-              hasAudio: true,
-            }];
+            return [
+              ...prev,
+              {
+                uid: user.uid,
+                videoTrack: null,
+                audioTrack: user.audioTrack,
+                hasVideo: false,
+                hasAudio: true,
+              },
+            ];
           });
         }
       });
 
       client.on('user-unpublished', (user, mediaType) => {
-        setRemoteUsers(prev => prev.map(u => {
-          if (u.uid !== user.uid) return u;
-          if (mediaType === 'video') return { ...u, hasVideo: false, videoTrack: null };
-          if (mediaType === 'audio') return { ...u, hasAudio: false, audioTrack: null };
-          return u;
-        }));
+        setRemoteUsers((prev) =>
+          prev.map((u) => {
+            if (u.uid !== user.uid) return u;
+            if (mediaType === 'video') return { ...u, hasVideo: false, videoTrack: null };
+            if (mediaType === 'audio') return { ...u, hasAudio: false, audioTrack: null };
+            return u;
+          })
+        );
       });
 
       client.on('user-left', (user) => {
-        setRemoteUsers(prev => prev.filter(u => u.uid !== user.uid));
-        setSpeakingUsers(prev => {
+        setRemoteUsers((prev) => prev.filter((u) => u.uid !== user.uid));
+        setSpeakingUsers((prev) => {
           if (!prev.has(user.uid)) return prev;
           const next = new Set(prev);
           next.delete(user.uid);
@@ -124,7 +136,7 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
 
       client.on('network-quality', (stats) => {
         setNetworkQuality({
-          uplink:   stats.uplinkNetworkQuality,
+          uplink: stats.uplinkNetworkQuality,
           downlink: stats.downlinkNetworkQuality,
         });
       });
@@ -156,18 +168,20 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
         const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
           {
             encoderConfig: { sampleRate: 48000, stereo: true, bitrate: 128 },
-            ANS: true, AEC: true, AGC: true,
+            ANS: true,
+            AEC: true,
+            AGC: true,
           },
           {
             encoderConfig: {
-              width:      { ideal: 1280 },
-              height:     { ideal: 720 },
-              frameRate:  30,
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: 30,
               bitrateMax: 1500,
               bitrateMin: 400,
             },
             facingMode: 'user',
-          },
+          }
         );
         localAudioTrackRef.current = audioTrack;
         localVideoTrackRef.current = videoTrack;
@@ -191,16 +205,24 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
     const t = localAudioTrackRef.current;
     if (!t) return;
     const next = !localAudioEnabled;
-    try { await t.setEnabled(next); setLocalAudioEnabled(next); }
-    catch (e) { console.warn('toggleAudio failed', e); }
+    try {
+      await t.setEnabled(next);
+      setLocalAudioEnabled(next);
+    } catch (e) {
+      console.warn('toggleAudio failed', e);
+    }
   }, [localAudioEnabled]);
 
   const toggleVideo = useCallback(async () => {
     const t = localVideoTrackRef.current;
     if (!t) return;
     const next = !localVideoEnabled;
-    try { await t.setEnabled(next); setLocalVideoEnabled(next); }
-    catch (e) { console.warn('toggleVideo failed', e); }
+    try {
+      await t.setEnabled(next);
+      setLocalVideoEnabled(next);
+    } catch (e) {
+      console.warn('toggleVideo failed', e);
+    }
   }, [localVideoEnabled]);
 
   const startScreenShare = useCallback(async () => {
@@ -208,13 +230,15 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
     const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
     try {
       const screenTrack = await AgoraRTC.createScreenVideoTrack({
-        encoderConfig:    '1080p_1',
+        encoderConfig: '1080p_1',
         optimizationMode: 'detail',
       });
       // Stash the camera track so we can restore it
       cameraTrackBackupRef.current = localVideoTrackRef.current;
       if (localVideoTrackRef.current) {
-        try { await clientRef.current.unpublish(localVideoTrackRef.current); } catch (_) {}
+        try {
+          await clientRef.current.unpublish(localVideoTrackRef.current);
+        } catch (_) {}
       }
       localVideoTrackRef.current = screenTrack;
       await clientRef.current.publish(screenTrack);
@@ -230,8 +254,13 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
     try {
       const current = localVideoTrackRef.current;
       if (current) {
-        try { await clientRef.current.unpublish(current); } catch (_) {}
-        try { current.stop(); current.close(); } catch (_) {}
+        try {
+          await clientRef.current.unpublish(current);
+        } catch (_) {}
+        try {
+          current.stop();
+          current.close();
+        } catch (_) {}
       }
       const cam = cameraTrackBackupRef.current;
       if (cam) {
@@ -252,16 +281,22 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
       const a = localAudioTrackRef.current;
       const v = localVideoTrackRef.current;
       const cam = cameraTrackBackupRef.current;
-      [a, v, cam].forEach(t => {
+      [a, v, cam].forEach((t) => {
         if (!t) return;
-        try { t.stop(); } catch (_) {}
-        try { t.close(); } catch (_) {}
+        try {
+          t.stop();
+        } catch (_) {}
+        try {
+          t.close();
+        } catch (_) {}
       });
-      localAudioTrackRef.current   = null;
-      localVideoTrackRef.current   = null;
+      localAudioTrackRef.current = null;
+      localVideoTrackRef.current = null;
       cameraTrackBackupRef.current = null;
       if (clientRef.current) {
-        try { await clientRef.current.leave(); } catch (_) {}
+        try {
+          await clientRef.current.leave();
+        } catch (_) {}
         clientRef.current = null;
       }
     } finally {
@@ -274,22 +309,34 @@ export function useAgoraRTC({ appId, channel, token, uid, role = 'audience' }) {
 
   // Safety-net cleanup on unmount
   useEffect(() => {
-    return () => { leaveChannel(); };
+    return () => {
+      leaveChannel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {
     // state
-    isJoined, isLoading, error,
-    localVideoEnabled, localAudioEnabled,
-    remoteUsers, networkQuality,
-    speakingUsers, activeSpeakerUid,
+    isJoined,
+    isLoading,
+    error,
+    localVideoEnabled,
+    localAudioEnabled,
+    remoteUsers,
+    networkQuality,
+    speakingUsers,
+    activeSpeakerUid,
     // refs
-    localVideoTrackRef, localAudioTrackRef, clientRef,
+    localVideoTrackRef,
+    localAudioTrackRef,
+    clientRef,
     // actions
-    initClient, leaveChannel,
-    toggleAudio, toggleVideo,
-    startScreenShare, stopScreenShare,
+    initClient,
+    leaveChannel,
+    toggleAudio,
+    toggleVideo,
+    startScreenShare,
+    stopScreenShare,
   };
 }
 

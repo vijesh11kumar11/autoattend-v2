@@ -43,7 +43,11 @@ export default function SuperAdminLayout() {
   }
 
   async function handleLogout() {
-    try { await logout(); } catch { /* ignore */ }
+    try {
+      await logout();
+    } catch {
+      /* ignore */
+    }
     navigate('/admin/login', { replace: true });
   }
 
@@ -51,9 +55,7 @@ export default function SuperAdminLayout() {
     <div className="min-h-screen flex bg-slate-100">
       <aside className="w-56 bg-slate-900 text-slate-100 flex flex-col">
         <div className="px-5 py-5 border-b border-slate-800">
-          <p className="text-xs font-semibold text-amber-400 tracking-widest uppercase">
-            Traceln
-          </p>
+          <p className="text-xs font-semibold text-amber-400 tracking-widest uppercase">Traceln</p>
           <p className="mt-1 font-bold">Admin Console</p>
         </div>
 

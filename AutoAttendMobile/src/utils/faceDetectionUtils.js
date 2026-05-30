@@ -16,7 +16,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useCameraDevice, useCameraPermission, useFrameProcessor } from 'react-native-vision-camera';
+import {
+  useCameraDevice,
+  useCameraPermission,
+  useFrameProcessor,
+} from 'react-native-vision-camera';
 import { useFaceDetector } from 'react-native-vision-camera-face-detector';
 import { Worklets } from 'react-native-worklets-core';
 
@@ -70,7 +74,7 @@ export function useAttendanceFaceVerify() {
         // Frame processing must never crash the camera pipeline.
       }
     },
-    [detectFaces, onFacesDetected],
+    [detectFaces, onFacesDetected]
   );
 
   // Reset detection state when the screen using the hook unmounts.

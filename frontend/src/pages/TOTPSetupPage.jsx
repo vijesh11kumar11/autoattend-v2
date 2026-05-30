@@ -19,9 +19,13 @@ import { useAuth } from '../context/AuthContext';
 function TOTPInput({ value, onChange, disabled }) {
   const refsArr = useRef([]);
   function refFor(i) {
-    return el => { refsArr.current[i] = el; };
+    return (el) => {
+      refsArr.current[i] = el;
+    };
   }
-  function focusAt(i) { refsArr.current[i]?.focus(); }
+  function focusAt(i) {
+    refsArr.current[i]?.focus();
+  }
 
   const digits = (value || '').split('').slice(0, 6).concat(Array(6).fill('')).slice(0, 6);
 
@@ -57,8 +61,8 @@ function TOTPInput({ value, onChange, disabled }) {
           maxLength={1}
           disabled={disabled}
           value={d}
-          onChange={e => handleChange(i, e)}
-          onKeyDown={e => handleKeyDown(i, e)}
+          onChange={(e) => handleChange(i, e)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={i === 0 ? handlePaste : undefined}
           className="w-11 h-12 border rounded-xl text-center text-xl font-mono focus:ring-2
                      focus:ring-primary focus:border-primary outline-none transition
@@ -72,10 +76,14 @@ function TOTPInput({ value, onChange, disabled }) {
 // ── Role to dashboard path ────────────────────────────────────────────
 function dashboardPath(role) {
   switch (role) {
-    case 'principal': return '/principal/dashboard';
-    case 'hod':       return '/hod/dashboard';
-    case 'teacher':   return '/teacher/dashboard';
-    default:          return '/student/dashboard';
+    case 'principal':
+      return '/principal/dashboard';
+    case 'hod':
+      return '/hod/dashboard';
+    case 'teacher':
+      return '/teacher/dashboard';
+    default:
+      return '/student/dashboard';
   }
 }
 
@@ -87,26 +95,32 @@ export default function TOTPSetupPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [setupData, setSetupData]   = useState(null);   // { secret, qr_image, instructions }
-  const [code,      setCode]        = useState('');
-  const [loading,   setLoading]     = useState(true);
+  const [setupData, setSetupData] = useState(null); // { secret, qr_image, instructions }
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error,     setError]       = useState('');
-  const [done,      setDone]        = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
   // Load QR + secret on mount
   useEffect(() => {
     let cancelled = false;
-    api.get('/auth/totp-setup')
+    api
+      .get('/auth/totp-setup')
       .then(({ data }) => {
-        if (!cancelled) { setSetupData(data); setLoading(false); }
+        if (!cancelled) {
+          setSetupData(data);
+          setLoading(false);
+        }
       })
-      .catch(err => {
+      .catch((err) => {
         if (!cancelled) {
           setError(err.response?.data?.detail || 'Could not load TOTP setup. Please re-login.');
           setLoading(false);
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // After success, redirect to dashboard
@@ -120,17 +134,21 @@ export default function TOTPSetupPage() {
   async function handleConfirm(e) {
     e.preventDefault();
     if (code.replace(/\D/g, '').length < 6) {
-      setError('Enter the 6-digit code from your authenticator app.'); return;
+      setError('Enter the 6-digit code from your authenticator app.');
+      return;
     }
-    setError(''); setSubmitting(true);
+    setError('');
+    setSubmitting(true);
     try {
       await api.post('/auth/totp-confirm', {
-        secret:    setupData.secret,
+        secret: setupData.secret,
         totp_code: code.replace(/\D/g, ''),
       });
       setDone(true);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid code. Check the time on your device and try again.');
+      setError(
+        err.response?.data?.detail || 'Invalid code. Check the time on your device and try again.'
+      );
       setCode('');
     } finally {
       setSubmitting(false);
@@ -141,11 +159,12 @@ export default function TOTPSetupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
       <div className="w-full max-w-md">
-
         {/* Brand */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700
-                          flex items-center justify-center text-white text-xl font-bold mx-auto mb-3 shadow-lg">
+          <div
+            className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700
+                          flex items-center justify-center text-white text-xl font-bold mx-auto mb-3 shadow-lg"
+          >
             AA
           </div>
           <h1 className="text-2xl font-extrabold text-slate-800">AutoAttend AI</h1>
@@ -153,7 +172,6 @@ export default function TOTPSetupPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg p-7 space-y-6">
-
           {/* Error */}
           {error && (
             <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
@@ -242,12 +260,11 @@ export default function TOTPSetupPage() {
               </button>
 
               <p className="text-xs text-center text-slate-400">
-                Make sure your device's clock is accurate.
-                The 6-digit code refreshes every 30 seconds.
+                Make sure your device's clock is accurate. The 6-digit code refreshes every 30
+                seconds.
               </p>
             </form>
           )}
-
         </div>
       </div>
     </div>

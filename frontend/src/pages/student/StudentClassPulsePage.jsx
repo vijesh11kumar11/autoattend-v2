@@ -41,7 +41,10 @@ function loadPdfJs() {
       }
       return lib;
     })
-    .catch((err) => { _pdfjsPromise = null; throw err; });
+    .catch((err) => {
+      _pdfjsPromise = null;
+      throw err;
+    });
   return _pdfjsPromise;
 }
 
@@ -50,41 +53,46 @@ function loadPdfJs() {
    ═══════════════════════════════════════════════════════════════════════ */
 
 const TYPE_ICON = {
-  notes:  '📝',
+  notes: '📝',
   slides: '🎞️',
-  video:  '🎬',
-  audio:  '🎙️',
-  quiz:   '🧠',
-  link:   '🔗',
+  video: '🎬',
+  audio: '🎙️',
+  quiz: '🧠',
+  link: '🔗',
 };
 
 const ACCESS_BANNER = {
-  accessible:           null,
-  read_only:            { tone: 'violet', icon: '👁️', label: 'Read-only access (no download)' },
-  summary_only:         { tone: 'violet', icon: '📄', label: 'Summary-only — full content gated' },
-  session_only_open:    { tone: 'green',  icon: '✅', label: 'Live session active — open now' },
-  session_only_window:  { tone: 'orange', icon: '⏰', label: 'Available during live class only' },
-  attend_first:         { tone: 'blue',   icon: '✋', label: 'Mark your attendance to unlock' },
-  locked_attend_first:  { tone: 'blue',   icon: '✋', label: 'Mark your attendance to unlock' },
-  attendance_gated:     { tone: 'violet', icon: '🎟️', label: 'Attendance gated' },
-  locked_no_attendance: { tone: 'red',    icon: '⛔', label: 'Locked — attendance below required' },
-  locked_session_ended: { tone: 'red',    icon: '⛔', label: 'Locked — session window closed' },
-  capsule_inactive:     { tone: 'red',    icon: '⛔', label: 'Capsule has been hidden by teacher' },
-  not_enrolled:         { tone: 'red',    icon: '⛔', label: 'You are not enrolled in this subject' },
-  wrong_section:        { tone: 'red',    icon: '⛔', label: 'Capsule restricted to another section' },
+  accessible: null,
+  read_only: { tone: 'violet', icon: '👁️', label: 'Read-only access (no download)' },
+  summary_only: { tone: 'violet', icon: '📄', label: 'Summary-only — full content gated' },
+  session_only_open: { tone: 'green', icon: '✅', label: 'Live session active — open now' },
+  session_only_window: { tone: 'orange', icon: '⏰', label: 'Available during live class only' },
+  attend_first: { tone: 'blue', icon: '✋', label: 'Mark your attendance to unlock' },
+  locked_attend_first: { tone: 'blue', icon: '✋', label: 'Mark your attendance to unlock' },
+  attendance_gated: { tone: 'violet', icon: '🎟️', label: 'Attendance gated' },
+  locked_no_attendance: { tone: 'red', icon: '⛔', label: 'Locked — attendance below required' },
+  locked_session_ended: { tone: 'red', icon: '⛔', label: 'Locked — session window closed' },
+  capsule_inactive: { tone: 'red', icon: '⛔', label: 'Capsule has been hidden by teacher' },
+  not_enrolled: { tone: 'red', icon: '⛔', label: 'You are not enrolled in this subject' },
+  wrong_section: { tone: 'red', icon: '⛔', label: 'Capsule restricted to another section' },
 };
 
 const DENY_STATUSES = new Set([
-  'locked_attend_first', 'locked_no_attendance', 'locked_session_ended',
-  'capsule_inactive', 'not_enrolled', 'wrong_section', 'attend_first',
+  'locked_attend_first',
+  'locked_no_attendance',
+  'locked_session_ended',
+  'capsule_inactive',
+  'not_enrolled',
+  'wrong_section',
+  'attend_first',
 ]);
 
 const WALL_FILTERS = [
-  { key: 'all',       label: 'All',           icon: '📋' },
-  { key: 'hot',       label: 'Hot',           icon: '🔥' },
-  { key: 'mine',      label: 'My Questions',  icon: '👤' },
-  { key: 'answered',  label: 'Answered',      icon: '✅' },
-  { key: 'open',      label: 'Open',          icon: '❓' },
+  { key: 'all', label: 'All', icon: '📋' },
+  { key: 'hot', label: 'Hot', icon: '🔥' },
+  { key: 'mine', label: 'My Questions', icon: '👤' },
+  { key: 'answered', label: 'Answered', icon: '✅' },
+  { key: 'open', label: 'Open', icon: '❓' },
 ];
 
 const HEARTBEAT_MS = 30_000;
@@ -128,7 +136,10 @@ export default function StudentClassPulsePage() {
     }
   }, []);
 
-  useEffect(() => { loadSubjects(); loadProgress(); }, []); // eslint-disable-line
+  useEffect(() => {
+    loadSubjects();
+    loadProgress();
+  }, []); // eslint-disable-line
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -168,7 +179,8 @@ export default function StudentClassPulsePage() {
                     </span>
                   </div>
                   <div className="text-[11px] text-white/85">
-                    {progress.overall.capsules_opened || 0}/{progress.overall.capsules_total || 0} capsules
+                    {progress.overall.capsules_opened || 0}/{progress.overall.capsules_total || 0}{' '}
+                    capsules
                   </div>
                 </div>
               )}
@@ -178,7 +190,9 @@ export default function StudentClassPulsePage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4">{error}</div>
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4">
+          {error}
+        </div>
       )}
 
       {loading && <div className="card p-10 text-center text-slate-400 text-sm">Loading…</div>}
@@ -196,14 +210,26 @@ export default function StudentClassPulsePage() {
           {/* RIGHT — content */}
           <div className="min-w-0 space-y-3">
             {!activeSubjectId ? (
-              <EmptyState icon="📚" title="No subjects yet" desc="Once you're enrolled in a subject, ClassPulse activates." />
+              <EmptyState
+                icon="📚"
+                title="No subjects yet"
+                desc="Once you're enrolled in a subject, ClassPulse activates."
+              />
             ) : (
               <>
                 <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-                  <TabBtn active={tab === 'capsules'} onClick={() => setTab('capsules')}
-                          icon="📦" label="Capsules" />
-                  <TabBtn active={tab === 'wall'}     onClick={() => setTab('wall')}
-                          icon="💬" label="Class Wall" />
+                  <TabBtn
+                    active={tab === 'capsules'}
+                    onClick={() => setTab('capsules')}
+                    icon="📦"
+                    label="Capsules"
+                  />
+                  <TabBtn
+                    active={tab === 'wall'}
+                    onClick={() => setTab('wall')}
+                    icon="💬"
+                    label="Class Wall"
+                  />
                 </div>
                 {tab === 'capsules' && (
                   <CapsulesTab
@@ -236,10 +262,13 @@ export default function StudentClassPulsePage() {
 
 function TabBtn({ active, onClick, icon, label }) {
   return (
-    <button onClick={onClick}
+    <button
+      onClick={onClick}
       className={`flex-1 py-2 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5
-        ${active ? 'bg-white shadow-sm text-violet-700' : 'text-slate-500 hover:text-slate-700'}`}>
-      <span>{icon}</span>{label}
+        ${active ? 'bg-white shadow-sm text-violet-700' : 'text-slate-500 hover:text-slate-700'}`}
+    >
+      <span>{icon}</span>
+      {label}
     </button>
   );
 }
@@ -260,7 +289,8 @@ function SubjectList({ subjects, activeId, onSelect, meta }) {
         {subjects.map((s) => {
           const m = meta[s.subject_id] || {};
           const pct = s.percentage ?? 0;
-          const pctColor = pct >= 75 ? 'text-emerald-600' : pct >= 65 ? 'text-amber-600' : 'text-red-600';
+          const pctColor =
+            pct >= 75 ? 'text-emerald-600' : pct >= 65 ? 'text-amber-600' : 'text-red-600';
           const active = activeId === s.subject_id;
           return (
             <button
@@ -326,7 +356,9 @@ function CapsulesTab({ subjectId, showToast, onMeta }) {
     }
   }, [subjectId, onMeta]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Poll every 60s for session_active changes
   useEffect(() => {
@@ -345,7 +377,13 @@ function CapsulesTab({ subjectId, showToast, onMeta }) {
 
   if (loading) return <SkeletonCards />;
   if (!capsules.length) {
-    return <EmptyState icon="📦" title="No capsules yet" desc="Your teacher hasn't published any learning material for this subject." />;
+    return (
+      <EmptyState
+        icon="📦"
+        title="No capsules yet"
+        desc="Your teacher hasn't published any learning material for this subject."
+      />
+    );
   }
 
   const featured = capsules.filter((c) => c.featured);
@@ -363,7 +401,9 @@ function CapsulesTab({ subjectId, showToast, onMeta }) {
                 key={`feat-${c.capsule_id}`}
                 capsule={c}
                 expanded={expandedSummary === c.capsule_id}
-                onToggleSummary={() => setExpandedSummary(expandedSummary === c.capsule_id ? null : c.capsule_id)}
+                onToggleSummary={() =>
+                  setExpandedSummary(expandedSummary === c.capsule_id ? null : c.capsule_id)
+                }
                 onOpen={() => handleCardClick(c)}
               />
             ))}
@@ -377,7 +417,9 @@ function CapsulesTab({ subjectId, showToast, onMeta }) {
             key={c.capsule_id}
             capsule={c}
             expanded={expandedSummary === c.capsule_id}
-            onToggleSummary={() => setExpandedSummary(expandedSummary === c.capsule_id ? null : c.capsule_id)}
+            onToggleSummary={() =>
+              setExpandedSummary(expandedSummary === c.capsule_id ? null : c.capsule_id)
+            }
             onOpen={() => handleCardClick(c)}
           />
         ))}
@@ -387,7 +429,10 @@ function CapsulesTab({ subjectId, showToast, onMeta }) {
         <CapsuleViewer
           capsuleId={openCapsuleId}
           subjectId={subjectId}
-          onClose={() => { setOpenCapsuleId(null); load(); }}
+          onClose={() => {
+            setOpenCapsuleId(null);
+            load();
+          }}
           showToast={showToast}
         />
       )}
@@ -409,9 +454,11 @@ function CapsuleCard({ capsule, expanded, onToggleSummary, onOpen }) {
   else statusPill = <Pill tone="red">❌ Review needed</Pill>;
 
   return (
-    <div className={`bg-white rounded-2xl border border-slate-100 shadow-sm transition-all relative overflow-hidden
+    <div
+      className={`bg-white rounded-2xl border border-slate-100 shadow-sm transition-all relative overflow-hidden
         ${denied ? 'opacity-70' : 'hover:shadow-lg hover:-translate-y-0.5 cursor-pointer'}`}
-      onClick={denied ? onOpen : onOpen}>
+      onClick={denied ? onOpen : onOpen}
+    >
       {/* Banner */}
       {banner && <AccessBanner banner={banner} capsule={capsule} />}
 
@@ -434,20 +481,28 @@ function CapsuleCard({ capsule, expanded, onToggleSummary, onOpen }) {
             </p>
             <div className="flex items-center gap-1 mt-1 flex-wrap">
               {capsule.is_auto_generated && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">🤖 Auto</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                  🤖 Auto
+                </span>
               )}
               {capsule.has_recording && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">📹 Recording</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                  📹 Recording
+                </span>
               )}
               {(capsule.chapters_count || 0) > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">📑 {capsule.chapters_count}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                  📑 {capsule.chapters_count}
+                </span>
               )}
             </div>
           </div>
         </div>
 
         {/* Attendance ring for gated mode */}
-        {capsule.access_status === 'attendance_gated' || capsule.access_status === 'locked_no_attendance' || capsule.access_status === 'read_only' ? (
+        {capsule.access_status === 'attendance_gated' ||
+        capsule.access_status === 'locked_no_attendance' ||
+        capsule.access_status === 'read_only' ? (
           <AttendanceRingRow capsule={capsule} />
         ) : null}
 
@@ -466,12 +521,17 @@ function CapsuleCard({ capsule, expanded, onToggleSummary, onOpen }) {
                 {capsule.key_points?.length > 0 && (
                   <ul className="space-y-1">
                     {capsule.key_points.map((kp, idx) => (
-                      <li key={idx} className="flex items-start gap-1.5"><span className="text-violet-500">•</span><span>{kp}</span></li>
+                      <li key={idx} className="flex items-start gap-1.5">
+                        <span className="text-violet-500">•</span>
+                        <span>{kp}</span>
+                      </li>
                     ))}
                   </ul>
                 )}
                 {capsule.estimated_read_time_min && (
-                  <p className="text-[11px] text-slate-500">⏱️ ~{capsule.estimated_read_time_min} min read</p>
+                  <p className="text-[11px] text-slate-500">
+                    ⏱️ ~{capsule.estimated_read_time_min} min read
+                  </p>
                 )}
               </div>
             )}
@@ -489,30 +549,39 @@ function CapsuleCard({ capsule, expanded, onToggleSummary, onOpen }) {
 
 function AccessBanner({ banner, capsule }) {
   const tones = {
-    green:  'bg-emerald-50  text-emerald-700 border-emerald-200',
+    green: 'bg-emerald-50  text-emerald-700 border-emerald-200',
     orange: 'bg-amber-50    text-amber-700   border-amber-200',
-    blue:   'bg-blue-50     text-blue-700    border-blue-200',
+    blue: 'bg-blue-50     text-blue-700    border-blue-200',
     violet: 'bg-violet-50   text-violet-700  border-violet-200',
-    red:    'bg-red-50      text-red-700     border-red-200',
+    red: 'bg-red-50      text-red-700     border-red-200',
   };
   const cls = tones[banner.tone] || tones.violet;
   let extra = '';
-  if (capsule.access_status === 'attendance_gated' || capsule.access_status === 'locked_no_attendance') {
+  if (
+    capsule.access_status === 'attendance_gated' ||
+    capsule.access_status === 'locked_no_attendance'
+  ) {
     const yours = capsule.access_meta?.attendance_pct;
-    const need  = capsule.access_meta?.min_required;
+    const need = capsule.access_meta?.min_required;
     if (need !== undefined) extra = ` · need ${need}%`;
     if (yours !== undefined) extra += ` · yours ${yours}%`;
   }
   return (
-    <div className={`px-3 py-1.5 border-b text-[11px] font-medium flex items-center gap-1.5 ${cls}`}>
-      <span>{banner.icon}</span><span className="truncate">{banner.label}{extra}</span>
+    <div
+      className={`px-3 py-1.5 border-b text-[11px] font-medium flex items-center gap-1.5 ${cls}`}
+    >
+      <span>{banner.icon}</span>
+      <span className="truncate">
+        {banner.label}
+        {extra}
+      </span>
     </div>
   );
 }
 
 function AttendanceRingRow({ capsule }) {
   const yours = Math.max(0, Math.min(100, capsule.access_meta?.attendance_pct ?? 0));
-  const need  = capsule.access_meta?.min_required ?? 75;
+  const need = capsule.access_meta?.min_required ?? 75;
   const ok = yours >= need;
   const sessionsShort = capsule.access_meta?.classes_short;
 
@@ -520,10 +589,19 @@ function AttendanceRingRow({ capsule }) {
     <div className="mt-2 flex items-center gap-3 bg-slate-50 rounded-lg p-2">
       <Ring pct={yours} target={need} ok={ok} />
       <div className="text-xs text-slate-600 leading-tight">
-        <p>Required: <span className="font-semibold text-slate-800">{need}%</span></p>
-        <p>Yours: <span className={`font-semibold ${ok ? 'text-emerald-700' : 'text-red-700'}`}>{yours}%</span></p>
+        <p>
+          Required: <span className="font-semibold text-slate-800">{need}%</span>
+        </p>
+        <p>
+          Yours:{' '}
+          <span className={`font-semibold ${ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            {yours}%
+          </span>
+        </p>
         {!ok && sessionsShort > 0 && (
-          <p className="mt-0.5 text-[11px] text-violet-700">📈 Attend {sessionsShort} more class{sessionsShort > 1 ? 'es' : ''} to unlock</p>
+          <p className="mt-0.5 text-[11px] text-violet-700">
+            📈 Attend {sessionsShort} more class{sessionsShort > 1 ? 'es' : ''} to unlock
+          </p>
         )}
       </div>
     </div>
@@ -538,25 +616,52 @@ function Ring({ pct, target = 75, ok = false, size = 44, stroke = 5 }) {
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-                strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round"
-                className="transition-all duration-700" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeDasharray={c}
+          strokeDashoffset={off}
+          strokeLinecap="round"
+          className="transition-all duration-700"
+        />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center text-[11px] font-bold" style={{ color }}>{pct}%</div>
+      <div
+        className="absolute inset-0 flex items-center justify-center text-[11px] font-bold"
+        style={{ color }}
+      >
+        {pct}%
+      </div>
     </div>
   );
 }
 
 function Pill({ tone, children }) {
   const tones = {
-    violet:  'bg-violet-50  text-violet-700  border-violet-200',
-    amber:   'bg-amber-50   text-amber-700   border-amber-200',
+    violet: 'bg-violet-50  text-violet-700  border-violet-200',
+    amber: 'bg-amber-50   text-amber-700   border-amber-200',
     emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    red:     'bg-red-50     text-red-700     border-red-200',
-    slate:   'bg-slate-100  text-slate-600   border-slate-200',
+    red: 'bg-red-50     text-red-700     border-red-200',
+    slate: 'bg-slate-100  text-slate-600   border-slate-200',
   };
-  return <span className={`text-[11px] px-2 py-0.5 rounded border font-medium ${tones[tone] || tones.slate}`}>{children}</span>;
+  return (
+    <span
+      className={`text-[11px] px-2 py-0.5 rounded border font-medium ${tones[tone] || tones.slate}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -584,18 +689,26 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
   const [sessionExpiringSoon, setSessionExpiringSoon] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
 
-  const isPdf = (openData?.file_mime_type || '').toLowerCase() === 'application/pdf'
-              || (openData?.file_url || '').toLowerCase().endsWith('.pdf')
-              || (openData?.signed_view_url || '').toLowerCase().includes('serve');
+  const isPdf =
+    (openData?.file_mime_type || '').toLowerCase() === 'application/pdf' ||
+    (openData?.file_url || '').toLowerCase().endsWith('.pdf') ||
+    (openData?.signed_view_url || '').toLowerCase().includes('serve');
   const totalPages = pdfDoc?.numPages || 0;
   const interaction = openData?.interaction || {};
-  const downloadAllowed = interaction.download_allowed && (openData?.signed_download_url || openData?.file_url);
+  const downloadAllowed =
+    interaction.download_allowed && (openData?.signed_download_url || openData?.file_url);
   const hasQuiz = (openData?.ai_quiz_json || []).length > 0;
 
   const refreshSession = useCallback(() => {
-    setLoading(true); setError(''); setSessionExpired(false); setSessionExpiringSoon(false);
-    api.post(`/classpulse/student/capsule/${capsuleId}/open`)
-      .then((r) => { setOpenData(r.data); })
+    setLoading(true);
+    setError('');
+    setSessionExpired(false);
+    setSessionExpiringSoon(false);
+    api
+      .post(`/classpulse/student/capsule/${capsuleId}/open`)
+      .then((r) => {
+        setOpenData(r.data);
+      })
       .catch((e) => {
         const detail = e.response?.data?.detail;
         const reason = detail?.reason || detail || 'Could not open capsule';
@@ -607,17 +720,25 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
   /* ── 1. open capsule ─────────────────────────── */
   useEffect(() => {
     let alive = true;
-    setLoading(true); setError('');
-    api.post(`/classpulse/student/capsule/${capsuleId}/open`)
-      .then((r) => { if (alive) setOpenData(r.data); })
+    setLoading(true);
+    setError('');
+    api
+      .post(`/classpulse/student/capsule/${capsuleId}/open`)
+      .then((r) => {
+        if (alive) setOpenData(r.data);
+      })
       .catch((e) => {
         if (!alive) return;
         const detail = e.response?.data?.detail;
         const reason = detail?.reason || detail || 'Could not open capsule';
         setError(typeof reason === 'string' ? reason : 'Access denied');
       })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [capsuleId]);
 
   /* ── 2. load PDF ─────────────────────────── */
@@ -643,14 +764,19 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
         }
         const task = pdfjsLib.getDocument({ data: pdfData });
         const doc = await task.promise;
-        if (alive) { setPdfDoc(doc); setPage(1); }
+        if (alive) {
+          setPdfDoc(doc);
+          setPage(1);
+        }
       } catch (e) {
         if (alive) showToast('⚠️ Could not load PDF — check your connection');
       } finally {
         if (alive) setPdfLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [openData, isPdf, capsuleId, showToast]);
 
   /* ── 3. render current page ─────────────────────────── */
@@ -664,9 +790,9 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
         const viewport = pg.getViewport({ scale: zoom * (window.devicePixelRatio || 1) });
         const canvas = canvasRef.current;
         if (!canvas || cancelled) return;
-        canvas.width  = viewport.width;
+        canvas.width = viewport.width;
         canvas.height = viewport.height;
-        canvas.style.width  = `${viewport.width  / (window.devicePixelRatio || 1)}px`;
+        canvas.style.width = `${viewport.width / (window.devicePixelRatio || 1)}px`;
         canvas.style.height = `${viewport.height / (window.devicePixelRatio || 1)}px`;
         const ctx = canvas.getContext('2d');
         renderTask = pg.render({ canvasContext: ctx, viewport });
@@ -677,7 +803,10 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
         }
       }
     })();
-    return () => { cancelled = true; renderTask?.cancel?.(); };
+    return () => {
+      cancelled = true;
+      renderTask?.cancel?.();
+    };
   }, [pdfDoc, page, zoom, showToast]);
 
   /* ── 4. heartbeat every 30s (paused when tab hidden) ─────────── */
@@ -685,12 +814,17 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
     if (!openData) return;
     const id = setInterval(() => {
       if (heartbeatPausedRef.current) return;
-      api.post(`/classpulse/student/capsule/${capsuleId}/heartbeat`, {
-        pages_viewed: maxPagesViewed,
-        total_pages:  totalPages || 1,
-      }).then((r) => {
-        setTimeSpent(r.data.total_time_spent_sec || 0);
-      }).catch(() => { /* offline-tolerant */ });
+      api
+        .post(`/classpulse/student/capsule/${capsuleId}/heartbeat`, {
+          pages_viewed: maxPagesViewed,
+          total_pages: totalPages || 1,
+        })
+        .then((r) => {
+          setTimeSpent(r.data.total_time_spent_sec || 0);
+        })
+        .catch(() => {
+          /* offline-tolerant */
+        });
     }, HEARTBEAT_MS);
     return () => clearInterval(id);
   }, [openData, capsuleId, maxPagesViewed, totalPages]);
@@ -759,12 +893,14 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
   }, [pdfDoc]);
 
   /* ── page tracking ─────────────────────────── */
-  useEffect(() => { setMaxPagesViewed((p) => Math.max(p, page)); }, [page]);
+  useEffect(() => {
+    setMaxPagesViewed((p) => Math.max(p, page));
+  }, [page]);
 
   const showQuizTrigger = useMemo(() => {
     if (!hasQuiz) return false;
     if (!totalPages) return true;
-    return (maxPagesViewed / totalPages) >= 0.5;
+    return maxPagesViewed / totalPages >= 0.5;
   }, [hasQuiz, totalPages, maxPagesViewed]);
 
   const handleContext = (e) => {
@@ -821,11 +957,15 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
     <div className="fixed inset-0 z-50 bg-slate-900/95 flex flex-col select-none">
       {/* HEADER */}
       <header className="flex items-center gap-3 px-4 py-3 bg-slate-900 text-white border-b border-white/10">
-        <button onClick={onClose} className="text-white/80 hover:text-white text-xl">←</button>
+        <button onClick={onClose} className="text-white/80 hover:text-white text-xl">
+          ←
+        </button>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold truncate">{openData?.title || 'Loading…'}</h2>
           <p className="text-[11px] text-white/60 truncate">
-            {openData?.capsule_type ? `${TYPE_ICON[openData.capsule_type]} ${openData.capsule_type}` : ''}
+            {openData?.capsule_type
+              ? `${TYPE_ICON[openData.capsule_type]} ${openData.capsule_type}`
+              : ''}
           </p>
         </div>
         {totalPages > 0 && (
@@ -833,9 +973,7 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
             Page {page} / {totalPages}
           </div>
         )}
-        <div className="text-[11px] text-white/70 hidden md:block">
-          ⏱️ {fmtTime(timeSpent)}
-        </div>
+        <div className="text-[11px] text-white/70 hidden md:block">⏱️ {fmtTime(timeSpent)}</div>
         {interaction.quiz_attempted && (
           <Pill tone={interaction.quiz_passed ? 'emerald' : 'red'}>
             {interaction.quiz_passed ? '✅ Quiz passed' : '❌ Quiz failed'}
@@ -851,7 +989,11 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
 
       {/* BODY */}
       <div className="flex-1 flex min-h-0">
-        {loading && <div className="flex-1 flex items-center justify-center text-white/70 text-sm">Opening capsule…</div>}
+        {loading && (
+          <div className="flex-1 flex items-center justify-center text-white/70 text-sm">
+            Opening capsule…
+          </div>
+        )}
         {error && (
           <div className="flex-1 flex items-center justify-center p-6">
             <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-6 max-w-md text-center">
@@ -865,10 +1007,12 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
         {!loading && !error && (
           <>
             {/* PDF panel */}
-            <div ref={containerRef}
-                 onContextMenu={handleContext}
-                 className="flex-1 overflow-auto bg-slate-800 relative"
-                 style={{ userSelect: 'none' }}>
+            <div
+              ref={containerRef}
+              onContextMenu={handleContext}
+              className="flex-1 overflow-auto bg-slate-800 relative"
+              style={{ userSelect: 'none' }}
+            >
               {sessionExpired && (
                 <div className="absolute inset-x-0 top-0 z-10 bg-red-600/95 text-white text-xs flex items-center gap-3 px-4 py-2 shadow">
                   <span>🔄 Your secure viewing session expired.</span>
@@ -890,7 +1034,8 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
                   <div className="text-6xl mb-3">{TYPE_ICON[openData?.capsule_type] || '📄'}</div>
                   <p className="font-semibold">{openData?.title}</p>
                   <p className="text-sm text-white/60 mt-1">
-                    Non-PDF capsule. Use the panel on the right for the AI summary, voice memo and quiz.
+                    Non-PDF capsule. Use the panel on the right for the AI summary, voice memo and
+                    quiz.
                   </p>
                 </div>
               )}
@@ -918,7 +1063,10 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
                 >
                   <button
                     className="w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-violet-50 flex items-center gap-2"
-                    onClick={() => { setAskDoubt({ page: contextMenu.page }); setContextMenu(null); }}
+                    onClick={() => {
+                      setAskDoubt({ page: contextMenu.page });
+                      setContextMenu(null);
+                    }}
                   >
                     💬 Ask a doubt about page {contextMenu.page}
                   </button>
@@ -935,16 +1083,19 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
                 interaction={interaction}
                 showToast={showToast}
                 onQuizDone={(result) => {
-                  setOpenData((d) => d && ({
-                    ...d,
-                    interaction: {
-                      ...d.interaction,
-                      quiz_attempted: true,
-                      quiz_passed: result.passed,
-                      quiz_score: result.score,
-                      download_allowed: result.download_allowed,
-                    },
-                  }));
+                  setOpenData(
+                    (d) =>
+                      d && {
+                        ...d,
+                        interaction: {
+                          ...d.interaction,
+                          quiz_attempted: true,
+                          quiz_passed: result.passed,
+                          quiz_score: result.score,
+                          download_allowed: result.download_allowed,
+                        },
+                      }
+                  );
                 }}
               />
             )}
@@ -959,13 +1110,17 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-xs"
-          >← Prev</button>
+          >
+            ← Prev
+          </button>
           <input
             type="number"
             min={1}
             max={totalPages || 1}
             value={page}
-            onChange={(e) => setPage(Math.max(1, Math.min(totalPages || 1, Number(e.target.value) || 1)))}
+            onChange={(e) =>
+              setPage(Math.max(1, Math.min(totalPages || 1, Number(e.target.value) || 1)))
+            }
             className="w-14 px-2 py-1 bg-white/10 rounded text-xs text-center"
           />
           <span className="text-xs text-white/60">/ {totalPages || '–'}</span>
@@ -973,12 +1128,17 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
             disabled={!totalPages || page >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded text-xs"
-          >Next →</button>
+          >
+            Next →
+          </button>
 
           <div className="hidden md:flex gap-1 ml-2">
             {[0.75, 1, 1.25, 1.5].map((z) => (
-              <button key={z} onClick={() => setZoom(z)}
-                className={`px-2 py-1 text-[11px] rounded ${zoom === z ? 'bg-violet-500 text-white' : 'bg-white/10 hover:bg-white/20'}`}>
+              <button
+                key={z}
+                onClick={() => setZoom(z)}
+                className={`px-2 py-1 text-[11px] rounded ${zoom === z ? 'bg-violet-500 text-white' : 'bg-white/10 hover:bg-white/20'}`}
+              >
                 {Math.round(z * 100)}%
               </button>
             ))}
@@ -1017,7 +1177,10 @@ function CapsuleViewer({ capsuleId, subjectId, onClose, showToast }) {
           capsuleId={capsuleId}
           page={askDoubt.page}
           onClose={() => setAskDoubt(null)}
-          onPosted={() => { setAskDoubt(null); showToast('💬 Posted anonymously to the class wall'); }}
+          onPosted={() => {
+            setAskDoubt(null);
+            showToast('💬 Posted anonymously to the class wall');
+          }}
         />
       )}
     </div>
@@ -1029,24 +1192,29 @@ function ViewerSidebar({ openData, page, showQuizTrigger, interaction, showToast
   const [openSection, setOpenSection] = useState('summary');
   const summary = openData?.ai_summary || {};
   const summaryText = typeof summary === 'string' ? summary : summary.summary;
-  const keyPoints   = summary.key_points || [];
-  const estRead     = summary.estimated_read_time_min;
-  const difficulty  = summary.difficulty;
-  const voiceUrl    = openData?.voice_memo_url ? `voice://${openData.capsule_id}` : null;
+  const keyPoints = summary.key_points || [];
+  const estRead = summary.estimated_read_time_min;
+  const difficulty = summary.difficulty;
+  const voiceUrl = openData?.voice_memo_url ? `voice://${openData.capsule_id}` : null;
 
   return (
     <aside className="w-[360px] flex-shrink-0 bg-white border-l border-slate-200 overflow-y-auto">
       {/* AI Summary */}
       <Section
-        id="summary" open={openSection} setOpen={setOpenSection}
-        icon="🤖" title="AI Summary"
+        id="summary"
+        open={openSection}
+        setOpen={setOpenSection}
+        icon="🤖"
+        title="AI Summary"
       >
         {summaryText ? (
           <div className="space-y-2 text-xs text-slate-700">
             <p className="whitespace-pre-wrap">{summaryText}</p>
             {keyPoints.length > 0 && (
               <ul className="space-y-1.5 mt-2">
-                {keyPoints.map((kp, i) => <CheckablePoint key={i} text={kp} />)}
+                {keyPoints.map((kp, i) => (
+                  <CheckablePoint key={i} text={kp} />
+                ))}
               </ul>
             )}
             <div className="flex items-center gap-2 pt-1">
@@ -1054,19 +1222,33 @@ function ViewerSidebar({ openData, page, showQuizTrigger, interaction, showToast
               {difficulty && <Pill tone="slate">📊 {difficulty}</Pill>}
             </div>
           </div>
-        ) : <p className="text-xs text-slate-400">AI is still thinking… check back soon.</p>}
+        ) : (
+          <p className="text-xs text-slate-400">AI is still thinking… check back soon.</p>
+        )}
       </Section>
 
       {/* Voice */}
       {voiceUrl && (
-        <Section id="voice" open={openSection} setOpen={setOpenSection} icon="🎙️" title="Voice Note">
+        <Section
+          id="voice"
+          open={openSection}
+          setOpen={setOpenSection}
+          icon="🎙️"
+          title="Voice Note"
+        >
           <VoicePlayer capsuleId={openData.capsule_id} />
         </Section>
       )}
 
       {/* Quiz */}
       {(openData?.ai_quiz_json || []).length > 0 && (
-        <Section id="quiz" open={openSection} setOpen={setOpenSection} icon="📝" title="Comprehension Quiz">
+        <Section
+          id="quiz"
+          open={openSection}
+          setOpen={setOpenSection}
+          icon="📝"
+          title="Comprehension Quiz"
+        >
           <Quiz
             capsuleId={openData.capsule_id}
             quiz={openData.ai_quiz_json}
@@ -1085,10 +1267,13 @@ function Section({ id, open, setOpen, icon, title, children }) {
   const isOpen = open === id;
   return (
     <div className="border-b border-slate-100">
-      <button onClick={() => setOpen(isOpen ? null : id)}
-        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-slate-50">
+      <button
+        onClick={() => setOpen(isOpen ? null : id)}
+        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-slate-50"
+      >
         <span className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-          <span>{icon}</span>{title}
+          <span>{icon}</span>
+          {title}
         </span>
         <span className="text-slate-400 text-xs">{isOpen ? '▴' : '▾'}</span>
       </button>
@@ -1101,8 +1286,10 @@ function CheckablePoint({ text }) {
   const [done, setDone] = useState(false);
   return (
     <li className="flex items-start gap-2 cursor-pointer" onClick={() => setDone((v) => !v)}>
-      <span className={`mt-0.5 w-3.5 h-3.5 rounded border-2 flex-shrink-0 flex items-center justify-center transition
-        ${done ? 'bg-violet-500 border-violet-500 text-white' : 'border-slate-300'}`}>
+      <span
+        className={`mt-0.5 w-3.5 h-3.5 rounded border-2 flex-shrink-0 flex items-center justify-center transition
+        ${done ? 'bg-violet-500 border-violet-500 text-white' : 'border-slate-300'}`}
+      >
         {done && <span className="text-[9px]">✓</span>}
       </span>
       <span className={done ? 'line-through text-slate-400' : 'text-slate-700'}>{text}</span>
@@ -1122,14 +1309,19 @@ function VoicePlayer({ capsuleId }) {
   useEffect(() => {
     let alive = true;
     let createdUrl = null;
-    api.get(`/classpulse/student/capsule/${capsuleId}/voice`, { responseType: 'blob' })
+    api
+      .get(`/classpulse/student/capsule/${capsuleId}/voice`, { responseType: 'blob' })
       .then((r) => {
         if (!alive) return;
         createdUrl = URL.createObjectURL(r.data);
         setSrc(createdUrl);
       })
-      .catch(() => { if (alive) setSrc(null); })
-      .finally(() => { if (alive) setLoading(false); });
+      .catch(() => {
+        if (alive) setSrc(null);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
     return () => {
       alive = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
@@ -1137,10 +1329,11 @@ function VoicePlayer({ capsuleId }) {
   }, [capsuleId]);
 
   useEffect(() => {
-    const a = audioRef.current; if (!a) return;
+    const a = audioRef.current;
+    if (!a) return;
     const onTime = () => setT(a.currentTime);
     const onMeta = () => setDur(a.duration || 0);
-    const onEnd  = () => setPlaying(false);
+    const onEnd = () => setPlaying(false);
     a.addEventListener('timeupdate', onTime);
     a.addEventListener('loadedmetadata', onMeta);
     a.addEventListener('ended', onEnd);
@@ -1156,9 +1349,15 @@ function VoicePlayer({ capsuleId }) {
   const pct = dur ? t / dur : 0;
 
   const toggle = () => {
-    const a = audioRef.current; if (!a) return;
-    if (playing) { a.pause(); setPlaying(false); }
-    else { a.play(); setPlaying(true); }
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) {
+      a.pause();
+      setPlaying(false);
+    } else {
+      a.play();
+      setPlaying(true);
+    }
   };
 
   return (
@@ -1178,14 +1377,17 @@ function VoicePlayer({ capsuleId }) {
             {bars.map((h, i) => {
               const isPast = i / bars.length <= pct;
               return (
-                <div key={i}
+                <div
+                  key={i}
                   className={`w-[3px] rounded-full transition-colors ${isPast ? 'bg-violet-600' : 'bg-slate-300'}`}
-                  style={{ height: h }} />
+                  style={{ height: h }}
+                />
               );
             })}
           </div>
           <div className="text-[10px] text-slate-500 mt-1 flex justify-between">
-            <span>{fmtTime(t)}</span><span>{fmtTime(dur)}</span>
+            <span>{fmtTime(t)}</span>
+            <span>{fmtTime(dur)}</span>
           </div>
         </div>
       </div>
@@ -1196,10 +1398,10 @@ function VoicePlayer({ capsuleId }) {
 /* ────────────── Quiz ────────────── */
 function Quiz({ capsuleId, quiz, interaction, unlocked, showToast, onDone }) {
   const alreadyAttempted = !!interaction?.quiz_attempted;
-  const [step, setStep]       = useState(0);
+  const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult]   = useState(null);
+  const [result, setResult] = useState(null);
 
   if (alreadyAttempted && !result) {
     return (
@@ -1208,7 +1410,9 @@ function Quiz({ capsuleId, quiz, interaction, unlocked, showToast, onDone }) {
         <p className="text-sm font-semibold text-slate-800">
           {interaction.quiz_passed ? 'You passed' : 'Review the material'}
         </p>
-        <p className="text-xs text-slate-500">Score: {interaction.quiz_score} / {quiz.length}</p>
+        <p className="text-xs text-slate-500">
+          Score: {interaction.quiz_score} / {quiz.length}
+        </p>
         <p className="text-[11px] text-slate-400 mt-1">Quiz already completed — cannot retake</p>
       </div>
     );
@@ -1239,17 +1443,22 @@ function Quiz({ capsuleId, quiz, interaction, unlocked, showToast, onDone }) {
 
   const q = quiz[step];
   const key = `Q${step + 1}`;
-  const choices = (q?.options && typeof q.options === 'object') ? q.options : {};
+  const choices = q?.options && typeof q.options === 'object' ? q.options : {};
   const optKeys = Object.keys(choices).length ? Object.keys(choices) : ['A', 'B', 'C', 'D'];
   const isLast = step === quiz.length - 1;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] text-slate-500">Question {step + 1} / {quiz.length}</span>
+        <span className="text-[11px] text-slate-500">
+          Question {step + 1} / {quiz.length}
+        </span>
         <div className="flex gap-1">
           {quiz.map((_, i) => (
-            <span key={i} className={`w-2 h-2 rounded-full ${i <= step ? 'bg-violet-500' : 'bg-slate-200'}`} />
+            <span
+              key={i}
+              className={`w-2 h-2 rounded-full ${i <= step ? 'bg-violet-500' : 'bg-slate-200'}`}
+            />
           ))}
         </div>
       </div>
@@ -1259,29 +1468,45 @@ function Quiz({ capsuleId, quiz, interaction, unlocked, showToast, onDone }) {
           const text = choices[k] || `Option ${k}`;
           const sel = answers[key] === k;
           return (
-            <button key={k}
+            <button
+              key={k}
               onClick={() => setAnswers({ ...answers, [key]: k })}
               className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition flex items-start gap-2
-                ${sel ? 'bg-violet-50 border-violet-400 text-violet-900' : 'border-slate-200 hover:border-slate-300 text-slate-700'}`}>
-              <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center flex-shrink-0
-                ${sel ? 'bg-violet-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{k}</span>
+                ${sel ? 'bg-violet-50 border-violet-400 text-violet-900' : 'border-slate-200 hover:border-slate-300 text-slate-700'}`}
+            >
+              <span
+                className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center flex-shrink-0
+                ${sel ? 'bg-violet-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+              >
+                {k}
+              </span>
               <span>{text}</span>
             </button>
           );
         })}
       </div>
       <div className="mt-3 flex justify-between gap-2">
-        <button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}
-          className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 disabled:opacity-30">← Back</button>
+        <button
+          onClick={() => setStep((s) => Math.max(0, s - 1))}
+          disabled={step === 0}
+          className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 disabled:opacity-30"
+        >
+          ← Back
+        </button>
         {isLast ? (
           <button
             onClick={submit}
             disabled={submitting || !answers[key]}
             className="px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium"
-          >{submitting ? 'Submitting…' : '🚀 Submit'}</button>
+          >
+            {submitting ? 'Submitting…' : '🚀 Submit'}
+          </button>
         ) : (
-          <button onClick={() => setStep((s) => s + 1)} disabled={!answers[key]}
-            className="px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium">
+          <button
+            onClick={() => setStep((s) => s + 1)}
+            disabled={!answers[key]}
+            className="px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium"
+          >
             Next →
           </button>
         )}
@@ -1295,7 +1520,8 @@ function QuizResult({ result, quiz }) {
   useEffect(() => {
     let i = 0;
     const id = setInterval(() => {
-      i++; setCount(i);
+      i++;
+      setCount(i);
       if (i >= result.score) clearInterval(id);
     }, 220);
     return () => clearInterval(id);
@@ -1308,45 +1534,68 @@ function QuizResult({ result, quiz }) {
       {passed && (
         <div className="absolute inset-0 pointer-events-none">
           {Array.from({ length: 12 }).map((_, i) => (
-            <span key={i}
+            <span
+              key={i}
               className="absolute text-lg animate-bounce"
               style={{
                 left: `${(i * 41) % 100}%`,
                 top: `${(i * 17) % 50}%`,
                 animationDelay: `${i * 0.12}s`,
                 animationDuration: `${1 + (i % 3) * 0.4}s`,
-              }}>
-              {['🎉','✨','🎊','⭐','💜'][i % 5]}
+              }}
+            >
+              {['🎉', '✨', '🎊', '⭐', '💜'][i % 5]}
             </span>
           ))}
         </div>
       )}
       <div className={`text-5xl font-black mb-2 ${passed ? 'text-emerald-600' : 'text-red-600'}`}>
-        {count}<span className="text-2xl text-slate-400">/{result.out_of}</span>
+        {count}
+        <span className="text-2xl text-slate-400">/{result.out_of}</span>
       </div>
       {passed ? (
         <>
-          <p className="font-semibold text-emerald-700 text-sm">🎉 Excellent! You've verified your understanding.</p>
+          <p className="font-semibold text-emerald-700 text-sm">
+            🎉 Excellent! You've verified your understanding.
+          </p>
           {result.download_allowed && (
-            <p className="text-xs text-slate-600 mt-2">📥 Download is now unlocked in the bottom bar.</p>
+            <p className="text-xs text-slate-600 mt-2">
+              📥 Download is now unlocked in the bottom bar.
+            </p>
           )}
         </>
       ) : (
         <>
-          <p className="font-semibold text-red-700 text-sm">📖 Review the material and try again next time.</p>
-          <p className="text-[11px] text-slate-500 mt-1">Your tutor has been notified to help you.</p>
+          <p className="font-semibold text-red-700 text-sm">
+            📖 Review the material and try again next time.
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Your tutor has been notified to help you.
+          </p>
 
           <div className="mt-3 space-y-2 text-left">
             {(result.detail || []).map((d, i) => (
-              <div key={i} className={`p-2 rounded-lg border text-xs ${d.is_correct ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/50'}`}>
+              <div
+                key={i}
+                className={`p-2 rounded-lg border text-xs ${d.is_correct ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/50'}`}
+              >
                 <p className="font-medium text-slate-800">{d.question}</p>
                 <p className="text-[11px] mt-1">
-                  Your answer: <span className={d.is_correct ? 'text-emerald-700' : 'text-red-700 line-through'}>{d.your_answer || '—'}</span>
+                  Your answer:{' '}
+                  <span className={d.is_correct ? 'text-emerald-700' : 'text-red-700 line-through'}>
+                    {d.your_answer || '—'}
+                  </span>
                   {!d.is_correct && (
-                    <> · Correct: <span className="text-emerald-700 font-semibold">{d.correct_answer}</span></>
+                    <>
+                      {' '}
+                      · Correct:{' '}
+                      <span className="text-emerald-700 font-semibold">{d.correct_answer}</span>
+                    </>
                   )}
                 </p>
-                {d.explanation && <p className="text-[11px] text-slate-600 mt-1 italic">💡 {d.explanation}</p>}
+                {d.explanation && (
+                  <p className="text-[11px] text-slate-600 mt-1 italic">💡 {d.explanation}</p>
+                )}
               </div>
             ))}
           </div>
@@ -1363,8 +1612,12 @@ function AskDoubtModal({ subjectId, capsuleId, page, onClose, onPosted }) {
   const [error, setError] = useState('');
 
   const submit = async () => {
-    if (content.trim().length < 10) { setError('Please write at least 10 characters'); return; }
-    setError(''); setSubmitting(true);
+    if (content.trim().length < 10) {
+      setError('Please write at least 10 characters');
+      return;
+    }
+    setError('');
+    setSubmitting(true);
     try {
       await api.post('/classpulse/student/wall/post', {
         subject_id: subjectId,
@@ -1386,9 +1639,18 @@ function AskDoubtModal({ subjectId, capsuleId, page, onClose, onPosted }) {
         <h3 className="font-bold text-slate-800 mb-1">💬 Ask anonymously</h3>
         <p className="text-xs text-slate-500 mb-3">
           Your name is hidden from classmates. Only your teacher can see who asked.
-          {page ? <> · Linked to page <span className="font-medium">{page}</span></> : null}
+          {page ? (
+            <>
+              {' '}
+              · Linked to page <span className="font-medium">{page}</span>
+            </>
+          ) : null}
         </p>
-        {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-2 rounded-lg mb-2">{error}</div>}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-2 rounded-lg mb-2">
+            {error}
+          </div>
+        )}
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value.slice(0, 1000))}
@@ -1398,9 +1660,17 @@ function AskDoubtModal({ subjectId, capsuleId, page, onClose, onPosted }) {
         />
         <div className="text-right text-[10px] text-slate-400 mt-1">{content.length}/1000</div>
         <div className="flex justify-end gap-2 mt-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800">Cancel</button>
-          <button onClick={submit} disabled={submitting || content.trim().length < 10}
-            className="px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting || content.trim().length < 10}
+            className="px-4 py-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium"
+          >
             {submitting ? 'Posting…' : 'Post anonymously'}
           </button>
         </div>
@@ -1437,27 +1707,39 @@ function WallTab({ subjectId, showToast, onMeta }) {
       const unanswered = (w.data.posts || []).filter((p) => p.status === 'open').length;
       onMeta?.({ unanswered });
     } catch {
-      setPosts([]); setCapsules([]);
+      setPosts([]);
+      setCapsules([]);
     } finally {
       setLoading(false);
     }
   }, [subjectId, onMeta]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const filtered = useMemo(() => {
     switch (filter) {
-      case 'hot':      return posts.filter((p) => p.is_hot);
-      case 'mine':     return posts.filter((p) => p.is_mine);
-      case 'answered': return posts.filter((p) => p.status === 'answered');
-      case 'open':     return posts.filter((p) => p.status === 'open');
-      default:         return posts;
+      case 'hot':
+        return posts.filter((p) => p.is_hot);
+      case 'mine':
+        return posts.filter((p) => p.is_mine);
+      case 'answered':
+        return posts.filter((p) => p.status === 'answered');
+      case 'open':
+        return posts.filter((p) => p.status === 'open');
+      default:
+        return posts;
     }
   }, [posts, filter]);
 
   const submitPost = async () => {
-    if (content.trim().length < 10) { setError('Write at least 10 characters'); return; }
-    setError(''); setSubmitting(true);
+    if (content.trim().length < 10) {
+      setError('Write at least 10 characters');
+      return;
+    }
+    setError('');
+    setSubmitting(true);
     try {
       await api.post('/classpulse/student/wall/post', {
         subject_id: subjectId,
@@ -1465,7 +1747,9 @@ function WallTab({ subjectId, showToast, onMeta }) {
         page_number: linkCapsule && pageNo ? Number(pageNo) : null,
         content: content.trim(),
       });
-      setContent(''); setLinkCapsule(''); setPageNo('');
+      setContent('');
+      setLinkCapsule('');
+      setPageNo('');
       showToast('💬 Posted anonymously');
       load();
     } catch (e) {
@@ -1477,20 +1761,32 @@ function WallTab({ subjectId, showToast, onMeta }) {
 
   const handleResonate = async (post) => {
     // optimistic
-    setPosts((prev) => prev.map((p) => p.id === post.id ? {
-      ...p,
-      i_resonated: !p.i_resonated,
-      resonance_count: p.resonance_count + (p.i_resonated ? -1 : 1),
-    } : p));
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === post.id
+          ? {
+              ...p,
+              i_resonated: !p.i_resonated,
+              resonance_count: p.resonance_count + (p.i_resonated ? -1 : 1),
+            }
+          : p
+      )
+    );
     try {
       await api.post(`/classpulse/student/wall/${post.id}/resonate`);
     } catch {
       // revert
-      setPosts((prev) => prev.map((p) => p.id === post.id ? {
-        ...p,
-        i_resonated: post.i_resonated,
-        resonance_count: post.resonance_count,
-      } : p));
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? {
+                ...p,
+                i_resonated: post.i_resonated,
+                resonance_count: post.resonance_count,
+              }
+            : p
+        )
+      );
       showToast('⚠️ Could not register your resonance');
     }
   };
@@ -1499,7 +1795,11 @@ function WallTab({ subjectId, showToast, onMeta }) {
     <div className="space-y-4">
       {/* Composer */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-2">
-        {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-2 rounded-lg">{error}</div>}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-2 rounded-lg">
+            {error}
+          </div>
+        )}
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value.slice(0, 1000))}
@@ -1515,12 +1815,15 @@ function WallTab({ subjectId, showToast, onMeta }) {
           >
             <option value="">📎 Link to a capsule (optional)</option>
             {capsules.map((c) => (
-              <option key={c.capsule_id} value={c.capsule_id}>{c.title}</option>
+              <option key={c.capsule_id} value={c.capsule_id}>
+                {c.title}
+              </option>
             ))}
           </select>
           {linkCapsule && (
             <input
-              type="number" min={1}
+              type="number"
+              min={1}
               value={pageNo}
               onChange={(e) => setPageNo(e.target.value)}
               placeholder="Page #"
@@ -1544,10 +1847,14 @@ function WallTab({ subjectId, showToast, onMeta }) {
       {/* Filters */}
       <div className="flex gap-1 overflow-x-auto pb-1">
         {WALL_FILTERS.map((f) => (
-          <button key={f.key} onClick={() => setFilter(f.key)}
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap border transition flex items-center gap-1
-              ${filter === f.key ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300'}`}>
-            <span>{f.icon}</span>{f.label}
+              ${filter === f.key ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300'}`}
+          >
+            <span>{f.icon}</span>
+            {f.label}
           </button>
         ))}
       </div>
@@ -1565,7 +1872,12 @@ function WallTab({ subjectId, showToast, onMeta }) {
       {!loading && filtered.length > 0 && (
         <div className="space-y-3">
           {filtered.map((p) => (
-            <PostCard key={p.id} post={p} myUserId={user?.id} onResonate={() => handleResonate(p)} />
+            <PostCard
+              key={p.id}
+              post={p}
+              myUserId={user?.id}
+              onResonate={() => handleResonate(p)}
+            />
           ))}
         </div>
       )}
@@ -1579,7 +1891,16 @@ function PostCard({ post, onResonate }) {
   const showAnswerHint = post.ai_suggested_answer && (post.ai_answer_confidence || 0) >= 0.6;
 
   // deterministic anonymous palette
-  const palette = ['bg-rose-200','bg-amber-200','bg-emerald-200','bg-sky-200','bg-violet-200','bg-fuchsia-200','bg-lime-200','bg-cyan-200'];
+  const palette = [
+    'bg-rose-200',
+    'bg-amber-200',
+    'bg-emerald-200',
+    'bg-sky-200',
+    'bg-violet-200',
+    'bg-fuchsia-200',
+    'bg-lime-200',
+    'bg-cyan-200',
+  ];
   const color = palette[(post.id || 0) % palette.length];
   const initial = post.is_mine ? 'You' : '👤';
 
@@ -1592,7 +1913,9 @@ function PostCard({ post, onResonate }) {
       )}
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className={`w-9 h-9 rounded-full ${color} flex items-center justify-center text-[11px] font-bold text-slate-700 flex-shrink-0`}>
+          <div
+            className={`w-9 h-9 rounded-full ${color} flex items-center justify-center text-[11px] font-bold text-slate-700 flex-shrink-0`}
+          >
             {initial}
           </div>
           <div className="min-w-0 flex-1">
@@ -1600,24 +1923,33 @@ function PostCard({ post, onResonate }) {
               <span className="text-xs font-semibold text-slate-700">
                 {post.is_mine ? 'You' : 'Anonymous'}
               </span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                post.status === 'answered' ? 'bg-emerald-100 text-emerald-700' :
-                post.status === 'open'     ? 'bg-amber-100 text-amber-700' :
-                                              'bg-slate-100 text-slate-600'
-              }`}>{post.status}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                  post.status === 'answered'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : post.status === 'open'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {post.status}
+              </span>
               <span className="text-[10px] text-slate-400 ml-auto">{timeAgo(post.created_at)}</span>
             </div>
             <p className="text-sm text-slate-800 whitespace-pre-wrap">{post.content}</p>
             {post.capsule_title && (
               <div className="mt-2 inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-violet-50 text-violet-700 border border-violet-100">
-                📎 Re: {post.capsule_title}{post.page_number ? ` — page ${post.page_number}` : ''}
+                📎 Re: {post.capsule_title}
+                {post.page_number ? ` — page ${post.page_number}` : ''}
               </div>
             )}
 
             {showAnswerHint && (
               <div className="mt-2">
-                <button onClick={() => setShowAi((v) => !v)}
-                  className="text-[11px] text-blue-700 hover:text-blue-800 font-medium">
+                <button
+                  onClick={() => setShowAi((v) => !v)}
+                  className="text-[11px] text-blue-700 hover:text-blue-800 font-medium"
+                >
                   🤖 AI thinks it knows the answer {showAi ? '▴' : '▾'}
                 </button>
                 {showAi && (
@@ -1625,12 +1957,23 @@ function PostCard({ post, onResonate }) {
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="text-[10px] text-blue-700 font-medium">Confidence</span>
                       <div className="flex-1 h-1 bg-blue-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500" style={{ width: `${Math.round((post.ai_answer_confidence || 0) * 100)}%` }} />
+                        <div
+                          className="h-full bg-blue-500"
+                          style={{
+                            width: `${Math.round((post.ai_answer_confidence || 0) * 100)}%`,
+                          }}
+                        />
                       </div>
-                      <span className="text-[10px] text-blue-700 font-bold">{Math.round((post.ai_answer_confidence || 0) * 100)}%</span>
+                      <span className="text-[10px] text-blue-700 font-bold">
+                        {Math.round((post.ai_answer_confidence || 0) * 100)}%
+                      </span>
                     </div>
-                    <p className="text-xs text-slate-700 whitespace-pre-wrap">{post.ai_suggested_answer}</p>
-                    <p className="text-[10px] text-blue-700 mt-1.5 italic">This is AI-generated. Wait for teacher confirmation.</p>
+                    <p className="text-xs text-slate-700 whitespace-pre-wrap">
+                      {post.ai_suggested_answer}
+                    </p>
+                    <p className="text-[10px] text-blue-700 mt-1.5 italic">
+                      This is AI-generated. Wait for teacher confirmation.
+                    </p>
                   </div>
                 )}
               </div>
@@ -1644,14 +1987,20 @@ function PostCard({ post, onResonate }) {
             )}
 
             <div className="mt-3 flex items-center gap-2">
-              <button onClick={onResonate}
+              <button
+                onClick={onResonate}
                 disabled={post.is_mine}
                 className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition flex items-center gap-1.5
-                  ${post.is_mine ? 'opacity-50 cursor-not-allowed border-slate-200 text-slate-400'
-                    : post.i_resonated
-                      ? 'bg-violet-600 border-violet-600 text-white'
-                      : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300'}`}>
-                🤝 {post.resonance_count} {post.resonance_count === 1 ? 'student has' : 'students have'} this doubt
+                  ${
+                    post.is_mine
+                      ? 'opacity-50 cursor-not-allowed border-slate-200 text-slate-400'
+                      : post.i_resonated
+                        ? 'bg-violet-600 border-violet-600 text-white'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-violet-300'
+                  }`}
+              >
+                🤝 {post.resonance_count}{' '}
+                {post.resonance_count === 1 ? 'student has' : 'students have'} this doubt
               </button>
             </div>
           </div>
@@ -1680,7 +2029,10 @@ function SkeletonCards() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 animate-pulse">
+        <div
+          key={i}
+          className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 animate-pulse"
+        >
           <div className="h-4 bg-slate-100 rounded w-1/2 mb-3" />
           <div className="h-3 bg-slate-100 rounded w-1/3 mb-3" />
           <div className="h-16 bg-slate-100 rounded" />
@@ -1707,8 +2059,8 @@ function timeAgo(iso) {
   if (!iso) return '';
   const t = new Date(iso).getTime();
   const s = Math.max(1, Math.floor((Date.now() - t) / 1000));
-  if (s < 60)    return `${s}s ago`;
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }

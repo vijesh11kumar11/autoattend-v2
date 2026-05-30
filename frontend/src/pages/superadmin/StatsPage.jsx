@@ -8,15 +8,15 @@ import { useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 const PLAN_CHIP = {
-  trial:     'bg-yellow-100 text-yellow-800',
-  active:    'bg-green-100  text-green-800',
+  trial: 'bg-yellow-100 text-yellow-800',
+  active: 'bg-green-100  text-green-800',
   suspended: 'bg-red-100    text-red-700',
   cancelled: 'bg-slate-200  text-slate-600',
 };
 
 export default function StatsPage() {
-  const [stats,   setStats]   = useState(null);
-  const [error,   setError]   = useState('');
+  const [stats, setStats] = useState(null);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,8 +34,8 @@ export default function StatsPage() {
   }, []);
 
   if (loading) return <div className="p-6 text-slate-500">Loading…</div>;
-  if (error)   return <div className="p-6 text-red-600">{error}</div>;
-  if (!stats)  return null;
+  if (error) return <div className="p-6 text-red-600">{error}</div>;
+  if (!stats) return null;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -46,7 +46,7 @@ export default function StatsPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Card label="Total Colleges" value={stats.total_colleges} accent="text-amber-600" />
-        <Card label="Total Users"    value={stats.total_users}    accent="text-blue-600" />
+        <Card label="Total Users" value={stats.total_users} accent="text-blue-600" />
         <Card label="Total Students" value={stats.total_students} accent="text-emerald-600" />
       </div>
 
@@ -54,10 +54,12 @@ export default function StatsPage() {
         <h2 className="text-sm font-semibold text-slate-700 mb-3">Colleges by Plan</h2>
         <div className="flex flex-wrap gap-2">
           {Object.entries(stats.colleges_by_plan).map(([plan, count]) => (
-            <span key={plan}
+            <span
+              key={plan}
               className={`px-3 py-1 rounded text-sm font-medium ${
                 PLAN_CHIP[plan] || 'bg-slate-100 text-slate-600'
-              }`}>
+              }`}
+            >
               {plan}: <b className="tabular-nums">{count}</b>
             </span>
           ))}

@@ -8,12 +8,8 @@
  * Mount inside <AuthProvider> so replayed requests carry the auth cookie.
  */
 
-import {
-  createContext, useContext, useEffect, useRef, useState, useCallback,
-} from 'react';
-import {
-  getQueueLength, processQueue, subscribe, setQueueNotifier,
-} from '../utils/offlineQueue';
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { getQueueLength, processQueue, subscribe, setQueueNotifier } from '../utils/offlineQueue';
 
 const OfflineQueueContext = createContext({
   queueLength: 0,
@@ -25,7 +21,7 @@ const OfflineQueueContext = createContext({
 export function OfflineQueueProvider({ children }) {
   const [queueLength, setQueueLength] = useState(getQueueLength());
   const [isOnline, setIsOnline] = useState(
-    typeof navigator === 'undefined' ? true : navigator.onLine,
+    typeof navigator === 'undefined' ? true : navigator.onLine
   );
   // Transient banner notice for rejection / sync / failure messages.
   const [notice, setNotice] = useState(null);
@@ -37,7 +33,9 @@ export function OfflineQueueProvider({ children }) {
     noticeTimer.current = setTimeout(() => setNotice(null), 8000);
   }, []);
 
-  const syncNow = useCallback(() => { processQueue(); }, []);
+  const syncNow = useCallback(() => {
+    processQueue();
+  }, []);
 
   useEffect(() => {
     setQueueNotifier(showNotice);

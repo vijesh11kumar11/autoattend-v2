@@ -14,10 +14,10 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
 export default function SuperAdminLoginPage() {
-  const [email,    setEmail]    = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error,    setError]    = useState('');
-  const [loading,  setLoading]  = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { user, login: refreshAuth, logout } = useAuth();
 
@@ -36,7 +36,11 @@ export default function SuperAdminLoginPage() {
       // Reject non-super_admin accounts on this entry point.
       const role = data?.user?.role;
       if (role !== 'super_admin') {
-        try { await logout(); } catch { /* ignore */ }
+        try {
+          await logout();
+        } catch {
+          /* ignore */
+        }
         setError('This panel is for Traceln staff only. Please use the standard login page.');
         return;
       }
@@ -53,8 +57,10 @@ export default function SuperAdminLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4">
-      <div className="w-full max-w-sm bg-slate-800 border border-slate-700 rounded-xl
-                      shadow-2xl p-8 text-slate-100">
+      <div
+        className="w-full max-w-sm bg-slate-800 border border-slate-700 rounded-xl
+                      shadow-2xl p-8 text-slate-100"
+      >
         <div className="mb-6 text-center">
           <p className="text-xs font-semibold text-amber-400 tracking-widest uppercase">
             Internal Tooling
@@ -64,8 +70,11 @@ export default function SuperAdminLoginPage() {
         </div>
 
         {error && (
-          <div className="mb-4 px-3 py-2 rounded bg-red-900/40 border border-red-800
-                          text-red-200 text-sm" role="alert">
+          <div
+            className="mb-4 px-3 py-2 rounded bg-red-900/40 border border-red-800
+                          text-red-200 text-sm"
+            role="alert"
+          >
             {error}
           </div>
         )}
@@ -73,21 +82,35 @@ export default function SuperAdminLoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Email</label>
-            <input type="email" required autoFocus autoComplete="username"
-              value={email} onChange={(e) => setEmail(e.target.value)}
+            <input
+              type="email"
+              required
+              autoFocus
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 rounded bg-slate-900 border border-slate-700
-                         text-slate-100 focus:outline-none focus:border-amber-500" />
+                         text-slate-100 focus:outline-none focus:border-amber-500"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Password</label>
-            <input type="password" required autoComplete="current-password"
-              value={password} onChange={(e) => setPassword(e.target.value)}
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 rounded bg-slate-900 border border-slate-700
-                         text-slate-100 focus:outline-none focus:border-amber-500" />
+                         text-slate-100 focus:outline-none focus:border-amber-500"
+            />
           </div>
-          <button type="submit" disabled={loading}
+          <button
+            type="submit"
+            disabled={loading}
             className="w-full py-2 rounded bg-amber-500 hover:bg-amber-400
-                       text-slate-900 font-semibold disabled:opacity-60">
+                       text-slate-900 font-semibold disabled:opacity-60"
+          >
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>

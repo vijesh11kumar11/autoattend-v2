@@ -16,17 +16,26 @@ const PCT_COLOR = (pct) => {
 
 /* Convert report rows to CSV and trigger browser download */
 function downloadCSV(rows, dateFrom, dateTo) {
-  const header = ['Department', 'Code', 'Sessions', 'Avg Attendance %', 'Flagged Attempts', 'Defaulters'];
+  const header = [
+    'Department',
+    'Code',
+    'Sessions',
+    'Avg Attendance %',
+    'Flagged Attempts',
+    'Defaulters',
+  ];
   const csvRows = [
     header.join(','),
     ...rows.map((r) =>
-      [r.dept_name, r.dept_code, r.sessions, r.avg_pct, r.flagged_count, r.defaulter_count].join(',')
+      [r.dept_name, r.dept_code, r.sessions, r.avg_pct, r.flagged_count, r.defaulter_count].join(
+        ','
+      )
     ),
   ];
   const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = `college-report-${dateFrom}-${dateTo}.csv`;
   a.click();
   URL.revokeObjectURL(url);
@@ -36,21 +45,22 @@ export default function CollegeReportsPage() {
   // departments list for the dropdown
   const [departments, setDepartments] = useState([]);
 
-  const today   = new Date().toISOString().slice(0, 10);
-  const _30ago  = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const _30ago = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
 
-  const [deptId,    setDeptId]    = useState('');
-  const [dateFrom,  setDateFrom]  = useState(_30ago);
-  const [dateTo,    setDateTo]    = useState(today);
-  const [report,    setReport]    = useState(null);
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState('');
+  const [deptId, setDeptId] = useState('');
+  const [dateFrom, setDateFrom] = useState(_30ago);
+  const [dateTo, setDateTo] = useState(today);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const abortRef = useRef(null);
 
   // Load department list for dropdown
   useEffect(() => {
-    api.get('/principal/stats')
+    api
+      .get('/principal/stats')
       .then((r) => setDepartments(r.data.departments || []))
       .catch(() => {});
   }, []);
@@ -65,16 +75,26 @@ export default function CollegeReportsPage() {
     const params = { date_from: dateFrom, date_to: dateTo };
     if (deptId) params.dept_id = deptId;
 
-    api.get('/principal/reports', { params, signal: ctrl.signal })
+    api
+      .get('/principal/reports', { params, signal: ctrl.signal })
       .then((r) => setReport(r.data))
-      .catch((e) => { if (e?.code !== 'ERR_CANCELED' && !e?.message?.includes('aborted') && !e?.message?.includes('canceled')) setError('Failed to load report.'); })
+      .catch((e) => {
+        if (
+          e?.code !== 'ERR_CANCELED' &&
+          !e?.message?.includes('aborted') &&
+          !e?.message?.includes('canceled')
+        )
+          setError('Failed to load report.');
+      })
       .finally(() => setLoading(false));
   };
 
   // Auto-fetch on mount
   useEffect(() => {
     fetchReport();
-    return () => { if (abortRef.current) abortRef.current.abort(); };
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = report?.departments || [];
@@ -92,19 +112,29 @@ export default function CollegeReportsPage() {
           >
             <option value="">All Departments</option>
             {departments.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
             ))}
           </select>
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-500 mb-1">From</label>
-          <input className="input text-sm" type="date" value={dateFrom}
-                 onChange={(e) => setDateFrom(e.target.value)} />
+          <input
+            className="input text-sm"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+          />
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-500 mb-1">To</label>
-          <input className="input text-sm" type="date" value={dateTo}
-                 onChange={(e) => setDateTo(e.target.value)} />
+          <input
+            className="input text-sm"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+          />
         </div>
         <button className="btn-primary text-sm" onClick={fetchReport} disabled={loading}>
           {loading ? 'Loading…' : 'Apply Filters'}
@@ -128,7 +158,10 @@ export default function CollegeReportsPage() {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 {['Department', 'Sessions', 'Avg Attendance', 'Flagged', 'Defaulters'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  <th
+                    key={h}
+                    className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide"
+                  >
                     {h}
                   </th>
                 ))}
@@ -174,4 +207,3 @@ export default function CollegeReportsPage() {
     </div>
   );
 }
-

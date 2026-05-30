@@ -8,14 +8,15 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function SemesterProgressPage() {
   const { user } = useAuth();
-  const [rows, setRows]       = useState([]);
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!user?.department_id) return;
-    api.get('/analytics/semester-progress', { params: { department_id: user.department_id } })
-      .then(r => setRows(r.data || []))
+    api
+      .get('/analytics/semester-progress', { params: { department_id: user.department_id } })
+      .then((r) => setRows(r.data || []))
       .catch(() => setError('Failed to load semester progress.'))
       .finally(() => setLoading(false));
   }, [user?.department_id]);
@@ -30,15 +31,16 @@ export default function SemesterProgressPage() {
   }
   if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
 
-  const behind = rows.filter(r => r.behind_schedule);
-  const onTrack = rows.filter(r => !r.behind_schedule);
+  const behind = rows.filter((r) => r.behind_schedule);
+  const onTrack = rows.filter((r) => !r.behind_schedule);
 
   return (
     <div className="space-y-6">
       <div className="card p-5">
         <h2 className="text-lg font-bold text-slate-800">📈 Semester Progress Tracker</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Compare planned vs conducted sessions per subject. Identify teachers falling behind schedule.
+          Compare planned vs conducted sessions per subject. Identify teachers falling behind
+          schedule.
         </p>
       </div>
 
@@ -52,8 +54,14 @@ export default function SemesterProgressPage() {
           <p className="text-2xl font-bold text-emerald-600">{onTrack.length}</p>
           <p className="text-xs text-slate-400">On Track</p>
         </div>
-        <div className={`card p-4 text-center ${behind.length > 0 ? 'border-red-200 bg-red-50' : ''}`}>
-          <p className={`text-2xl font-bold ${behind.length > 0 ? 'text-red-600' : 'text-slate-400'}`}>{behind.length}</p>
+        <div
+          className={`card p-4 text-center ${behind.length > 0 ? 'border-red-200 bg-red-50' : ''}`}
+        >
+          <p
+            className={`text-2xl font-bold ${behind.length > 0 ? 'text-red-600' : 'text-slate-400'}`}
+          >
+            {behind.length}
+          </p>
           <p className="text-xs text-slate-400">Behind Schedule</p>
         </div>
       </div>
@@ -66,21 +74,41 @@ export default function SemesterProgressPage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  {['Subject', 'Code', 'Sem', 'Teacher', 'Weekly Slots', 'Planned', 'Conducted', 'Progress', 'Status'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                  {[
+                    'Subject',
+                    'Code',
+                    'Sem',
+                    'Teacher',
+                    'Weekly Slots',
+                    'Planned',
+                    'Conducted',
+                    'Progress',
+                    'Status',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase"
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {rows.map(r => (
-                  <tr key={r.subject_id} className={`hover:bg-slate-50 ${r.behind_schedule ? 'bg-red-50/30' : ''}`}>
+                {rows.map((r) => (
+                  <tr
+                    key={r.subject_id}
+                    className={`hover:bg-slate-50 ${r.behind_schedule ? 'bg-red-50/30' : ''}`}
+                  >
                     <td className="px-4 py-3 font-medium text-slate-800">{r.subject_name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.subject_code}</td>
                     <td className="px-4 py-3 text-slate-500">{r.semester}</td>
                     <td className="px-4 py-3 text-slate-600">{r.teacher_name}</td>
                     <td className="px-4 py-3 text-center text-slate-600">{r.weekly_slots}</td>
                     <td className="px-4 py-3 text-center text-slate-500">{r.planned_sessions}</td>
-                    <td className="px-4 py-3 text-center font-semibold text-slate-700">{r.conducted_sessions}</td>
+                    <td className="px-4 py-3 text-center font-semibold text-slate-700">
+                      {r.conducted_sessions}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 rounded-full bg-slate-200 overflow-hidden">
@@ -89,14 +117,20 @@ export default function SemesterProgressPage() {
                             style={{ width: `${Math.min(r.completion_pct, 100)}%` }}
                           />
                         </div>
-                        <span className="text-xs font-bold text-slate-600">{r.completion_pct}%</span>
+                        <span className="text-xs font-bold text-slate-600">
+                          {r.completion_pct}%
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       {r.behind_schedule ? (
-                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700">Behind</span>
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700">
+                          Behind
+                        </span>
                       ) : (
-                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700">On Track</span>
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700">
+                          On Track
+                        </span>
                       )}
                     </td>
                   </tr>

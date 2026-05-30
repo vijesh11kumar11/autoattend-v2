@@ -12,12 +12,7 @@
  *  • Handles face_enrollment_required in verify-totp response
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,12 +26,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons }     from '@expo/vector-icons';
-import * as Haptics     from 'expo-haptics';
-import client           from '../../api/client';
-import { useAuth }      from '../../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import client from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 
-const BOX_COUNT    = 6;
+const BOX_COUNT = 6;
 const MAX_ATTEMPTS = 3;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,10 +39,10 @@ export default function TOTPScreen({ navigation, route }) {
   const { totp_session_token } = route.params ?? {};
   const { login } = useAuth();
 
-  const [digits,   setDigits]   = useState(Array(BOX_COUNT).fill(''));
-  const [loading,  setLoading]  = useState(false);
+  const [digits, setDigits] = useState(Array(BOX_COUNT).fill(''));
+  const [loading, setLoading] = useState(false);
   const [attempts, setAttempts] = useState(0);
-  const [locked,   setLocked]   = useState(false);
+  const [locked, setLocked] = useState(false);
 
   const inputRefs = useRef([]);
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -62,11 +57,11 @@ export default function TOTPScreen({ navigation, route }) {
   const shake = useCallback(() => {
     shakeAnim.setValue(0);
     Animated.sequence([
-      Animated.timing(shakeAnim, { toValue:  12, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 12, duration: 55, useNativeDriver: true }),
       Animated.timing(shakeAnim, { toValue: -12, duration: 55, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue:   8, duration: 55, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue:  -8, duration: 55, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue:   0, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 8, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -8, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 55, useNativeDriver: true }),
     ]).start();
   }, [shakeAnim]);
 
@@ -77,100 +72,108 @@ export default function TOTPScreen({ navigation, route }) {
   }, []);
 
   // ── Submit to API ───────────────────────────────────────────────────────
-  const submitCode = useCallback(async (code) => {
-    if (loading || locked) return;
-    Keyboard.dismiss();
-    setLoading(true);
+  const submitCode = useCallback(
+    async (code) => {
+      if (loading || locked) return;
+      Keyboard.dismiss();
+      setLoading(true);
 
-    try {
-      const { data } = await client.post('/auth/verify-totp', {
-        totp_session_token,
-        totp_code: code,
-      });
+      try {
+        const { data } = await client.post('/auth/verify-totp', {
+          totp_session_token,
+          totp_code: code,
+        });
 
-      // Face enrollment may still be required after TOTP
-      if (data.face_enrollment_required) {
-        navigation.navigate('FaceSetup', { temp_token: data.access_token });
+        // Face enrollment may still be required after TOTP
+        if (data.face_enrollment_required) {
+          navigation.navigate('FaceSetup', { temp_token: data.access_token });
+          return;
+        }
+
+        await login(data.access_token, data.refresh_token);
+        // AppNavigator switches to role tabs automatically.
+      } catch (err) {
+        shake();
+        clearCode();
+
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+
+        if (newAttempts >= MAX_ATTEMPTS) {
+          setLocked(true);
+          Alert.alert('Too Many Attempts', 'Too many failed attempts. Try again in 15 minutes.', [
+            { text: 'Back to Login', onPress: () => navigation.replace('Login') },
+          ]);
+        } else {
+          const remaining = MAX_ATTEMPTS - newAttempts;
+          Alert.alert(
+            'Invalid Code',
+            `Invalid code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loading, locked, totp_session_token, login, shake, clearCode, attempts, navigation]
+  );
+
+  // ── Handle text change in any box ──────────────────────────────────────
+  const handleChange = useCallback(
+    (text, index) => {
+      // Paste detection: if the pasted text contains multiple chars
+      if (text.length > 1) {
+        const nums = text.replace(/\D/g, '').slice(0, BOX_COUNT);
+        const next = Array(BOX_COUNT).fill('');
+        nums.split('').forEach((d, i) => {
+          next[i] = d;
+        });
+        setDigits(next);
+
+        if (nums.length === BOX_COUNT) {
+          Keyboard.dismiss();
+          submitCode(nums);
+        } else {
+          inputRefs.current[Math.min(nums.length, BOX_COUNT - 1)]?.focus();
+        }
         return;
       }
 
-      await login(data.access_token, data.refresh_token);
-      // AppNavigator switches to role tabs automatically.
-
-    } catch (err) {
-      shake();
-      clearCode();
-
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-
-      if (newAttempts >= MAX_ATTEMPTS) {
-        setLocked(true);
-        Alert.alert(
-          'Too Many Attempts',
-          'Too many failed attempts. Try again in 15 minutes.',
-          [{ text: 'Back to Login', onPress: () => navigation.replace('Login') }],
-        );
-      } else {
-        const remaining = MAX_ATTEMPTS - newAttempts;
-        Alert.alert(
-          'Invalid Code',
-          `Invalid code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [loading, locked, totp_session_token, login, shake, clearCode, attempts, navigation]);
-
-  // ── Handle text change in any box ──────────────────────────────────────
-  const handleChange = useCallback((text, index) => {
-    // Paste detection: if the pasted text contains multiple chars
-    if (text.length > 1) {
-      const nums = text.replace(/\D/g, '').slice(0, BOX_COUNT);
-      const next = Array(BOX_COUNT).fill('');
-      nums.split('').forEach((d, i) => { next[i] = d; });
+      // Single digit — only allow numeric
+      const digit = text.replace(/\D/g, '');
+      const next = [...digits];
+      next[index] = digit;
       setDigits(next);
 
-      if (nums.length === BOX_COUNT) {
-        Keyboard.dismiss();
-        submitCode(nums);
-      } else {
-        inputRefs.current[Math.min(nums.length, BOX_COUNT - 1)]?.focus();
+      // Light haptic on each valid digit
+      if (digit) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      if (digit && index < BOX_COUNT - 1) {
+        inputRefs.current[index + 1]?.focus();
       }
-      return;
-    }
-
-    // Single digit — only allow numeric
-    const digit = text.replace(/\D/g, '');
-    const next  = [...digits];
-    next[index] = digit;
-    setDigits(next);
-
-    // Light haptic on each valid digit
-    if (digit) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    if (digit && index < BOX_COUNT - 1) {
-      inputRefs.current[index + 1]?.focus();
-    }
-    if (digit && index === BOX_COUNT - 1) {
-      const code = next.join('');
-      if (code.length === BOX_COUNT) {
-        Keyboard.dismiss();
-        submitCode(code);
+      if (digit && index === BOX_COUNT - 1) {
+        const code = next.join('');
+        if (code.length === BOX_COUNT) {
+          Keyboard.dismiss();
+          submitCode(code);
+        }
       }
-    }
-  }, [digits, submitCode]);
+    },
+    [digits, submitCode]
+  );
 
   // ── Backspace navigation ────────────────────────────────────────────────
-  const handleKeyPress = useCallback(({ nativeEvent }, index) => {
-    if (nativeEvent.key === 'Backspace' && !digits[index] && index > 0) {
-      const next = [...digits];
-      next[index - 1] = '';
-      setDigits(next);
-      inputRefs.current[index - 1]?.focus();
-    }
-  }, [digits]);
+  const handleKeyPress = useCallback(
+    ({ nativeEvent }, index) => {
+      if (nativeEvent.key === 'Backspace' && !digits[index] && index > 0) {
+        const next = [...digits];
+        next[index - 1] = '';
+        setDigits(next);
+        inputRefs.current[index - 1]?.focus();
+      }
+    },
+    [digits]
+  );
 
   const attemptsLeft = MAX_ATTEMPTS - attempts;
 
@@ -178,7 +181,6 @@ export default function TOTPScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.inner}>
-
         {/* ── Lock icon ──────────────────────────────────────────────── */}
         <View style={styles.iconCircle}>
           <Ionicons name="lock-closed" size={40} color="#1a237e" />
@@ -190,17 +192,14 @@ export default function TOTPScreen({ navigation, route }) {
         </Text>
 
         {/* ── 6 OTP boxes ───────────────────────────────────────────── */}
-        <Animated.View
-          style={[styles.otpRow, { transform: [{ translateX: shakeAnim }] }]}
-        >
+        <Animated.View style={[styles.otpRow, { transform: [{ translateX: shakeAnim }] }]}>
           {Array.from({ length: BOX_COUNT }).map((_, i) => (
             <TextInput
               key={i}
-              ref={(el) => { inputRefs.current[i] = el; }}
-              style={[
-                styles.otpBox,
-                digits[i] ? styles.otpBoxFilled : null,
-              ]}
+              ref={(el) => {
+                inputRefs.current[i] = el;
+              }}
+              style={[styles.otpBox, digits[i] ? styles.otpBoxFilled : null]}
               value={digits[i]}
               onChangeText={(text) => handleChange(text, i)}
               onKeyPress={(e) => handleKeyPress(e, i)}
@@ -222,9 +221,7 @@ export default function TOTPScreen({ navigation, route }) {
         )}
 
         {/* Loading */}
-        {loading && (
-          <ActivityIndicator color="#3b82f6" size="large" style={styles.spinner} />
-        )}
+        {loading && <ActivityIndicator color="#3b82f6" size="large" style={styles.spinner} />}
 
         {/* ── Hint ──────────────────────────────────────────────────── */}
         <View style={styles.hintBox}>
@@ -243,7 +240,6 @@ export default function TOTPScreen({ navigation, route }) {
           <Ionicons name="arrow-back" size={16} color="#3b82f6" />
           <Text style={styles.backText}>Back to Login</Text>
         </TouchableOpacity>
-
       </View>
     </SafeAreaView>
   );
@@ -285,7 +281,7 @@ const styles = StyleSheet.create({
   },
 
   // ── OTP ───────────────────────────────────────────────────────────────────
-  otpRow:  { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  otpRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   otpBox: {
     width: 46,
     height: 58,

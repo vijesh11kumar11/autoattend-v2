@@ -12,8 +12,14 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, SafeAreaView, ScrollView,
-  StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -22,7 +28,7 @@ import client from '../../api/client';
 const PRIMARY = '#1a237e';
 const XLSX_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
-  'application/vnd.ms-excel',                                          // .xls
+  'application/vnd.ms-excel', // .xls
 ];
 
 function prettySize(bytes) {
@@ -33,21 +39,25 @@ function prettySize(bytes) {
 }
 
 export default function ExcelImportScreen() {
-  const [sections, setSections]   = useState([]);
-  const [loading, setLoading]     = useState(true);
+  const [sections, setSections] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [sectionId, setSectionId] = useState(null);
-  const [file, setFile]           = useState(null);    // { uri, name, size, mimeType }
+  const [file, setFile] = useState(null); // { uri, name, size, mimeType }
   const [uploading, setUploading] = useState(false);
-  const [result, setResult]       = useState(null);    // { assigned, not_found_rolls, section_name }
+  const [result, setResult] = useState(null); // { assigned, not_found_rolls, section_name }
 
   const fetchSections = useCallback(async () => {
     try {
       const { data } = await client.get('/sections');
       setSections(Array.isArray(data) ? data : []);
-    } catch (err) { console.warn('[ExcelImport] sections error:', err?.message); }
+    } catch (err) {
+      console.warn('[ExcelImport] sections error:', err?.message);
+    }
   }, []);
 
-  useEffect(() => { fetchSections().finally(() => setLoading(false)); }, [fetchSections]);
+  useEffect(() => {
+    fetchSections().finally(() => setLoading(false));
+  }, [fetchSections]);
 
   const pickFile = async () => {
     try {
@@ -72,11 +82,11 @@ export default function ExcelImportScreen() {
 
   const upload = async () => {
     if (!sectionId) return Alert.alert('Validation', 'Select a target section first.');
-    if (!file)      return Alert.alert('Validation', 'Choose an Excel file to import.');
+    if (!file) return Alert.alert('Validation', 'Choose an Excel file to import.');
 
     const body = new FormData();
     body.append('file', {
-      uri:  file.uri,
+      uri: file.uri,
       name: file.name,
       type: file.mimeType || XLSX_TYPES[0],
     });
@@ -85,43 +95,58 @@ export default function ExcelImportScreen() {
     setResult(null);
     try {
       const { data } = await client.post('/sections/assign-students-excel', body, {
-        params:  { section_id: sectionId },
+        params: { section_id: sectionId },
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult(data);
     } catch (err) {
-      Alert.alert('Import Failed', err?.response?.data?.detail ?? 'Upload failed. Please try again.');
-    } finally { setUploading(false); }
+      Alert.alert(
+        'Import Failed',
+        err?.response?.data?.detail ?? 'Upload failed. Please try again.'
+      );
+    } finally {
+      setUploading(false);
+    }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={PRIMARY} /></View>;
+  if (loading)
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+      </View>
+    );
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.heading}>📥 Import Students</Text>
         <Text style={styles.sub}>
-          Upload an Excel sheet with a <Text style={styles.code}>roll_number</Text> column to assign existing
-          students to a section.
+          Upload an Excel sheet with a <Text style={styles.code}>roll_number</Text> column to assign
+          existing students to a section.
         </Text>
 
         {/* Step 1 — Section */}
         <Text style={styles.step}>1 · Target Section</Text>
-        {sections.length === 0
-          ? <Text style={styles.empty}>No sections in your department yet.</Text>
-          : (
-            <View style={styles.chipWrap}>
-              {sections.map(s => {
-                const sel = s.id === sectionId;
-                return (
-                  <TouchableOpacity key={s.id} style={[styles.chip, sel && styles.chipSel]}
-                    onPress={() => setSectionId(s.id)}>
-                    <Text style={[styles.chipTxt, sel && styles.chipTxtSel]}>{s.name} · Sem {s.semester}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
+        {sections.length === 0 ? (
+          <Text style={styles.empty}>No sections in your department yet.</Text>
+        ) : (
+          <View style={styles.chipWrap}>
+            {sections.map((s) => {
+              const sel = s.id === sectionId;
+              return (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[styles.chip, sel && styles.chipSel]}
+                  onPress={() => setSectionId(s.id)}
+                >
+                  <Text style={[styles.chipTxt, sel && styles.chipTxtSel]}>
+                    {s.name} · Sem {s.semester}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {/* Step 2 — File */}
         <Text style={styles.step}>2 · Excel File</Text>
@@ -133,10 +158,17 @@ export default function ExcelImportScreen() {
           <View style={styles.fileCard}>
             <Ionicons name="document-text-outline" size={22} color="#16a34a" />
             <View style={{ flex: 1 }}>
-              <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
+              <Text style={styles.fileName} numberOfLines={1}>
+                {file.name}
+              </Text>
               {file.size != null && <Text style={styles.fileMeta}>{prettySize(file.size)}</Text>}
             </View>
-            <TouchableOpacity onPress={() => { setFile(null); setResult(null); }}>
+            <TouchableOpacity
+              onPress={() => {
+                setFile(null);
+                setResult(null);
+              }}
+            >
               <Ionicons name="close-circle" size={20} color="#94a3b8" />
             </TouchableOpacity>
           </View>
@@ -145,10 +177,17 @@ export default function ExcelImportScreen() {
         {/* Step 3 — Upload */}
         <TouchableOpacity
           style={[styles.uploadBtn, (!sectionId || !file || uploading) && styles.uploadBtnDisabled]}
-          onPress={upload} disabled={!sectionId || !file || uploading}>
-          {uploading
-            ? <ActivityIndicator color="#fff" />
-            : <><Ionicons name="cloud-upload-outline" size={18} color="#fff" /><Text style={styles.uploadTxt}>Import Students</Text></>}
+          onPress={upload}
+          disabled={!sectionId || !file || uploading}
+        >
+          {uploading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+              <Text style={styles.uploadTxt}>Import Students</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* Result summary */}
@@ -171,8 +210,8 @@ export default function ExcelImportScreen() {
         )}
 
         <Text style={styles.note}>
-          💡 Tip: the sheet's first row must include a column titled “roll_number”. Only students that already
-          exist are matched and assigned.
+          💡 Tip: the sheet's first row must include a column titled “roll_number”. Only students
+          that already exist are matched and assigned.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -189,19 +228,62 @@ const styles = StyleSheet.create({
   step: { fontSize: 13, fontWeight: '800', color: '#1e293b', marginTop: 22, marginBottom: 8 },
   empty: { fontSize: 12, color: '#94a3b8', fontStyle: 'italic' },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0' },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
   chipSel: { backgroundColor: PRIMARY, borderColor: PRIMARY },
   chipTxt: { fontSize: 12, color: '#475569', fontWeight: '600' },
   chipTxtSel: { color: '#fff' },
-  pickBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', borderStyle: 'dashed' },
+  pickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderStyle: 'dashed',
+  },
   pickTxt: { fontSize: 13, fontWeight: '700', color: PRIMARY },
-  fileCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 12, padding: 12, marginTop: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
   fileName: { fontSize: 13, fontWeight: '600', color: '#1e293b' },
   fileMeta: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
-  uploadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: PRIMARY, borderRadius: 12, padding: 14, marginTop: 24 },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: PRIMARY,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 24,
+  },
   uploadBtnDisabled: { backgroundColor: '#cbd5e1' },
   uploadTxt: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  resultCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginTop: 20, borderWidth: 1, borderColor: '#dcfce7' },
+  resultCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#dcfce7',
+  },
   resultTitle: { fontSize: 14, fontWeight: '800', color: '#16a34a', marginBottom: 6 },
   resultLine: { fontSize: 13, color: '#1e293b', lineHeight: 19 },
   resultStrong: { fontWeight: '800', color: PRIMARY },

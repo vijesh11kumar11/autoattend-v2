@@ -8,47 +8,51 @@
 
 /* ── CSS Design Tokens ──────────────────────────────────────────────── */
 :root {
-  --color-primary:        #1a237e;
-  --color-primary-light:  #283593;
-  --color-primary-dark:   #0d174f;
-  --color-secondary:      #f57c00;
-  --color-secondary-light:#ff9800;
+  --color-primary: #1a237e;
+  --color-primary-light: #283593;
+  --color-primary-dark: #0d174f;
+  --color-secondary: #f57c00;
+  --color-secondary-light: #ff9800;
   --color-secondary-dark: #e65100;
-  --color-success:        #388e3c;
-  --color-warning:        #f57c00;
-  --color-danger:         #d32f2f;
-  --color-surface:        #f5f5f5;
-  --color-text:           #0f172a;
-  --color-text-muted:     #64748b;
-  --color-border:         #e2e8f0;
+  --color-success: #388e3c;
+  --color-warning: #f57c00;
+  --color-danger: #d32f2f;
+  --color-surface: #f5f5f5;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-border: #e2e8f0;
 
-  --radius-sm:  0.375rem;
-  --radius-md:  0.5rem;
-  --radius-lg:  0.75rem;
-  --radius-xl:  1rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
 
-  --shadow-sm:  0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md:  0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 
   /* Spacing scale (4 px base) */
-  --spacing-1:  4px;
-  --spacing-2:  8px;
-  --spacing-3:  12px;
-  --spacing-4:  16px;
-  --spacing-6:  24px;
-  --spacing-8:  32px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
   --spacing-12: 48px;
   --spacing-16: 64px;
 
-  --sidebar-width:          240px;
+  --sidebar-width: 240px;
   --sidebar-collapsed-width: 64px;
-  --navbar-height:           64px;
-  --transition:             0.2s ease;
+  --navbar-height: 64px;
+  --transition: 0.2s ease;
 }
 
 /* ── Base reset + smooth scroll ────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 html {
   scroll-behavior: smooth;
@@ -67,17 +71,29 @@ body {
 }
 
 /* ── Custom scrollbar ──────────────────────────────────────────────── */
-::-webkit-scrollbar            { width: 6px; height: 6px; }
-::-webkit-scrollbar-track      { background: transparent; }
-::-webkit-scrollbar-thumb      { background: #cbd5e1; border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover{ background: #94a3b8; }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
 
 /* Firefox */
-* { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
 
 /* ── Utility component classes ─────────────────────────────────────── */
 @layer components {
-
   /* Buttons */
   .btn-primary {
     @apply bg-primary text-white font-semibold px-5 py-2.5 rounded-lg
@@ -131,16 +147,32 @@ body {
   }
 
   /* Role badges */
-  .badge-principal { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800; }
-  .badge-hod       { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100  text-blue-800; }
-  .badge-teacher   { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800; }
-  .badge-student   { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800; }
+  .badge-principal {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800;
+  }
+  .badge-hod {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100  text-blue-800;
+  }
+  .badge-teacher {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800;
+  }
+  .badge-student {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800;
+  }
 
   /* Status badges */
-  .badge-safe      { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800; }
-  .badge-warning   { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800; }
-  .badge-critical  { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800; }
-  .badge-detained  { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100   text-red-800; }
+  .badge-safe {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800;
+  }
+  .badge-warning {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800;
+  }
+  .badge-critical {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800;
+  }
+  .badge-detained {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100   text-red-800;
+  }
 
   /* Sidebar layout helpers */
   .sidebar-link {
@@ -171,10 +203,15 @@ body {
 }
 
 /* ── Spinner animation ─────────────────────────────────────────────── */
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .spinner {
-  width: 18px; height: 18px;
-  border: 2.5px solid rgba(255,255,255,0.35);
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(255, 255, 255, 0.35);
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -183,8 +220,15 @@ body {
 
 /* ── Fade-in animation ─────────────────────────────────────────────── */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
-.fade-in { animation: fadeIn 0.25s ease forwards; }
-
+.fade-in {
+  animation: fadeIn 0.25s ease forwards;
+}

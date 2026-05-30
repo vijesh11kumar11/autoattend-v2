@@ -6,35 +6,41 @@ import { useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 const SORT_KEYS = [
-  { key: 'name',                       label: 'Name'           },
-  { key: 'subjects_count',             label: 'Subjects'       },
+  { key: 'name', label: 'Name' },
+  { key: 'subjects_count', label: 'Subjects' },
   { key: 'sessions_conducted_this_month', label: 'Sessions/Mo' },
-  { key: 'avg_attendance_pct',         label: 'Avg %'          },
-  { key: 'pending_disputes',           label: 'Disputes'       },
+  { key: 'avg_attendance_pct', label: 'Avg %' },
+  { key: 'pending_disputes', label: 'Disputes' },
 ];
 
 export default function TeacherPerformancePage() {
   const [teachers, setTeachers] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
-  const [sortBy, setSortBy]     = useState('avg_attendance_pct');
-  const [sortDir, setSortDir]   = useState('desc');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [sortBy, setSortBy] = useState('avg_attendance_pct');
+  const [sortDir, setSortDir] = useState('desc');
 
   useEffect(() => {
-    api.get('/hod/teacher-performance')
-      .then(r => setTeachers(r.data || []))
+    api
+      .get('/hod/teacher-performance')
+      .then((r) => setTeachers(r.data || []))
       .catch(() => setError('Failed to load teacher performance.'))
       .finally(() => setLoading(false));
   }, []);
 
   const handleSort = (key) => {
-    if (sortBy === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortBy(key); setSortDir('desc'); }
+    if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortBy(key);
+      setSortDir('desc');
+    }
   };
 
   const sorted = [...teachers].sort((a, b) => {
-    const av = a[sortBy], bv = b[sortBy];
-    if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    const av = a[sortBy],
+      bv = b[sortBy];
+    if (typeof av === 'string')
+      return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     return sortDir === 'asc' ? av - bv : bv - av;
   });
 
@@ -65,23 +71,31 @@ export default function TeacherPerformancePage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  {SORT_KEYS.map(col => (
-                    <th key={col.key}
+                  {SORT_KEYS.map((col) => (
+                    <th
+                      key={col.key}
                       onClick={() => handleSort(col.key)}
-                      className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-slate-800 select-none">
+                      className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-slate-800 select-none"
+                    >
                       {col.label}
-                      {sortBy === col.key && <span className="ml-1">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+                      {sortBy === col.key && (
+                        <span className="ml-1">{sortDir === 'asc' ? '▲' : '▼'}</span>
+                      )}
                     </th>
                   ))}
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Email</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">
+                    Email
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {sorted.map(t => (
+                {sorted.map((t) => (
                   <tr key={t.teacher_id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 font-medium text-slate-800">{t.name}</td>
                     <td className="px-4 py-3 text-center text-slate-600">{t.subjects_count}</td>
-                    <td className="px-4 py-3 text-center text-slate-600">{t.sessions_conducted_this_month}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">
+                      {t.sessions_conducted_this_month}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 rounded-full bg-slate-200 overflow-hidden">
@@ -90,7 +104,9 @@ export default function TeacherPerformancePage() {
                             style={{ width: `${Math.min(t.avg_attendance_pct, 100)}%` }}
                           />
                         </div>
-                        <span className={`text-xs font-bold ${t.avg_attendance_pct >= 75 ? 'text-emerald-600' : t.avg_attendance_pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
+                        <span
+                          className={`text-xs font-bold ${t.avg_attendance_pct >= 75 ? 'text-emerald-600' : t.avg_attendance_pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}
+                        >
                           {t.avg_attendance_pct}%
                         </span>
                       </div>

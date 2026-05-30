@@ -19,41 +19,45 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../../api/axios';
 
 // ── Color helpers ─────────────────────────────────────────────────────
-const pctColor = (p) => p >= 70 ? 'bg-emerald-500' : p >= 50 ? 'bg-amber-500' : 'bg-red-500';
-const pctText  = (p) => p >= 70 ? 'text-emerald-600' : p >= 50 ? 'text-amber-600' : 'text-red-600';
+const pctColor = (p) => (p >= 70 ? 'bg-emerald-500' : p >= 50 ? 'bg-amber-500' : 'bg-red-500');
+const pctText = (p) => (p >= 70 ? 'text-emerald-600' : p >= 50 ? 'text-amber-600' : 'text-red-600');
 
 // ═══════════════════════════════════════════════════════════════════════
 // Main Page
 // ═══════════════════════════════════════════════════════════════════════
 export default function HODClassPulsePage({ departmentId }) {
-  const [data, setData]       = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [err, setErr]         = useState('');
-  const [openSubject, setOpenSubject] = useState(null);  // {id, name, teacher_name}
+  const [err, setErr] = useState('');
+  const [openSubject, setOpenSubject] = useState(null); // {id, name, teacher_name}
 
   useEffect(() => {
     setLoading(true);
     const url = departmentId
       ? `/api/classpulse/hod/department-analytics?department_id=${departmentId}`
       : '/api/classpulse/hod/department-analytics';
-    api.get(url)
-      .then(r => setData(r.data))
-      .catch(e => setErr(e?.response?.data?.detail || 'Failed to load analytics'))
+    api
+      .get(url)
+      .then((r) => setData(r.data))
+      .catch((e) => setErr(e?.response?.data?.detail || 'Failed to load analytics'))
       .finally(() => setLoading(false));
   }, [departmentId]);
 
-  if (loading) return <div className="p-8 text-slate-400 text-sm animate-pulse">Loading ClassPulse analytics…</div>;
-  if (err)     return <div className="p-8 text-red-500 text-sm">{err}</div>;
-  if (!data)   return null;
+  if (loading)
+    return (
+      <div className="p-8 text-slate-400 text-sm animate-pulse">Loading ClassPulse analytics…</div>
+    );
+  if (err) return <div className="p-8 text-red-500 text-sm">{err}</div>;
+  if (!data) return null;
 
-  const stats     = data.department_stats || {};
-  const subjects  = data.subjects_overview || [];
+  const stats = data.department_stats || {};
+  const subjects = data.subjects_overview || [];
   const topDoubts = data.top_doubts || [];
-  const trend     = data.engagement_trend || [];
-  const teachers  = data.teachers_not_using || [];
+  const trend = data.engagement_trend || [];
+  const teachers = data.teachers_not_using || [];
 
   // derive content gap count
-  const gapCount = subjects.filter(s => s.content_gap_alert).length;
+  const gapCount = subjects.filter((s) => s.content_gap_alert).length;
   const hotDoubtTotal = subjects.reduce((acc, s) => acc + (s.hot_doubts_count || 0), 0);
 
   return (
@@ -62,16 +66,14 @@ export default function HODClassPulsePage({ departmentId }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-lg font-bold text-slate-800">📚 ClassPulse Intelligence</h2>
-          <p className="text-xs text-slate-500">Department-wide content engagement & comprehension insights</p>
+          <p className="text-xs text-slate-500">
+            Department-wide content engagement & comprehension insights
+          </p>
         </div>
       </div>
 
       {/* ── Section 1: Department Health Bar ── */}
-      <DepartmentHealthBar
-        stats={stats}
-        gapCount={gapCount}
-        hotDoubtTotal={hotDoubtTotal}
-      />
+      <DepartmentHealthBar stats={stats} gapCount={gapCount} hotDoubtTotal={hotDoubtTotal} />
 
       {/* ── Section 2: Subject Overview Grid ── */}
       <Section title="📖 Subject Overview">
@@ -79,11 +81,17 @@ export default function HODClassPulsePage({ departmentId }) {
           <p className="text-sm text-slate-400">No subjects yet.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {subjects.map(s => (
+            {subjects.map((s) => (
               <SubjectCard
                 key={s.subject_id}
                 s={s}
-                onOpen={() => setOpenSubject({ id: s.subject_id, name: s.subject_name, teacher_name: s.teacher_name })}
+                onOpen={() =>
+                  setOpenSubject({
+                    id: s.subject_id,
+                    name: s.subject_name,
+                    teacher_name: s.teacher_name,
+                  })
+                }
               />
             ))}
           </div>
@@ -93,7 +101,11 @@ export default function HODClassPulsePage({ departmentId }) {
       {/* ── Section 3: Attention Required ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <HotDoubtsPanel doubts={topDoubts} />
-        <StrugglingStudentsPanel atRiskCount={stats.students_at_risk_count || 0} subjects={subjects} departmentId={departmentId} />
+        <StrugglingStudentsPanel
+          atRiskCount={stats.students_at_risk_count || 0}
+          subjects={subjects}
+          departmentId={departmentId}
+        />
       </div>
 
       {/* ── Section 4: Teacher Engagement Tracker ── */}
@@ -104,10 +116,7 @@ export default function HODClassPulsePage({ departmentId }) {
 
       {/* ── Subject Detail Modal ── */}
       {openSubject && (
-        <SubjectDetailModal
-          subject={openSubject}
-          onClose={() => setOpenSubject(null)}
-        />
+        <SubjectDetailModal subject={openSubject} onClose={() => setOpenSubject(null)} />
       )}
     </div>
   );
@@ -118,20 +127,49 @@ export default function HODClassPulsePage({ departmentId }) {
 // ═══════════════════════════════════════════════════════════════════════
 function DepartmentHealthBar({ stats, gapCount, hotDoubtTotal }) {
   const items = [
-    { icon: '📚', label: 'Total Capsules',   value: stats.total_capsules ?? 0 },
-    { icon: '👀', label: 'Avg Engagement',   value: `${stats.avg_engagement_pct ?? 0}%`, tone: pctText(stats.avg_engagement_pct ?? 0) },
-    { icon: '🧠', label: 'Avg Comprehension',value: `${stats.avg_comprehension_pct ?? 0}%`, tone: pctText(stats.avg_comprehension_pct ?? 0) },
-    { icon: '⚠️', label: 'Students At Risk', value: stats.students_at_risk_count ?? 0, tone: (stats.students_at_risk_count || 0) > 0 ? 'text-red-600' : 'text-slate-700' },
-    { icon: '🔥', label: 'Hot Doubts',       value: hotDoubtTotal, tone: hotDoubtTotal > 0 ? 'text-orange-600' : 'text-slate-700' },
-    { icon: '⚡', label: 'Content Gaps',     value: gapCount, tone: gapCount > 0 ? 'text-red-600' : 'text-slate-700' },
+    { icon: '📚', label: 'Total Capsules', value: stats.total_capsules ?? 0 },
+    {
+      icon: '👀',
+      label: 'Avg Engagement',
+      value: `${stats.avg_engagement_pct ?? 0}%`,
+      tone: pctText(stats.avg_engagement_pct ?? 0),
+    },
+    {
+      icon: '🧠',
+      label: 'Avg Comprehension',
+      value: `${stats.avg_comprehension_pct ?? 0}%`,
+      tone: pctText(stats.avg_comprehension_pct ?? 0),
+    },
+    {
+      icon: '⚠️',
+      label: 'Students At Risk',
+      value: stats.students_at_risk_count ?? 0,
+      tone: (stats.students_at_risk_count || 0) > 0 ? 'text-red-600' : 'text-slate-700',
+    },
+    {
+      icon: '🔥',
+      label: 'Hot Doubts',
+      value: hotDoubtTotal,
+      tone: hotDoubtTotal > 0 ? 'text-orange-600' : 'text-slate-700',
+    },
+    {
+      icon: '⚡',
+      label: 'Content Gaps',
+      value: gapCount,
+      tone: gapCount > 0 ? 'text-red-600' : 'text-slate-700',
+    },
   ];
   return (
     <div className="bg-white rounded-2xl border border-violet-100 shadow-sm p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       {items.map((it, i) => (
         <div key={i} className="flex flex-col items-center text-center px-2">
           <span className="text-xl">{it.icon}</span>
-          <span className={`text-xl font-extrabold mt-1 ${it.tone || 'text-slate-800'}`}>{it.value}</span>
-          <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wide">{it.label}</span>
+          <span className={`text-xl font-extrabold mt-1 ${it.tone || 'text-slate-800'}`}>
+            {it.value}
+          </span>
+          <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wide">
+            {it.label}
+          </span>
         </div>
       ))}
     </div>
@@ -157,13 +195,21 @@ function SubjectCard({ s, onOpen }) {
         </span>
       </div>
 
-      <ProgressBar label="Engagement"    value={s.avg_engagement_pct} hint="of students accessing content" />
+      <ProgressBar
+        label="Engagement"
+        value={s.avg_engagement_pct}
+        hint="of students accessing content"
+      />
       <ProgressBar label="Comprehension" value={s.avg_comprehension_pct} hint="passing quizzes" />
 
       <div className="flex flex-wrap gap-2 items-center">
-        {s.last_upload_days_ago === null
-          ? <span className="text-[10px] text-slate-400">No uploads yet</span>
-          : <span className="text-[10px] text-slate-500">Last upload: {s.last_upload_days_ago}d ago</span>}
+        {s.last_upload_days_ago === null ? (
+          <span className="text-[10px] text-slate-400">No uploads yet</span>
+        ) : (
+          <span className="text-[10px] text-slate-500">
+            Last upload: {s.last_upload_days_ago}d ago
+          </span>
+        )}
         {s.content_gap_alert && (
           <span className="text-[10px] font-semibold text-red-700 bg-red-100 border border-red-200 rounded-full px-2 py-0.5 animate-pulse">
             ⚠️ No content uploaded in 14+ days
@@ -205,9 +251,11 @@ function HotDoubtsPanel({ doubts }) {
         <p className="text-sm text-slate-400">No flagged doubts.</p>
       ) : (
         <div className="space-y-2">
-          {doubts.map(d => {
-            const ageHrs = d.created_at ? (Date.now() - new Date(d.created_at).getTime()) / 36e5 : 0;
-            const stale  = d.status === 'open' && ageHrs > 48;
+          {doubts.map((d) => {
+            const ageHrs = d.created_at
+              ? (Date.now() - new Date(d.created_at).getTime()) / 36e5
+              : 0;
+            const stale = d.status === 'open' && ageHrs > 48;
             return (
               <div key={d.id} className="border border-slate-100 rounded-xl p-3 bg-white">
                 <div className="flex items-start justify-between gap-2">
@@ -218,10 +266,15 @@ function HotDoubtsPanel({ doubts }) {
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="text-[10px] text-slate-500">📚 {d.subject_name}</span>
-                  <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border ${
-                    d.status === 'answered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                  }`}>{d.status}</span>
+                  <span
+                    className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border ${
+                      d.status === 'answered'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}
+                  >
+                    {d.status}
+                  </span>
                   {stale && (
                     <span className="text-[10px] font-bold text-red-700 bg-red-100 border border-red-200 rounded-full px-2 py-0.5">
                       🚨 Teacher hasn't responded (48h+)
@@ -242,39 +295,60 @@ function HotDoubtsPanel({ doubts }) {
 // ═══════════════════════════════════════════════════════════════════════
 function StrugglingStudentsPanel({ atRiskCount, subjects, departmentId }) {
   const [students, setStudents] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    const ids = subjects.map(s => s.subject_id);
-    if (ids.length === 0) { setLoading(false); return; }
-    Promise.all(ids.map(id =>
-      api.get(`/api/classpulse/hod/subject/${id}/full-report`).then(r => r.data).catch(() => null)
-    )).then(reports => {
+    const ids = subjects.map((s) => s.subject_id);
+    if (ids.length === 0) {
+      setLoading(false);
+      return;
+    }
+    Promise.all(
+      ids.map((id) =>
+        api
+          .get(`/api/classpulse/hod/subject/${id}/full-report`)
+          .then((r) => r.data)
+          .catch(() => null)
+      )
+    ).then((reports) => {
       if (cancelled) return;
       const failMap = new Map(); // student_id → { name, roll_no, subjects:Set, fail_count }
-      reports.forEach(rep => {
+      reports.forEach((rep) => {
         if (!rep) return;
         const subjName = rep.subject?.name;
-        (rep.per_student_matrix || []).forEach(row => {
-          const fails = (row.capsules || []).filter(c => c.quiz_passed === false).length;
+        (rep.per_student_matrix || []).forEach((row) => {
+          const fails = (row.capsules || []).filter((c) => c.quiz_passed === false).length;
           if (fails > 2) {
-            const cur = failMap.get(row.student_id) || { name: row.name, roll_no: row.roll_no, subjects: new Set(), fail_count: 0 };
+            const cur = failMap.get(row.student_id) || {
+              name: row.name,
+              roll_no: row.roll_no,
+              subjects: new Set(),
+              fail_count: 0,
+            };
             cur.subjects.add(subjName);
             cur.fail_count += fails;
             failMap.set(row.student_id, cur);
           }
         });
       });
-      setStudents(Array.from(failMap.entries()).map(([id, v]) => ({
-        id, name: v.name, roll_no: v.roll_no,
-        subjects: Array.from(v.subjects).filter(Boolean),
-        fail_count: v.fail_count,
-      })).sort((a, b) => b.fail_count - a.fail_count));
+      setStudents(
+        Array.from(failMap.entries())
+          .map(([id, v]) => ({
+            id,
+            name: v.name,
+            roll_no: v.roll_no,
+            subjects: Array.from(v.subjects).filter(Boolean),
+            fail_count: v.fail_count,
+          }))
+          .sort((a, b) => b.fail_count - a.fail_count)
+      );
       setLoading(false);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [subjects, departmentId]);
 
   const notify = async (s) => {
@@ -292,19 +366,28 @@ function StrugglingStudentsPanel({ atRiskCount, subjects, departmentId }) {
   return (
     <Section title={`😟 Students Struggling (${atRiskCount} at risk)`}>
       {loading ? (
-        <p className="text-xs text-slate-400 animate-pulse">Aggregating per-student quiz failures…</p>
+        <p className="text-xs text-slate-400 animate-pulse">
+          Aggregating per-student quiz failures…
+        </p>
       ) : students.length === 0 ? (
-        <p className="text-sm text-slate-400">No students with persistent quiz failures detected.</p>
+        <p className="text-sm text-slate-400">
+          No students with persistent quiz failures detected.
+        </p>
       ) : (
         <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-          {students.slice(0, 10).map(s => (
-            <div key={s.id} className="border border-slate-100 rounded-xl p-3 bg-white flex items-center gap-3">
+          {students.slice(0, 10).map((s) => (
+            <div
+              key={s.id}
+              className="border border-slate-100 rounded-xl p-3 bg-white flex items-center gap-3"
+            >
               <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold">
                 {(s.name || '?').slice(0, 1).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-800 text-sm truncate">{s.name}</p>
-                <p className="text-[10px] text-slate-500">Roll: {s.roll_no || '—'} · {s.fail_count} quiz fail{s.fail_count !== 1 ? 's' : ''}</p>
+                <p className="text-[10px] text-slate-500">
+                  Roll: {s.roll_no || '—'} · {s.fail_count} quiz fail{s.fail_count !== 1 ? 's' : ''}
+                </p>
                 {s.subjects.length > 0 && (
                   <p className="text-[10px] text-slate-500 truncate">📚 {s.subjects.join(', ')}</p>
                 )}
@@ -331,7 +414,7 @@ function TeacherEngagementTracker({ subjects, teachersNotUsing }) {
   // Aggregate teacher stats from subjects_overview
   const rows = useMemo(() => {
     const map = new Map();
-    subjects.forEach(s => {
+    subjects.forEach((s) => {
       if (!s.teacher_id) return;
       const cur = map.get(s.teacher_id) || {
         teacher_id: s.teacher_id,
@@ -343,9 +426,10 @@ function TeacherEngagementTracker({ subjects, teachersNotUsing }) {
       };
       cur.total_capsules += s.total_capsules || 0;
       if (s.last_upload_days_ago !== null) {
-        cur.last_upload_days_ago = cur.last_upload_days_ago === null
-          ? s.last_upload_days_ago
-          : Math.min(cur.last_upload_days_ago, s.last_upload_days_ago);
+        cur.last_upload_days_ago =
+          cur.last_upload_days_ago === null
+            ? s.last_upload_days_ago
+            : Math.min(cur.last_upload_days_ago, s.last_upload_days_ago);
       }
       if (s.total_capsules > 0) {
         cur.engagement_sum += s.avg_engagement_pct || 0;
@@ -354,7 +438,7 @@ function TeacherEngagementTracker({ subjects, teachersNotUsing }) {
       map.set(s.teacher_id, cur);
     });
     // Add teachers from teachersNotUsing who have 0 capsules
-    teachersNotUsing.forEach(t => {
+    teachersNotUsing.forEach((t) => {
       if (!map.has(t.teacher_id)) {
         map.set(t.teacher_id, {
           teacher_id: t.teacher_id,
@@ -366,16 +450,22 @@ function TeacherEngagementTracker({ subjects, teachersNotUsing }) {
         });
       }
     });
-    return Array.from(map.values()).map(r => ({
-      ...r,
-      avg_engagement: r.engagement_count > 0 ? Math.round((r.engagement_sum / r.engagement_count) * 10) / 10 : 0,
-      using: r.total_capsules > 0 && (r.last_upload_days_ago === null || r.last_upload_days_ago <= 14),
-    })).sort((a, b) => {
-      // sort by last upload — null (never) first, then largest days ago, etc.
-      const ax = a.last_upload_days_ago ?? 9999;
-      const bx = b.last_upload_days_ago ?? 9999;
-      return bx - ax;
-    });
+    return Array.from(map.values())
+      .map((r) => ({
+        ...r,
+        avg_engagement:
+          r.engagement_count > 0
+            ? Math.round((r.engagement_sum / r.engagement_count) * 10) / 10
+            : 0,
+        using:
+          r.total_capsules > 0 && (r.last_upload_days_ago === null || r.last_upload_days_ago <= 14),
+      }))
+      .sort((a, b) => {
+        // sort by last upload — null (never) first, then largest days ago, etc.
+        const ax = a.last_upload_days_ago ?? 9999;
+        const bx = b.last_upload_days_ago ?? 9999;
+        return bx - ax;
+      });
   }, [subjects, teachersNotUsing]);
 
   const [reminding, setReminding] = useState(null);
@@ -410,18 +500,25 @@ function TeacherEngagementTracker({ subjects, teachersNotUsing }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
-                <tr key={r.teacher_id} className={`border-b border-slate-50 ${!r.using ? 'bg-red-50/40' : ''}`}>
+              {rows.map((r) => (
+                <tr
+                  key={r.teacher_id}
+                  className={`border-b border-slate-50 ${!r.using ? 'bg-red-50/40' : ''}`}
+                >
                   <td className="py-2 pr-2 font-medium text-slate-800">{r.teacher_name}</td>
                   <td className="py-2 pr-2 text-slate-700">{r.total_capsules}</td>
                   <td className="py-2 pr-2 text-slate-600">
                     {r.last_upload_days_ago === null ? '—' : `${r.last_upload_days_ago}d ago`}
                   </td>
-                  <td className={`py-2 pr-2 font-bold ${pctText(r.avg_engagement)}`}>{r.avg_engagement}%</td>
+                  <td className={`py-2 pr-2 font-bold ${pctText(r.avg_engagement)}`}>
+                    {r.avg_engagement}%
+                  </td>
                   <td className="py-2 pr-2">
-                    {r.using
-                      ? <span className="text-emerald-600 font-semibold">✅ Active</span>
-                      : <span className="text-red-600 font-semibold">❌ Inactive</span>}
+                    {r.using ? (
+                      <span className="text-emerald-600 font-semibold">✅ Active</span>
+                    ) : (
+                      <span className="text-red-600 font-semibold">❌ Inactive</span>
+                    )}
                   </td>
                   <td className="py-2 text-right">
                     {!r.using && (
@@ -448,12 +545,14 @@ function TeacherEngagementTracker({ subjects, teachersNotUsing }) {
 // Section 5: 7-Day Engagement Trend Chart (pure CSS bars)
 // ═══════════════════════════════════════════════════════════════════════
 function EngagementTrendChart({ trend }) {
-  const max = Math.max(1, ...trend.map(d => d.count || 0));
+  const max = Math.max(1, ...trend.map((d) => d.count || 0));
   const dayLabel = (iso) => {
     try {
       const d = new Date(iso);
       return d.toLocaleDateString('en-US', { weekday: 'short' });
-    } catch { return iso; }
+    } catch {
+      return iso;
+    }
   };
   return (
     <Section title="📈 7-Day Engagement Trend">
@@ -493,8 +592,9 @@ function SubjectDetailModal({ subject, onClose }) {
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/api/classpulse/hod/subject/${subject.id}/full-report`)
-      .then(r => setData(r.data))
+    api
+      .get(`/api/classpulse/hod/subject/${subject.id}/full-report`)
+      .then((r) => setData(r.data))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [subject.id]);
@@ -510,10 +610,15 @@ function SubjectDetailModal({ subject, onClose }) {
             <h3 className="text-lg font-bold text-slate-800">{subject.name}</h3>
             <p className="text-xs text-slate-500">{subject.teacher_name || '—'}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-700 text-2xl leading-none"
+          >
+            ×
+          </button>
         </div>
         <div className="px-4 pt-3 border-b border-slate-100 flex gap-1">
-          {['capsules', 'students', 'wall'].map(t => (
+          {['capsules', 'students', 'wall'].map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -553,13 +658,17 @@ function SubjectDetailModal({ subject, onClose }) {
 
 function CapsulesTable({ capsules, matrix }) {
   // engagement = % of students who opened; comprehension = % quiz_passed among quiz_attempted
-  const initialRows = capsules.map(c => {
-    let opened = 0, attempted = 0, passed = 0;
-    matrix.forEach(row => {
-      const cell = (row.capsules || []).find(x => x.capsule_id === c.id);
+  const initialRows = capsules.map((c) => {
+    let opened = 0,
+      attempted = 0,
+      passed = 0;
+    matrix.forEach((row) => {
+      const cell = (row.capsules || []).find((x) => x.capsule_id === c.id);
       if (cell?.opened) opened += 1;
-      if (cell?.quiz_passed === true) { attempted += 1; passed += 1; }
-      else if (cell?.quiz_passed === false) attempted += 1;
+      if (cell?.quiz_passed === true) {
+        attempted += 1;
+        passed += 1;
+      } else if (cell?.quiz_passed === false) attempted += 1;
     });
     const total = matrix.length || 1;
     return {
@@ -577,7 +686,7 @@ function CapsulesTable({ capsules, matrix }) {
       const r = await api.post(`/api/classpulse/hod/capsule/${cap.id}/feature`, {
         featured: !cap.featured,
       });
-      setRows(rs => rs.map(x => x.id === cap.id ? { ...x, featured: r.data.featured } : x));
+      setRows((rs) => rs.map((x) => (x.id === cap.id ? { ...x, featured: r.data.featured } : x)));
     } catch (e) {
       alert(e?.response?.data?.detail || 'Failed to toggle feature');
     } finally {
@@ -586,9 +695,17 @@ function CapsulesTable({ capsules, matrix }) {
   };
 
   const exportCSV = () => {
-    const header = ['Title', 'Type', 'Views', 'Downloads', 'Engagement %', 'Comprehension %', 'Featured'];
+    const header = [
+      'Title',
+      'Type',
+      'Views',
+      'Downloads',
+      'Engagement %',
+      'Comprehension %',
+      'Featured',
+    ];
     const lines = [header.join(',')];
-    rows.forEach(r => {
+    rows.forEach((r) => {
       const cells = [
         `"${(r.title || '').replace(/"/g, '""')}"`,
         r.capsule_type || '',
@@ -633,17 +750,25 @@ function CapsulesTable({ capsules, matrix }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => (
+          {rows.map((r) => (
             <tr key={r.id} className="border-b border-slate-50">
               <td className="py-2 pr-2 font-medium text-slate-800">
-                {r.featured && <span title="Featured" className="mr-1">⭐</span>}
+                {r.featured && (
+                  <span title="Featured" className="mr-1">
+                    ⭐
+                  </span>
+                )}
                 {r.title}
               </td>
               <td className="py-2 pr-2 text-slate-600">{r.capsule_type}</td>
               <td className="py-2 pr-2">{r.view_count}</td>
               <td className="py-2 pr-2">{r.download_count}</td>
-              <td className={`py-2 pr-2 font-bold ${pctText(r.engagement_pct)}`}>{r.engagement_pct}%</td>
-              <td className={`py-2 pr-2 font-bold ${r.comprehension_pct === null ? 'text-slate-400' : pctText(r.comprehension_pct)}`}>
+              <td className={`py-2 pr-2 font-bold ${pctText(r.engagement_pct)}`}>
+                {r.engagement_pct}%
+              </td>
+              <td
+                className={`py-2 pr-2 font-bold ${r.comprehension_pct === null ? 'text-slate-400' : pctText(r.comprehension_pct)}`}
+              >
                 {r.comprehension_pct === null ? '—' : `${r.comprehension_pct}%`}
               </td>
               <td className="py-2">
@@ -671,9 +796,9 @@ function StudentMatrix({ capsules, matrix }) {
   if (matrix.length === 0) return <p className="text-sm text-slate-400">No students.</p>;
   const cellOf = (cell) => {
     if (!cell) return { icon: '⬜', cls: 'bg-slate-50 text-slate-300' };
-    if (cell.quiz_passed === true)  return { icon: '✅', cls: 'bg-emerald-50 text-emerald-700' };
+    if (cell.quiz_passed === true) return { icon: '✅', cls: 'bg-emerald-50 text-emerald-700' };
     if (cell.quiz_passed === false) return { icon: '❌', cls: 'bg-red-50 text-red-700' };
-    if (cell.opened)                return { icon: '📖', cls: 'bg-amber-50 text-amber-700' };
+    if (cell.opened) return { icon: '📖', cls: 'bg-amber-50 text-amber-700' };
     return { icon: '⬜', cls: 'bg-slate-50 text-slate-300' };
   };
   return (
@@ -683,24 +808,35 @@ function StudentMatrix({ capsules, matrix }) {
           <tr className="text-left">
             <th className="py-2 pr-2 sticky left-0 bg-white">Student</th>
             <th className="py-2 pr-2 sticky left-24 bg-white">Roll</th>
-            {capsules.map(c => (
-              <th key={c.id} className="py-2 px-2 text-center text-[10px] text-slate-500 max-w-[80px]">
-                <div className="truncate" title={c.title}>{c.title}</div>
+            {capsules.map((c) => (
+              <th
+                key={c.id}
+                className="py-2 px-2 text-center text-[10px] text-slate-500 max-w-[80px]"
+              >
+                <div className="truncate" title={c.title}>
+                  {c.title}
+                </div>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {matrix.map(row => (
+          {matrix.map((row) => (
             <tr key={row.student_id} className="border-b border-slate-50">
-              <td className="py-2 pr-2 font-medium text-slate-800 sticky left-0 bg-white">{row.name}</td>
+              <td className="py-2 pr-2 font-medium text-slate-800 sticky left-0 bg-white">
+                {row.name}
+              </td>
               <td className="py-2 pr-2 text-slate-500 sticky left-24 bg-white">{row.roll_no}</td>
-              {capsules.map(c => {
-                const cell = (row.capsules || []).find(x => x.capsule_id === c.id);
+              {capsules.map((c) => {
+                const cell = (row.capsules || []).find((x) => x.capsule_id === c.id);
                 const m = cellOf(cell);
                 return (
                   <td key={c.id} className="py-2 px-1 text-center">
-                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-md text-sm ${m.cls}`}>{m.icon}</span>
+                    <span
+                      className={`inline-flex items-center justify-center w-7 h-7 rounded-md text-sm ${m.cls}`}
+                    >
+                      {m.icon}
+                    </span>
                   </td>
                 );
               })}
@@ -723,8 +859,9 @@ function WallActivityTab({ subjectId, summary }) {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     setLoading(true);
-    api.get(`/api/classpulse/teacher/subject/${subjectId}/wall`)
-      .then(r => setPosts(r.data?.posts || []))
+    api
+      .get(`/api/classpulse/teacher/subject/${subjectId}/wall`)
+      .then((r) => setPosts(r.data?.posts || []))
       .catch(() => setPosts([]))
       .finally(() => setLoading(false));
   }, [subjectId]);
@@ -733,10 +870,10 @@ function WallActivityTab({ subjectId, summary }) {
     <div className="space-y-3">
       {summary && (
         <div className="grid grid-cols-4 gap-2 text-xs">
-          <Stat label="Total"    value={summary.total} />
-          <Stat label="Open"     value={summary.open}     tone="text-amber-600" />
+          <Stat label="Total" value={summary.total} />
+          <Stat label="Open" value={summary.open} tone="text-amber-600" />
           <Stat label="Answered" value={summary.answered} tone="text-emerald-600" />
-          <Stat label="Hot"      value={summary.hot}      tone="text-orange-600" />
+          <Stat label="Hot" value={summary.hot} tone="text-orange-600" />
         </div>
       )}
       {loading ? (
@@ -745,16 +882,21 @@ function WallActivityTab({ subjectId, summary }) {
         <p className="text-sm text-slate-400">No wall posts.</p>
       ) : (
         <div className="space-y-2">
-          {posts.map(p => (
+          {posts.map((p) => (
             <div key={p.id} className="border border-slate-100 rounded-xl p-3 bg-white">
               <p className="text-sm text-slate-700">{p.content}</p>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]">
                 <span className="text-slate-500">🤝 {p.resonance_count}</span>
                 {p.is_hot && <span className="text-orange-600 font-semibold">🔥 Hot</span>}
-                <span className={`font-semibold rounded-full px-2 py-0.5 border ${
-                  p.status === 'answered' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-amber-50 text-amber-700 border-amber-200'
-                }`}>{p.status}</span>
+                <span
+                  className={`font-semibold rounded-full px-2 py-0.5 border ${
+                    p.status === 'answered'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                  }`}
+                >
+                  {p.status}
+                </span>
               </div>
             </div>
           ))}

@@ -32,16 +32,46 @@ const THRESHOLD = 75;
 
 function statusMeta(status) {
   switch (status) {
-    case 'safe':     return { label: 'SAFE',     icon: '✅', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' };
-    case 'warning':  return { label: 'WARNING',  icon: '⚠️', color: 'text-amber-500',   bg: 'bg-amber-50 border-amber-200'   };
-    case 'critical': return { label: 'CRITICAL', icon: '❌', color: 'text-red-500',      bg: 'bg-red-50 border-red-200'       };
-    case 'detained': return { label: 'DETAINED', icon: '🚨', color: 'text-red-700',      bg: 'bg-red-100 border-red-300'      };
-    default:         return { label: status,     icon: '',    color: 'text-slate-500',    bg: 'bg-slate-50 border-slate-200'   };
+    case 'safe':
+      return {
+        label: 'SAFE',
+        icon: '✅',
+        color: 'text-emerald-600',
+        bg: 'bg-emerald-50 border-emerald-200',
+      };
+    case 'warning':
+      return {
+        label: 'WARNING',
+        icon: '⚠️',
+        color: 'text-amber-500',
+        bg: 'bg-amber-50 border-amber-200',
+      };
+    case 'critical':
+      return {
+        label: 'CRITICAL',
+        icon: '❌',
+        color: 'text-red-500',
+        bg: 'bg-red-50 border-red-200',
+      };
+    case 'detained':
+      return {
+        label: 'DETAINED',
+        icon: '🚨',
+        color: 'text-red-700',
+        bg: 'bg-red-100 border-red-300',
+      };
+    default:
+      return {
+        label: status,
+        icon: '',
+        color: 'text-slate-500',
+        bg: 'bg-slate-50 border-slate-200',
+      };
   }
 }
 
 function pctBarColor(pct) {
-  if (pct >= THRESHOLD)    return 'bg-emerald-500';
+  if (pct >= THRESHOLD) return 'bg-emerald-500';
   if (pct >= THRESHOLD - 10) return 'bg-amber-400';
   return 'bg-red-500';
 }
@@ -56,17 +86,40 @@ function ActivityRing({ pct, size = 80, strokeWidth = 7, label, sublabel }) {
   return (
     <div className="relative flex flex-col items-center">
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none"
-          stroke="#e2e8f0" strokeWidth={strokeWidth} />
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none"
-          stroke={ringColor} strokeWidth={strokeWidth}
-          strokeDasharray={circumference} strokeDashoffset={offset}
-          strokeLinecap="round" className="transition-all duration-700" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={ringColor}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="transition-all duration-700"
+        />
       </svg>
-      <div className="absolute flex flex-col items-center justify-center" style={{ width: size, height: size }}>
-        <span className="text-sm font-black" style={{ color: ringColor }}>{pct}%</span>
+      <div
+        className="absolute flex flex-col items-center justify-center"
+        style={{ width: size, height: size }}
+      >
+        <span className="text-sm font-black" style={{ color: ringColor }}>
+          {pct}%
+        </span>
       </div>
-      {label && <p className="text-xs font-semibold text-slate-700 mt-1 text-center truncate max-w-[90px]">{label}</p>}
+      {label && (
+        <p className="text-xs font-semibold text-slate-700 mt-1 text-center truncate max-w-[90px]">
+          {label}
+        </p>
+      )}
       {sublabel && <p className="text-[10px] text-slate-400 text-center">{sublabel}</p>}
     </div>
   );
@@ -81,18 +134,23 @@ function ClassPulseSummary({ subjects, navigate }) {
 
   useEffect(() => {
     let cancelled = false;
-    const ids = (subjects || []).map(s => s.subject_id).filter(Boolean);
-    if (ids.length === 0) { setLoading(false); return; }
+    const ids = (subjects || []).map((s) => s.subject_id).filter(Boolean);
+    if (ids.length === 0) {
+      setLoading(false);
+      return;
+    }
     Promise.all(
-      ids.map(id =>
-        api.get(`/api/classpulse/student/subject/${id}/capsules`)
-          .then(r => r.data?.capsules || [])
+      ids.map((id) =>
+        api
+          .get(`/api/classpulse/student/subject/${id}/capsules`)
+          .then((r) => r.data?.capsules || [])
           .catch(() => [])
       )
-    ).then(lists => {
+    ).then((lists) => {
       if (cancelled) return;
-      let newCount = 0, pendingQuiz = 0;
-      lists.flat().forEach(c => {
+      let newCount = 0,
+        pendingQuiz = 0;
+      lists.flat().forEach((c) => {
         const opened = c.my_interaction?.opened;
         if (!opened) newCount += 1;
         if (opened && c.has_quiz && !c.my_interaction?.quiz_attempted) pendingQuiz += 1;
@@ -100,7 +158,9 @@ function ClassPulseSummary({ subjects, navigate }) {
       setCounts({ newCount, pendingQuiz });
       setLoading(false);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [subjects]);
 
   if (loading || (counts.newCount === 0 && counts.pendingQuiz === 0)) return null;
@@ -141,27 +201,31 @@ function StudentHome() {
   const navigate = useNavigate();
 
   const [dashboard, setDashboard] = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [flash, setFlash]         = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [flash, setFlash] = useState('');
   const [disputeModal, setDisputeModal] = useState(null); // session_id to dispute
   const [disputeReason, setDisputeReason] = useState('');
-  const [disputeNote, setDisputeNote]     = useState('');
-  const [submitting, setSubmitting]       = useState(false);
+  const [disputeNote, setDisputeNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const loadDashboard = () => {
     setLoading(true);
-    api.get('/student/portal/dashboard')
-      .then(r => setDashboard(r.data))
+    api
+      .get('/student/portal/dashboard')
+      .then((r) => setDashboard(r.data))
       .catch(() => setError('Failed to load dashboard.'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => {
+    loadDashboard();
+  }, []);
 
   const handleDispute = async () => {
     if (!disputeReason.trim() || disputeReason.length < 5) {
-      setFlash('Reason must be at least 5 characters.'); return;
+      setFlash('Reason must be at least 5 characters.');
+      return;
     }
     setSubmitting(true);
     const disputePayload = {
@@ -180,14 +244,20 @@ function StudentHome() {
       // Offline path (issues #88/#121): queue on network failure, sync later.
       if (!err?.response) {
         addToQueue('dispute', '/student/portal/dispute-attendance', 'post', disputePayload);
-        setFlash('You are offline. Your dispute will be submitted automatically when you reconnect.');
+        setFlash(
+          'You are offline. Your dispute will be submitted automatically when you reconnect.'
+        );
         setDisputeModal(null);
         setDisputeReason('');
         setDisputeNote('');
         return;
       }
-      setFlash(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.');
-    } finally { setSubmitting(false); }
+      setFlash(
+        err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -218,7 +288,9 @@ function StudentHome() {
       {flash && (
         <div className="card px-5 py-3 bg-emerald-50 text-emerald-700 text-sm flex items-center justify-between">
           <span>{flash}</span>
-          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">✕</button>
+          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">
+            ✕
+          </button>
         </div>
       )}
 
@@ -235,8 +307,10 @@ function StudentHome() {
             <p className="text-3xl font-extrabold">{overallPct}%</p>
             <p className="text-xs text-blue-200">Overall</p>
           </div>
-          <button onClick={() => navigate('/student/scan-qr')}
-            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-semibold transition">
+          <button
+            onClick={() => navigate('/student/scan-qr')}
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl text-sm font-semibold transition"
+          >
             📷 Scan QR
           </button>
         </div>
@@ -245,7 +319,7 @@ function StudentHome() {
       {/* ── Low Attendance Warning ── */}
       {lowSubjects.length > 0 && (
         <div className="card p-4 border-red-200 bg-red-50 space-y-1">
-          {lowSubjects.map(s => (
+          {lowSubjects.map((s) => (
             <p key={s.subject_id} className="text-sm text-red-700 font-medium">
               ⚠️ <span className="font-bold">{s.subject_name}</span> — {s.percentage}%.
               {s.sessions_needed > 0
@@ -264,7 +338,7 @@ function StudentHome() {
         <div className="card p-5">
           <h3 className="text-sm font-semibold text-slate-700 mb-4">📊 Subject Attendance</h3>
           <div className="flex flex-wrap gap-6 justify-center">
-            {subjects.map(s => (
+            {subjects.map((s) => (
               <div key={s.subject_id} className="relative">
                 <ActivityRing
                   pct={s.percentage}
@@ -279,7 +353,6 @@ function StudentHome() {
 
       {/* ═══ 2-COLUMN GRID ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
         {/* ── COL 1: Forecast + Timetable ── */}
         <div className="space-y-4">
           {/* Attendance Forecast */}
@@ -288,7 +361,7 @@ function StudentHome() {
               🔮 Attendance Forecast
             </div>
             <div className="divide-y">
-              {subjects.map(s => {
+              {subjects.map((s) => {
                 const atRisk = s.sessions_needed > 0 && s.percentage < THRESHOLD;
                 return (
                   <div key={s.subject_id} className={`px-4 py-3 ${atRisk ? 'bg-red-50/50' : ''}`}>
@@ -297,18 +370,22 @@ function StudentHome() {
                         <p className="text-sm font-medium text-slate-700">{s.subject_name}</p>
                         <p className="text-xs text-slate-400 font-mono">{s.subject_code}</p>
                       </div>
-                      <span className={`text-sm font-bold ${s.percentage >= THRESHOLD ? 'text-green-600' : 'text-red-600'}`}>
+                      <span
+                        className={`text-sm font-bold ${s.percentage >= THRESHOLD ? 'text-green-600' : 'text-red-600'}`}
+                      >
                         {s.percentage}%
                       </span>
                     </div>
                     <div className="mt-1.5">
                       {s.percentage >= THRESHOLD ? (
                         <p className="text-xs text-green-600">
-                          ✅ You can miss {s.can_afford_to_miss} more class{s.can_afford_to_miss !== 1 ? 'es' : ''}
+                          ✅ You can miss {s.can_afford_to_miss} more class
+                          {s.can_afford_to_miss !== 1 ? 'es' : ''}
                         </p>
                       ) : (
                         <p className="text-xs text-red-600 font-medium">
-                          ⚠️ Need to attend {s.sessions_needed} more class{s.sessions_needed !== 1 ? 'es' : ''} to reach {THRESHOLD}%
+                          ⚠️ Need to attend {s.sessions_needed} more class
+                          {s.sessions_needed !== 1 ? 'es' : ''} to reach {THRESHOLD}%
                         </p>
                       )}
                     </div>
@@ -332,18 +409,36 @@ function StudentHome() {
                   const nowStr = new Date().toTimeString().slice(0, 5);
                   const isCurrent = slot.start_time <= nowStr && nowStr <= slot.end_time;
                   return (
-                    <div key={i} className={`px-4 py-2.5 flex items-center justify-between ${isCurrent ? 'bg-blue-50 border-l-4 border-[#1a237e]' : ''}`}>
+                    <div
+                      key={i}
+                      className={`px-4 py-2.5 flex items-center justify-between ${isCurrent ? 'bg-blue-50 border-l-4 border-[#1a237e]' : ''}`}
+                    >
                       <div className="flex items-center gap-2">
-                        {slot.color_tag && <div className="w-1.5 h-8 rounded-full" style={{ backgroundColor: slot.color_tag }} />}
+                        {slot.color_tag && (
+                          <div
+                            className="w-1.5 h-8 rounded-full"
+                            style={{ backgroundColor: slot.color_tag }}
+                          />
+                        )}
                         <div>
                           <p className="font-medium text-slate-700 text-sm">
                             {slot.subject_name}
-                            {slot.is_twm && <span className="ml-1 text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded">TWM</span>}
+                            {slot.is_twm && (
+                              <span className="ml-1 text-xs px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded">
+                                TWM
+                              </span>
+                            )}
                           </p>
-                          <p className="text-xs text-slate-400 font-mono">{slot.start_time} – {slot.end_time} · {slot.room || '—'}</p>
+                          <p className="text-xs text-slate-400 font-mono">
+                            {slot.start_time} – {slot.end_time} · {slot.room || '—'}
+                          </p>
                         </div>
                       </div>
-                      {isCurrent && <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full font-semibold">NOW</span>}
+                      {isCurrent && (
+                        <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full font-semibold">
+                          NOW
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -363,7 +458,7 @@ function StudentHome() {
             </div>
             {recentRecords.length > 0 ? (
               <div className="divide-y">
-                {recentRecords.map(r => {
+                {recentRecords.map((r) => {
                   const statusColors = {
                     present: 'bg-emerald-100 text-emerald-700',
                     absent: 'bg-red-100 text-red-700',
@@ -372,13 +467,18 @@ function StudentHome() {
                     duty_leave: 'bg-purple-100 text-purple-700',
                   };
                   return (
-                    <div key={r.record_id} className="px-4 py-2.5 flex items-center justify-between">
+                    <div
+                      key={r.record_id}
+                      className="px-4 py-2.5 flex items-center justify-between"
+                    >
                       <div>
                         <p className="text-sm font-medium text-slate-700">{r.subject_name}</p>
                         <p className="text-xs text-slate-400">{r.date}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${statusColors[r.status] || 'bg-slate-100 text-slate-500'}`}>
+                        <span
+                          className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${statusColors[r.status] || 'bg-slate-100 text-slate-500'}`}
+                        >
                           {r.status.replace('_', ' ')}
                         </span>
                         {r.can_dispute && (
@@ -405,12 +505,21 @@ function StudentHome() {
               <h3 className="text-sm font-semibold text-slate-700 mb-2">👨‍🏫 My Tutor</h3>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm">
-                  {(d.tutor_info.name || 'T').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                  {(d.tutor_info.name || 'T')
+                    .split(' ')
+                    .map((w) => w[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
                 </div>
                 <div>
                   <p className="font-semibold text-slate-700">{d.tutor_info.name}</p>
-                  {d.tutor_info.email && <p className="text-xs text-slate-400">{d.tutor_info.email}</p>}
-                  {d.tutor_info.phone && <p className="text-xs text-slate-400">{d.tutor_info.phone}</p>}
+                  {d.tutor_info.email && (
+                    <p className="text-xs text-slate-400">{d.tutor_info.email}</p>
+                  )}
+                  {d.tutor_info.phone && (
+                    <p className="text-xs text-slate-400">{d.tutor_info.phone}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -418,11 +527,17 @@ function StudentHome() {
 
           {/* Leave & Dispute Summary */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="card p-4 text-center cursor-pointer hover:shadow-md transition" onClick={() => navigate('/student/leaves')}>
+            <div
+              className="card p-4 text-center cursor-pointer hover:shadow-md transition"
+              onClick={() => navigate('/student/leaves')}
+            >
               <p className="text-2xl font-bold text-amber-600">{d.pending_leave_requests}</p>
               <p className="text-xs text-slate-400">Pending Leaves</p>
             </div>
-            <div className="card p-4 text-center cursor-pointer hover:shadow-md transition" onClick={() => navigate('/student/disputes')}>
+            <div
+              className="card p-4 text-center cursor-pointer hover:shadow-md transition"
+              onClick={() => navigate('/student/disputes')}
+            >
               <span className="text-2xl">⚖️</span>
               <p className="text-xs text-slate-400 mt-1">My Disputes</p>
             </div>
@@ -434,23 +549,31 @@ function StudentHome() {
               ⚡ Quick Actions
             </div>
             <div className="p-3 grid grid-cols-2 gap-2">
-              <button onClick={() => navigate('/student/attendance')}
-                className="p-3 bg-blue-50 rounded-lg text-center hover:bg-blue-100 transition">
+              <button
+                onClick={() => navigate('/student/attendance')}
+                className="p-3 bg-blue-50 rounded-lg text-center hover:bg-blue-100 transition"
+              >
                 <span className="text-xl block">✅</span>
                 <p className="text-xs font-medium text-blue-700 mt-1">Attendance</p>
               </button>
-              <button onClick={() => navigate('/student/timetable')}
-                className="p-3 bg-green-50 rounded-lg text-center hover:bg-green-100 transition">
+              <button
+                onClick={() => navigate('/student/timetable')}
+                className="p-3 bg-green-50 rounded-lg text-center hover:bg-green-100 transition"
+              >
                 <span className="text-xl block">🗓️</span>
                 <p className="text-xs font-medium text-green-700 mt-1">Timetable</p>
               </button>
-              <button onClick={() => navigate('/student/leaves')}
-                className="p-3 bg-amber-50 rounded-lg text-center hover:bg-amber-100 transition">
+              <button
+                onClick={() => navigate('/student/leaves')}
+                className="p-3 bg-amber-50 rounded-lg text-center hover:bg-amber-100 transition"
+              >
                 <span className="text-xl block">📋</span>
                 <p className="text-xs font-medium text-amber-700 mt-1">Leaves</p>
               </button>
-              <button onClick={() => navigate('/student/download')}
-                className="p-3 bg-purple-50 rounded-lg text-center hover:bg-purple-100 transition">
+              <button
+                onClick={() => navigate('/student/download')}
+                className="p-3 bg-purple-50 rounded-lg text-center hover:bg-purple-100 transition"
+              >
                 <span className="text-xl block">⬇️</span>
                 <p className="text-xs font-medium text-purple-700 mt-1">Report</p>
               </button>
@@ -465,29 +588,46 @@ function StudentHome() {
           <div className="card w-full max-w-md p-6 space-y-4 m-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800">⚖️ Dispute Attendance</h3>
-              <button onClick={() => setDisputeModal(null)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+              <button
+                onClick={() => setDisputeModal(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg"
+              >
+                ✕
+              </button>
             </div>
-            <p className="text-sm text-slate-500">Explain why you believe you were wrongly marked absent.</p>
+            <p className="text-sm text-slate-500">
+              Explain why you believe you were wrongly marked absent.
+            </p>
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Reason *</label>
-              <textarea value={disputeReason}
-                onChange={e => setDisputeReason(e.target.value)}
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                Reason *
+              </label>
+              <textarea
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
                 placeholder="I was present in class but my QR scan failed because…"
-                rows={3} maxLength={1000}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e] resize-none" />
+                rows={3}
+                maxLength={1000}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e] resize-none"
+              />
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
                 Proof/Note <span className="text-slate-400 normal-case">(optional)</span>
               </label>
-              <input value={disputeNote}
-                onChange={e => setDisputeNote(e.target.value)}
+              <input
+                value={disputeNote}
+                onChange={(e) => setDisputeNote(e.target.value)}
                 placeholder="Link to photo, classmate witness, etc."
                 maxLength={500}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]"
+              />
             </div>
-            <button onClick={handleDispute} disabled={submitting}
-              className="w-full py-3 bg-[#1a237e] text-white font-bold rounded-xl hover:bg-[#283593] disabled:opacity-50">
+            <button
+              onClick={handleDispute}
+              disabled={submitting}
+              className="w-full py-3 bg-[#1a237e] text-white font-bold rounded-xl hover:bg-[#283593] disabled:opacity-50"
+            >
               {submitting ? '⏳ Submitting…' : '📨 Submit Dispute'}
             </button>
           </div>
@@ -504,8 +644,8 @@ function ScanQRStub() {
       <span className="text-5xl block">📱</span>
       <p className="font-semibold text-slate-600">Scan QR Code</p>
       <p className="text-sm max-w-md mx-auto">
-        QR scanning is available on the mobile app. Open the AutoAttend app on your phone,
-        go to "Scan QR", and scan the code displayed by your teacher.
+        QR scanning is available on the mobile app. Open the AutoAttend app on your phone, go to
+        "Scan QR", and scan the code displayed by your teacher.
       </p>
       <div className="bg-blue-50 rounded-xl p-4 mt-4 text-left max-w-sm mx-auto text-sm text-slate-600 space-y-1">
         <p className="font-semibold text-slate-700">How it works:</p>
@@ -528,8 +668,9 @@ function AttendanceDetailPage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    api.get(`/attendance/student/${user.id}/summary`)
-      .then(r => setSummary(r.data))
+    api
+      .get(`/attendance/student/${user.id}/summary`)
+      .then((r) => setSummary(r.data))
       .catch(() => setError('Failed to load attendance details.'))
       .finally(() => setLoading(false));
   }, [user?.id]);
@@ -543,7 +684,8 @@ function AttendanceDetailPage() {
     );
   }
   if (error) return <div className="card p-8 text-center text-red-500">{error}</div>;
-  if (!summary?.subjects?.length) return <div className="card p-8 text-center text-slate-400">No attendance data yet.</div>;
+  if (!summary?.subjects?.length)
+    return <div className="card p-8 text-center text-slate-400">No attendance data yet.</div>;
 
   const totalSessions = summary.subjects.reduce((a, s) => a + s.total_sessions, 0);
   const totalPresent = summary.subjects.reduce((a, s) => a + s.present, 0);
@@ -566,14 +708,20 @@ function AttendanceDetailPage() {
           <p className="text-sm text-slate-500">Absent</p>
         </div>
         <div className="card p-4 text-center">
-          <p className={`text-2xl font-bold ${overallPct >= THRESHOLD ? 'text-emerald-600' : overallPct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{overallPct}%</p>
+          <p
+            className={`text-2xl font-bold ${overallPct >= THRESHOLD ? 'text-emerald-600' : overallPct >= 60 ? 'text-amber-500' : 'text-red-500'}`}
+          >
+            {overallPct}%
+          </p>
           <p className="text-sm text-slate-500">Overall</p>
         </div>
       </div>
 
       {/* Subject Table */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">📊 Subject-wise Attendance</div>
+        <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">
+          📊 Subject-wise Attendance
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -588,7 +736,7 @@ function AttendanceDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {summary.subjects.map(s => {
+              {summary.subjects.map((s) => {
                 const statusColors = {
                   safe: 'bg-emerald-100 text-emerald-700',
                   warning: 'bg-amber-100 text-amber-700',
@@ -597,10 +745,14 @@ function AttendanceDetailPage() {
                 };
                 return (
                   <tr key={s.subject_id} className="hover:bg-slate-50">
-                    <td className="px-5 py-3 text-sm font-medium text-slate-700">{s.subject_name}</td>
+                    <td className="px-5 py-3 text-sm font-medium text-slate-700">
+                      {s.subject_name}
+                    </td>
                     <td className="px-5 py-3 text-sm text-slate-500">{s.subject_code}</td>
                     <td className="px-5 py-3 text-sm text-slate-500">{s.semester}</td>
-                    <td className="px-5 py-3 text-sm text-emerald-600 font-semibold">{s.present}</td>
+                    <td className="px-5 py-3 text-sm text-emerald-600 font-semibold">
+                      {s.present}
+                    </td>
                     <td className="px-5 py-3 text-sm text-red-500 font-semibold">{s.absent}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
@@ -610,13 +762,17 @@ function AttendanceDetailPage() {
                             style={{ width: `${Math.min(s.percentage, 100)}%` }}
                           />
                         </div>
-                        <span className={`text-sm font-bold ${s.percentage >= THRESHOLD ? 'text-emerald-600' : s.percentage >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
+                        <span
+                          className={`text-sm font-bold ${s.percentage >= THRESHOLD ? 'text-emerald-600' : s.percentage >= 60 ? 'text-amber-500' : 'text-red-500'}`}
+                        >
                           {Math.round(s.percentage)}%
                         </span>
                       </div>
                     </td>
                     <td className="px-5 py-3">
-                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusColors[s.attendance_status] || 'bg-slate-100 text-slate-600'}`}>
+                      <span
+                        className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusColors[s.attendance_status] || 'bg-slate-100 text-slate-600'}`}
+                      >
                         {s.attendance_status}
                       </span>
                     </td>
@@ -637,14 +793,19 @@ function StudentTimetablePage() {
   const [error, setError] = useState('');
 
   const dayColors = {
-    monday: 'border-l-blue-500', tuesday: 'border-l-emerald-500', wednesday: 'border-l-purple-500',
-    thursday: 'border-l-amber-500', friday: 'border-l-red-500', saturday: 'border-l-slate-400',
+    monday: 'border-l-blue-500',
+    tuesday: 'border-l-emerald-500',
+    wednesday: 'border-l-purple-500',
+    thursday: 'border-l-amber-500',
+    friday: 'border-l-red-500',
+    saturday: 'border-l-slate-400',
   };
-  const dayLabel = d => d.charAt(0).toUpperCase() + d.slice(1);
+  const dayLabel = (d) => d.charAt(0).toUpperCase() + d.slice(1);
 
   useEffect(() => {
-    api.get('/timetable/my-section-timetable')
-      .then(r => setTimetable(r.data?.timetable || []))
+    api
+      .get('/timetable/my-section-timetable')
+      .then((r) => setTimetable(r.data?.timetable || []))
       .catch(() => setError('Failed to load timetable.'))
       .finally(() => setLoading(false));
   }, []);
@@ -664,32 +825,55 @@ function StudentTimetablePage() {
   return (
     <div className="space-y-6">
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">📅 My Weekly Timetable</div>
+        <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700">
+          📅 My Weekly Timetable
+        </div>
         {timetable.length > 0 ? (
           <div className="divide-y">
-            {timetable.map(dayGroup => (
-              <div key={dayGroup.day} className={`p-4 ${dayGroup.day === todayName ? 'bg-blue-50/30' : ''}`}>
+            {timetable.map((dayGroup) => (
+              <div
+                key={dayGroup.day}
+                className={`p-4 ${dayGroup.day === todayName ? 'bg-blue-50/30' : ''}`}
+              >
                 <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
                   {dayLabel(dayGroup.day)}
-                  {dayGroup.day === todayName && <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full">TODAY</span>}
+                  {dayGroup.day === todayName && (
+                    <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full">
+                      TODAY
+                    </span>
+                  )}
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {(dayGroup.entries || []).map((slot, i) => (
-                    <div key={i} className={`border-l-4 ${dayColors[dayGroup.day] || 'border-l-slate-300'} bg-slate-50 rounded-r-lg p-3`}>
+                    <div
+                      key={i}
+                      className={`border-l-4 ${dayColors[dayGroup.day] || 'border-l-slate-300'} bg-slate-50 rounded-r-lg p-3`}
+                    >
                       <div className="flex items-center gap-2">
-                        {slot.color_tag && <div className="w-2 h-6 rounded-full" style={{ backgroundColor: slot.color_tag }} />}
+                        {slot.color_tag && (
+                          <div
+                            className="w-2 h-6 rounded-full"
+                            style={{ backgroundColor: slot.color_tag }}
+                          />
+                        )}
                         <div>
                           <p className="font-medium text-slate-700 text-sm">{slot.subject_name}</p>
                           <p className="text-xs text-slate-400">{slot.subject_code}</p>
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
-                        <span className="font-mono">{slot.start_time} – {slot.end_time}</span>
+                        <span className="font-mono">
+                          {slot.start_time} – {slot.end_time}
+                        </span>
                         <span>🏫 {slot.room || '—'}</span>
                       </div>
                       <div className="flex items-center justify-between mt-1 text-xs text-slate-400">
                         <span>👨‍🏫 {slot.teacher_name}</span>
-                        {slot.is_lab && <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded">LAB</span>}
+                        {slot.is_lab && (
+                          <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded">
+                            LAB
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -710,18 +894,18 @@ function StudentTimetablePage() {
 
 // ── Leave Requests Page ───────────────────────────────────────────────
 const LEAVE_TYPES = [
-  { value: 'medical',   label: 'Medical',   icon: '🏥' },
-  { value: 'duty',      label: 'Duty',      icon: '📋' },
-  { value: 'personal',  label: 'Personal',  icon: '👤' },
+  { value: 'medical', label: 'Medical', icon: '🏥' },
+  { value: 'duty', label: 'Duty', icon: '📋' },
+  { value: 'personal', label: 'Personal', icon: '👤' },
   { value: 'emergency', label: 'Emergency', icon: '🚨' },
-  { value: 'sports',    label: 'Sports',    icon: '🏅' },
-  { value: 'other',     label: 'Other',     icon: '📝' },
+  { value: 'sports', label: 'Sports', icon: '🏅' },
+  { value: 'other', label: 'Other', icon: '📝' },
 ];
 
 const LEAVE_STATUS_STYLE = {
-  pending:   'bg-amber-100 text-amber-700',
-  approved:  'bg-emerald-100 text-emerald-700',
-  rejected:  'bg-red-100 text-red-700',
+  pending: 'bg-amber-100 text-amber-700',
+  approved: 'bg-emerald-100 text-emerald-700',
+  rejected: 'bg-red-100 text-red-700',
   cancelled: 'bg-slate-100 text-slate-500',
 };
 
@@ -732,7 +916,11 @@ function StudentLeavePage() {
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState('');
   const [form, setForm] = useState({
-    leave_type: 'medical', from_date: '', to_date: '', reason: '', document_url: '',
+    leave_type: 'medical',
+    from_date: '',
+    to_date: '',
+    reason: '',
+    document_url: '',
   });
   // S3 upload state for supporting document (issues #45 / #116)
   const [docFile, setDocFile] = useState(null);
@@ -741,17 +929,23 @@ function StudentLeavePage() {
 
   const loadRequests = () => {
     setLoading(true);
-    api.get('/leave/my-requests')
-      .then(r => setRequests(r.data || []))
+    api
+      .get('/leave/my-requests')
+      .then((r) => setRequests(r.data || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   };
-  useEffect(() => { loadRequests(); }, []);
+  useEffect(() => {
+    loadRequests();
+  }, []);
 
   const handleDocPick = (e) => {
     setDocError('');
     const file = e.target.files?.[0] || null;
-    if (!file) { setDocFile(null); return; }
+    if (!file) {
+      setDocFile(null);
+      return;
+    }
     const ext = (file.name.split('.').pop() || '').toLowerCase();
     if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
       setDocError('Only PDF, JPG, JPEG, PNG are allowed.');
@@ -768,7 +962,8 @@ function StudentLeavePage() {
 
   const handleApply = async () => {
     if (!form.from_date || !form.to_date || !form.reason.trim()) {
-      setFlash('Please fill in all required fields.'); return;
+      setFlash('Please fill in all required fields.');
+      return;
     }
     setSubmitting(true);
     try {
@@ -820,15 +1015,25 @@ function StudentLeavePage() {
           reason: form.reason,
           document_url: form.document_url || null,
         });
-        setFlash('You are offline. Your leave request will be submitted automatically when you reconnect.');
+        setFlash(
+          'You are offline. Your leave request will be submitted automatically when you reconnect.'
+        );
         setShowModal(false);
-        setForm({ leave_type: 'medical', from_date: '', to_date: '', reason: '', document_url: '' });
+        setForm({
+          leave_type: 'medical',
+          from_date: '',
+          to_date: '',
+          reason: '',
+          document_url: '',
+        });
         setDocFile(null);
         setDocError('');
         return;
       }
       setFlash(err.response?.data?.detail || 'Failed to submit leave request.');
-    } finally { setSubmitting(false); }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleViewDoc = async (s3Key) => {
@@ -865,7 +1070,9 @@ function StudentLeavePage() {
       {flash && (
         <div className="card px-5 py-3 bg-emerald-50 text-emerald-700 text-sm flex items-center justify-between">
           <span>{flash}</span>
-          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">✕</button>
+          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">
+            ✕
+          </button>
         </div>
       )}
 
@@ -890,22 +1097,33 @@ function StudentLeavePage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  {['Type', 'Dates', 'Days', 'Reason', 'Status', 'Reviewer Note', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">{h}</th>
-                  ))}
+                  {['Type', 'Dates', 'Days', 'Reason', 'Status', 'Reviewer Note', 'Actions'].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase"
+                      >
+                        {h}
+                      </th>
+                    )
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {requests.map(lr => (
+                {requests.map((lr) => (
                   <tr key={lr.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <span className="capitalize font-medium text-slate-700">{lr.leave_type}</span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{lr.from_date} → {lr.to_date}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {lr.from_date} → {lr.to_date}
+                    </td>
                     <td className="px-4 py-3 text-center font-semibold">{lr.days}</td>
                     <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{lr.reason}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${LEAVE_STATUS_STYLE[lr.status] || ''}`}>
+                      <span
+                        className={`px-2 py-0.5 text-xs font-semibold rounded-full ${LEAVE_STATUS_STYLE[lr.status] || ''}`}
+                      >
                         {lr.status}
                       </span>
                     </td>
@@ -949,17 +1167,24 @@ function StudentLeavePage() {
           <div className="card w-full max-w-lg p-6 space-y-4 m-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-800">Apply for Leave</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Leave Type */}
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Leave Type</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                Leave Type
+              </label>
               <div className="grid grid-cols-3 gap-2">
-                {LEAVE_TYPES.map(t => (
+                {LEAVE_TYPES.map((t) => (
                   <button
                     key={t.value}
-                    onClick={() => setForm(prev => ({ ...prev, leave_type: t.value }))}
+                    onClick={() => setForm((prev) => ({ ...prev, leave_type: t.value }))}
                     className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
                       form.leave_type === t.value
                         ? 'border-[#1a237e] bg-blue-50 text-[#1a237e]'
@@ -975,45 +1200,68 @@ function StudentLeavePage() {
             {/* Dates */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">From Date</label>
-                <input type="date" value={form.from_date}
-                  onChange={e => setForm(prev => ({ ...prev, from_date: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+                <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                  From Date
+                </label>
+                <input
+                  type="date"
+                  value={form.from_date}
+                  onChange={(e) => setForm((prev) => ({ ...prev, from_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]"
+                />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">To Date</label>
-                <input type="date" value={form.to_date}
-                  onChange={e => setForm(prev => ({ ...prev, to_date: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+                <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                  To Date
+                </label>
+                <input
+                  type="date"
+                  value={form.to_date}
+                  onChange={(e) => setForm((prev) => ({ ...prev, to_date: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]"
+                />
               </div>
             </div>
 
             {/* Reason */}
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Reason</label>
-              <textarea value={form.reason}
-                onChange={e => setForm(prev => ({ ...prev, reason: e.target.value }))}
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                Reason
+              </label>
+              <textarea
+                value={form.reason}
+                onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
                 placeholder="Describe your reason for leave…"
                 rows={3}
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e] resize-none"
-                maxLength={2000} />
+                maxLength={2000}
+              />
             </div>
 
             {/* Document URL */}
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
-                Document URL <span className="text-slate-400 normal-case">(optional — required for medical/sports)</span>
+                Document URL{' '}
+                <span className="text-slate-400 normal-case">
+                  (optional — required for medical/sports)
+                </span>
               </label>
-              <input type="url" value={form.document_url}
-                onChange={e => setForm(prev => ({ ...prev, document_url: e.target.value }))}
+              <input
+                type="url"
+                value={form.document_url}
+                onChange={(e) => setForm((prev) => ({ ...prev, document_url: e.target.value }))}
                 placeholder="https://drive.google.com/..."
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]"
+              />
             </div>
 
             {/* Supporting document upload (S3) — issues #45 / #116 */}
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
-                Supporting document <span className="text-slate-400 normal-case">(optional — PDF/JPG/PNG, max 5 MB)</span>
+                Supporting document{' '}
+                <span className="text-slate-400 normal-case">
+                  (optional — PDF/JPG/PNG, max 5 MB)
+                </span>
               </label>
               <input
                 type="file"
@@ -1026,9 +1274,7 @@ function StudentLeavePage() {
                   Selected: {docFile.name} ({(docFile.size / 1024).toFixed(0)} KB)
                 </p>
               )}
-              {docError && (
-                <p className="text-xs text-red-600 mt-1">{docError}</p>
-              )}
+              {docError && <p className="text-xs text-red-600 mt-1">{docError}</p>}
             </div>
 
             <button
@@ -1052,19 +1298,40 @@ function DownloadReportPage() {
 
   useEffect(() => {
     if (!user?.id) return;
-    api.get(`/attendance/student/${user.id}/summary`)
-      .then(r => setSummary(r.data))
+    api
+      .get(`/attendance/student/${user.id}/summary`)
+      .then((r) => setSummary(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [user?.id]);
 
   const downloadCSV = () => {
     if (!summary?.subjects) return;
-    const rows = [['Subject', 'Code', 'Semester', 'Total Sessions', 'Present', 'Absent', 'Percentage', 'Status']];
+    const rows = [
+      [
+        'Subject',
+        'Code',
+        'Semester',
+        'Total Sessions',
+        'Present',
+        'Absent',
+        'Percentage',
+        'Status',
+      ],
+    ];
     for (const s of summary.subjects) {
-      rows.push([s.subject_name, s.subject_code, s.semester, s.total_sessions, s.present, s.absent, `${Math.round(s.percentage)}%`, s.attendance_status]);
+      rows.push([
+        s.subject_name,
+        s.subject_code,
+        s.semester,
+        s.total_sessions,
+        s.present,
+        s.absent,
+        `${Math.round(s.percentage)}%`,
+        s.attendance_status,
+      ]);
     }
-    const csv = rows.map(r => r.join(',')).join('\n');
+    const csv = rows.map((r) => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1109,19 +1376,20 @@ function DownloadReportPage() {
 
 // ── Disputes Page (NEW — PROMPT 7) ────────────────────────────────────
 const DISPUTE_STATUS_STYLE = {
-  pending:  'bg-amber-100 text-amber-700',
+  pending: 'bg-amber-100 text-amber-700',
   resolved: 'bg-emerald-100 text-emerald-700',
   rejected: 'bg-red-100 text-red-700',
 };
 
 function DisputesPage() {
   const [disputes, setDisputes] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/student/portal/my-disputes')
-      .then(r => setDisputes(r.data || []))
+    api
+      .get('/student/portal/my-disputes')
+      .then((r) => setDisputes(r.data || []))
       .catch(() => setError('Failed to load disputes.'))
       .finally(() => setLoading(false));
   }, []);
@@ -1151,22 +1419,31 @@ function DisputesPage() {
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  {['Subject', 'Date', 'Reason', 'Status', 'Resolution'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">{h}</th>
+                  {['Subject', 'Date', 'Reason', 'Status', 'Resolution'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase"
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {disputes.map(d => (
+                {disputes.map((d) => (
                   <tr key={d.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-700">{d.subject_name}</p>
                       <p className="text-xs text-slate-400">{d.session_date}</p>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{d.created_at?.slice(0, 10)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {d.created_at?.slice(0, 10)}
+                    </td>
                     <td className="px-4 py-3 text-slate-600 max-w-[250px] truncate">{d.reason}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${DISPUTE_STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-500'}`}>
+                      <span
+                        className={`px-2 py-0.5 text-xs font-semibold rounded-full ${DISPUTE_STATUS_STYLE[d.status] || 'bg-slate-100 text-slate-500'}`}
+                      >
                         {d.status}
                       </span>
                     </td>
@@ -1197,25 +1474,24 @@ export default function StudentDashboard() {
   return (
     <DashboardLayout>
       <Routes>
-        <Route path="dashboard"  element={<StudentHome />} />
-        <Route path="scan-qr"    element={<ScanQRStub />} />
+        <Route path="dashboard" element={<StudentHome />} />
+        <Route path="scan-qr" element={<ScanQRStub />} />
         <Route path="attendance" element={<AttendanceDetailPage />} />
-        <Route path="timetable"  element={<StudentTimetablePage />} />
-        <Route path="leaves"     element={<StudentLeavePage />} />
-        <Route path="disputes"   element={<DisputesPage />} />
-        <Route path="download"   element={<DownloadReportPage />} />
-        <Route path="feed"       element={<FeedPage />} />
+        <Route path="timetable" element={<StudentTimetablePage />} />
+        <Route path="leaves" element={<StudentLeavePage />} />
+        <Route path="disputes" element={<DisputesPage />} />
+        <Route path="download" element={<DownloadReportPage />} />
+        <Route path="feed" element={<FeedPage />} />
         <Route path="feed/:articleId" element={<ArticleDetailPage />} />
-        <Route path="career"           element={<CareerRoadmapPage />} />
-        <Route path="suggestions"      element={<SuggestionBoxPage />} />
-        <Route path="profile"          element={<ProfilePage />} />
-        <Route path="inbox"            element={<NotificationsInboxPage />} />
-        <Route path="classpulse"       element={<StudentClassPulsePage />} />
-        <Route path="knowledge-graph"  element={<StudentKnowledgeGraphPage />} />
+        <Route path="career" element={<CareerRoadmapPage />} />
+        <Route path="suggestions" element={<SuggestionBoxPage />} />
+        <Route path="profile" element={<ProfilePage />} />
+        <Route path="inbox" element={<NotificationsInboxPage />} />
+        <Route path="classpulse" element={<StudentClassPulsePage />} />
+        <Route path="knowledge-graph" element={<StudentKnowledgeGraphPage />} />
         <Route path="live/:sessionId/replay" element={<SmartReplayPage />} />
-        <Route path="*"          element={<Navigate to="dashboard" replace />} />
+        <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>
     </DashboardLayout>
   );
 }
-

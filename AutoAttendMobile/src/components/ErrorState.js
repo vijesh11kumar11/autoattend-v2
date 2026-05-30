@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 const PRIMARY = '#1a237e';
 
 export default function ErrorState({
-  message  = 'Unable to load data. Pull down to refresh.',
+  message = 'Unable to load data. Pull down to refresh.',
   onRetry,
   retrying = false,
 }) {
@@ -24,9 +24,11 @@ export default function ErrorState({
           disabled={retrying}
           activeOpacity={0.85}
         >
-          {retrying
-            ? <ActivityIndicator size="small" color="#fff" />
-            : <Text style={styles.btnText}>Retry</Text>}
+          {retrying ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.btnText}>Retry</Text>
+          )}
         </TouchableOpacity>
       )}
     </View>
@@ -34,11 +36,19 @@ export default function ErrorState({
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48, paddingHorizontal: 24 },
-  msg:  { fontSize: 14, color: '#64748b', textAlign: 'center', marginTop: 12 },
-  btn:  {
-    marginTop: 16, backgroundColor: PRIMARY, borderRadius: 10,
-    paddingVertical: 10, paddingHorizontal: 24,
+  wrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  msg: { fontSize: 14, color: '#64748b', textAlign: 'center', marginTop: 12 },
+  btn: {
+    marginTop: 16,
+    backgroundColor: PRIMARY,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },

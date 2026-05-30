@@ -22,9 +22,9 @@ import api from '../api/axios';
 
 // Role hierarchy (higher = more privilege)
 const ROLE_HIERARCHY = {
-  student:   0,
-  teacher:   1,
-  hod:       2,
+  student: 0,
+  teacher: 1,
+  hod: 2,
   principal: 3,
 };
 
@@ -34,7 +34,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const navigate = useNavigate();
 
-  const [user,    setUser]    = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Fetch the current profile using the httpOnly cookie.
@@ -43,14 +43,14 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get('/auth/me');
       const userObj = {
-        id:             data.id,
-        name:           data.name,
-        email:          data.email,
-        role:           data.role,
-        college_id:     data.college_id,
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        role: data.role,
+        college_id: data.college_id,
         department_id: data.department_id,
         face_enrolled: data.face_enrolled,
-        totp_enabled:  data.totp_enabled,
+        totp_enabled: data.totp_enabled,
       };
       setUser(userObj);
       return userObj;
@@ -87,31 +87,33 @@ export function AuthProvider({ children }) {
     navigate('/login', { replace: true });
   }, [navigate]);
 
-  const hasRole = useCallback((minRole) => {
-    if (!user) return false;
-    return (ROLE_HIERARCHY[user.role] ?? -1) >= (ROLE_HIERARCHY[minRole] ?? 99);
-  }, [user]);
-
-  const value = useMemo(() => ({
-    user,
-    loading,
-    isAuthenticated: !!user,
-
-    isPrincipal: user?.role === 'principal',
-    isHOD:       user?.role === 'hod',
-    isTeacher:   user?.role === 'teacher',
-    isStudent:   user?.role === 'student',
-
-    login,
-    logout,
-    hasRole,
-  }), [user, loading, login, logout, hasRole]);
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  const hasRole = useCallback(
+    (minRole) => {
+      if (!user) return false;
+      return (ROLE_HIERARCHY[user.role] ?? -1) >= (ROLE_HIERARCHY[minRole] ?? 99);
+    },
+    [user]
   );
+
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      isAuthenticated: !!user,
+
+      isPrincipal: user?.role === 'principal',
+      isHOD: user?.role === 'hod',
+      isTeacher: user?.role === 'teacher',
+      isStudent: user?.role === 'student',
+
+      login,
+      logout,
+      hasRole,
+    }),
+    [user, loading, login, logout, hasRole]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -122,4 +124,3 @@ export function useAuth() {
 }
 
 export default AuthContext;
-
