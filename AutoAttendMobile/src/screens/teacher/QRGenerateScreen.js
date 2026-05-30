@@ -301,27 +301,32 @@ export default function QRGenerateScreen() {
     };
   }, [phase, sessionId]);
 
-  // BLE beacon broadcast
-  useEffect(() => {
-    if (phase !== 'active' || !bluetoothToken) return;
-    const ble = getBle();
-    let cancelled = false;
-
-    ble.onStateChange((state) => {
-      if (cancelled) return;
-      if (state === 'PoweredOn') {
-        startBleAdvertising(ble, bluetoothToken);
-        setBleStatus('broadcasting');
-      } else {
-        setBleStatus('unavailable');
-      }
-    }, true);
-
-    return () => {
-      cancelled = true;
-      ble.stopDeviceScan(); // stop any scanning (cleanup)
-    };
-  }, [phase, bluetoothToken]);
+  // ── BLE beacon broadcast ──────────────────────────────────────────────────
+  // TODO: BLE advertising disabled — using GPS proximity instead.
+  // We are NOT placing physical Bluetooth beacons in classrooms; attendance
+  // proximity is verified purely by GPS (teacher session location + student
+  // radius check on the backend). BLE advertising is therefore not started.
+  // Kept (commented) for future reactivation — see startBleAdvertising below.
+  // useEffect(() => {
+  //   if (phase !== 'active' || !bluetoothToken) return;
+  //   const ble = getBle();
+  //   let cancelled = false;
+  //
+  //   ble.onStateChange((state) => {
+  //     if (cancelled) return;
+  //     if (state === 'PoweredOn') {
+  //       startBleAdvertising(ble, bluetoothToken);
+  //       setBleStatus('broadcasting');
+  //     } else {
+  //       setBleStatus('unavailable');
+  //     }
+  //   }, true);
+  //
+  //   return () => {
+  //     cancelled = true;
+  //     ble.stopDeviceScan(); // stop any scanning (cleanup)
+  //   };
+  // }, [phase, bluetoothToken]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  ACTIONS
@@ -460,17 +465,19 @@ export default function QRGenerateScreen() {
   //  BLE ADVERTISING HELPER
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // TODO: BLE advertising disabled — using GPS proximity instead.
+  // Physical classroom beacons are not used; proximity is GPS-only. This
+  // helper is intentionally a no-op and its caller (the broadcast useEffect
+  // above) is commented out. Retained for future reactivation.
+  // eslint-disable-next-line no-unused-vars
   function startBleAdvertising(ble, token) {
     // react-native-ble-plx doesn't expose a native advertise API.
     // On Android we'd need a native module or expo plugin.
-    // Best-effort: use BLE scanning with the token as a known identifier
-    // so students can discover it. True BLE advertising requires a
-    // native module — see Corrections/Decisions.
+    // BLE advertising is currently DISABLED (GPS proximity is the sole
+    // mechanism), so this is a no-op.
     //
     // SECURITY: NEVER log the token (even redacted/length metadata).
     // Length alone can confirm a guess about the token format.
-    // The session's bluetooth_token is served via the API and students
-    // can match it from the QR payload.
     void ble;
     void token;
   }

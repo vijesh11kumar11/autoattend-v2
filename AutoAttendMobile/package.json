@@ -2,6 +2,7 @@
   "name": "AutoAttendMobile",
   "version": "2.0.0",
   "main": "node_modules/expo/AppEntry.js",
+  "comment_react_native_ble_plx": "BLE scanning kept for future use; advertising is disabled — GPS proximity is the sole attendance-proximity mechanism.",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
