@@ -2,6 +2,67 @@
 AutoAttend AI v2.0 — FastAPI entry point
 """
 
+# ─────────────────────────────────────────────────────────────────────
+# Sentry initialisation — MUST run before any FastAPI / SQLAlchemy
+# imports so the integrations can patch the libraries on load.
+# Reads SENTRY_DSN directly from the environment (via python-dotenv)
+# to stay independent of the pydantic Settings import below. Skips
+# silently when DSN is empty so dev/CI runs without Sentry.
+# ─────────────────────────────────────────────────────────────────────
+import os as _os
+import logging as _logging
+
+try:
+    from dotenv import load_dotenv as _load_dotenv  # type: ignore
+    _load_dotenv()
+except Exception:  # pragma: no cover - dotenv is optional at runtime
+    pass
+
+_SENTRY_DSN = (_os.environ.get("SENTRY_DSN") or "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk  # type: ignore
+        from sentry_sdk.integrations.fastapi import FastApiIntegration  # type: ignore
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration  # type: ignore
+
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            environment=(_os.environ.get("APP_ENV") or "production").strip(),
+            release=(_os.environ.get("APP_VERSION") or "2.0.0").strip(),
+            traces_sample_rate=1.0,
+            integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        )
+        _logging.getLogger(__name__).info("📡 Sentry initialised (env=%s)", _os.environ.get("APP_ENV", "production"))
+    except ImportError:
+        _logging.getLogger(__name__).warning(
+            "SENTRY_DSN is set but sentry-sdk is not installed — run `pip install -r requirements.txt`."
+        )
+    except Exception as _exc:  # pragma: no cover - never block startup on Sentry failure
+        _logging.getLogger(__name__).warning("Sentry init skipped (%s)", _exc)
+
+# ─────────────────────────────────────────────────────────────────────
+# TODO: Enable OpenTelemetry when needed
+# To re-enable: uncomment the imports and initialization below,
+# set OTEL_EXPORTER_OTLP_ENDPOINT in your .env, and
+# install opentelemetry-sdk opentelemetry-exporter-otlp
+# ─────────────────────────────────────────────────────────────────────
+# from opentelemetry import trace
+# from opentelemetry.sdk.resources import Resource
+# from opentelemetry.sdk.trace import TracerProvider
+# from opentelemetry.sdk.trace.export import BatchSpanProcessor
+# from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+# from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+# from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+#
+# _otel_endpoint = (_os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+# if _otel_endpoint:
+#     _resource = Resource.create({"service.name": "autoattend-backend"})
+#     _provider = TracerProvider(resource=_resource)
+#     _provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=_otel_endpoint)))
+#     trace.set_tracer_provider(_provider)
+#     # FastAPIInstrumentor / SQLAlchemyInstrumentor are wired after the
+#     # `app` and `engine` objects are constructed (see below).
+
 import asyncio
 import logging
 import sys
@@ -74,6 +135,27 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TODO: Enable OpenTelemetry when needed
+# (Continuation of the OTel block at the top of this file.)
+# To re-enable: uncomment these instrumentor calls after uncommenting
+# the imports above, and ensure OTEL_EXPORTER_OTLP_ENDPOINT is set.
+# ─────────────────────────────────────────────────────────────────────
+# if _otel_endpoint:
+#     FastAPIInstrumentor.instrument_app(app)
+#     SQLAlchemyInstrumentor().instrument(engine=engine)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TODO: Enable Prometheus metrics when needed
+# To re-enable: uncomment below, install
+# prometheus-fastapi-instrumentator, and set up
+# a Prometheus scrape target pointing at /metrics
+# ─────────────────────────────────────────────────────────────────────
+# from prometheus_fastapi_instrumentator import Instrumentator
+# Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 # ── Global security headers middleware ────────────────────────────────

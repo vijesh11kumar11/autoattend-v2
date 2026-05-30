@@ -142,6 +142,25 @@ class Settings(BaseSettings):
     AGORA_APP_CERTIFICATE: str = ""
     AGORA_TOKEN_EXPIRY_SECONDS: int = 3600
 
+    # ── Sentry (error + performance tracking) ─────────────────────────
+    # Leave SENTRY_DSN empty to disable Sentry entirely (dev-friendly).
+    SENTRY_DSN: str = ""
+    APP_ENV: str = "production"
+    APP_VERSION: str = "2.0.0"
+
+    # ── OpenTelemetry (DISABLED — placeholder for future enablement) ──
+    # TODO: Enable OpenTelemetry when needed
+    # To re-enable: uncomment OTel init block in main.py, set this var
+    # in your .env, and install opentelemetry-sdk opentelemetry-exporter-otlp
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+
+    # ── Web Push (VAPID keys) ─────────────────────────────────────────
+    # Web Push VAPID keys — generate with: npx web-push generate-vapid-keys
+    # Leave blank to disable web push (notifications simply won't send).
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_SUBJECT: str = "mailto:admin@traceln.app"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

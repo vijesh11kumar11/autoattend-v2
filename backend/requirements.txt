@@ -35,3 +35,12 @@ bleach>=6.0.0
 google-genai>=0.3.0
 groq>=0.11.0
 # DeepSeek is accessed via plain HTTP (requests) — no SDK needed.
+
+# Sentry — error + performance monitoring. Initialised in main.py only
+# when SENTRY_DSN is set (app still starts perfectly without it).
+sentry-sdk[fastapi]>=2.18.0
+
+# TODO: Enable Prometheus metrics when needed
+# To re-enable: uncomment the line below, run `pip install -r requirements.txt`,
+# and set up a Prometheus scrape target pointing at /metrics.
+# prometheus-fastapi-instrumentator==0.9.7
