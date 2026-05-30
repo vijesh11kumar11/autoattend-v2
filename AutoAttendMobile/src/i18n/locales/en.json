@@ -1,0 +1,15 @@
+{
+  "_comment": "To add a new language: copy this file to locales/ta.json (Tamil), update strings, add 'ta' to i18n/index.js resources.",
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "save": "Save",
+    "cancel": "Cancel",
+    "logout": "Logout"
+  },
+  "auth": {
+    "login": "Login",
+    "email": "Email",
+    "password": "Password"
+  }
+}

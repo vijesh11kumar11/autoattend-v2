@@ -18,6 +18,8 @@ import { MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 
+import './src/i18n/index.js'; // initialise i18next (English-only infrastructure)
+
 import ErrorBoundary  from './src/components/ErrorBoundary';
 import OfflineBanner  from './src/components/OfflineBanner';
 import BlockedScreen  from './src/screens/shared/BlockedScreen';

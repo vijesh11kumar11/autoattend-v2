@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import './index.css';
+import './i18n/index.js'; // initialise i18next (English-only infrastructure)
 import App from './App';
 
 // ─────────────────────────────────────────────────────────────────────
