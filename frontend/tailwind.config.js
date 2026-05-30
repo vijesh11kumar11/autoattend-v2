@@ -5,11 +5,11 @@ export default {
     extend: {
       colors: {
         primary:   { DEFAULT: '#1a237e', light: '#283593', dark: '#0d174f' },
-        secondary: { DEFAULT: '#3b82f6', light: '#60a5fa', dark: '#2563eb' },
-        success:   '#16a34a',
-        warning:   '#d97706',
-        danger:    '#dc2626',
-        surface:   '#f8fafc',
+        secondary: { DEFAULT: '#f57c00', light: '#ff9800', dark: '#e65100' },
+        success:   '#388e3c',
+        warning:   '#f57c00',
+        danger:    '#d32f2f',
+        surface:   '#f5f5f5',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

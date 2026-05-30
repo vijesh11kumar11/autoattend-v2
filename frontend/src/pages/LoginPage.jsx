@@ -280,7 +280,7 @@ export default function LoginPage() {
       {/* ── LEFT PANEL ── */}
       <div
         className="hidden lg:flex lg:w-[45%] flex-col justify-between p-10"
-        style={{ background: 'linear-gradient(145deg, #1a237e 0%, #283593 60%, #3b82f6 100%)' }}
+        style={{ background: 'linear-gradient(145deg, #1a237e 0%, #283593 60%, #f57c00 100%)' }}
       >
         {/* Logo + name */}
         <div className="flex items-center gap-3">

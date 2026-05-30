@@ -341,6 +341,8 @@ function EntryModal({ modal, teachers, subjects, sections, onClose, onSaved, onD
             </label>
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-slate-600">Color</label>
+              {/* Default colour for a new timetable slot — picker requires a literal hex.
+                  TODO: move to design token if/when input[type=color] supports CSS vars. */}
               <input type="color" value={form.color_tag || '#3b82f6'} onChange={e => set('color_tag', e.target.value)}
                      className="w-8 h-8 rounded cursor-pointer border-0" />
             </div>

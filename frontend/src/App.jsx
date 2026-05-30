@@ -37,7 +37,7 @@ function PageLoading() {
       <div className="flex flex-col items-center gap-4">
         <div className="spinner !border-secondary !border-t-transparent w-10 h-10
                         !border-4 !w-10 !h-10"
-             style={{ borderColor: '#e2e8f0', borderTopColor: '#3b82f6',
+             style={{ borderColor: '#e2e8f0', borderTopColor: 'var(--color-secondary)',
                       width: 40, height: 40, borderWidth: 4 }} />
         <p className="text-slate-500 text-sm font-medium">Loading…</p>
       </div>

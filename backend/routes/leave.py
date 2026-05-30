@@ -50,6 +50,9 @@ class ApplyLeaveRequest(BaseModel):
     to_date: date
     reason: str = Field(..., min_length=3, max_length=2000)
     document_url: Optional[str] = None
+    # S3 key returned by POST /api/uploads/leave-document (issues #45 / #116).
+    # Kept optional + additive so existing clients without uploads still work.
+    document_s3_key: Optional[str] = Field(None, max_length=500)
 
 
 class ReviewNoteBody(BaseModel):
@@ -114,6 +117,7 @@ def _serialize_leave(lr: LeaveRequest, db: Session) -> dict:
         "days": (lr.to_date - lr.from_date).days + 1,
         "reason": lr.reason,
         "document_url": lr.document_url,
+        "document_s3_key": lr.document_s3_key,
         "status": lr.status.value,
         "tutor_note": lr.tutor_note,
         "reviewed_at": str(lr.reviewed_at) if lr.reviewed_at else None,
@@ -221,6 +225,7 @@ def apply_leave(
         to_date=body.to_date,
         reason=body.reason,
         document_url=body.document_url,
+        document_s3_key=body.document_s3_key,
         status=LeaveRequestStatus.pending,
     )
     db.add(lr)

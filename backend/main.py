@@ -95,6 +95,7 @@ from routes import classpulse
 from routes import live_session
 from routes import principal
 from routes import notifications
+from routes import uploads
 
 # ── Logging configuration ──────────────────────────────────────────────
 # NOTE: uvicorn overrides logging.basicConfig() after import, so we
@@ -294,6 +295,7 @@ app.include_router(feed.router)
 app.include_router(career.router)
 app.include_router(suggestions.router)
 app.include_router(classpulse.router)
+app.include_router(uploads.router)
 app.include_router(live_session.router)
 app.include_router(notifications.router)
 

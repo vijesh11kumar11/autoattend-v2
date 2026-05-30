@@ -161,6 +161,14 @@ class Settings(BaseSettings):
     VAPID_PUBLIC_KEY: str = ""
     VAPID_SUBJECT: str = "mailto:admin@traceln.app"
 
+    # ── AWS S3 (leave-document uploads — issues #45 / #116) ───────────
+    # Leave blank to disable S3 uploads. utils/s3_utils.py raises 503 on
+    # any call that needs the bucket when these are not set.
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_S3_BUCKET_NAME: str = ""
+    AWS_REGION: str = "ap-south-1"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

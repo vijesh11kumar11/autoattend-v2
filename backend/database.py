@@ -838,6 +838,10 @@ class LeaveRequest(Base):
     to_date             = Column(Date, nullable=False)
     reason              = Column(Text, nullable=False)
     document_url        = Column(String(500), nullable=True)
+    # S3 object key for supporting document (issues #45 / #116).
+    # Stored as a key rather than a full URL so we can issue fresh
+    # short-lived signed URLs on demand instead of leaking long-lived links.
+    document_s3_key     = Column(String(500), nullable=True)
     status              = Column(SAEnum(LeaveRequestStatus, name="leaverequeststatus"), default=LeaveRequestStatus.pending)
     tutor_note          = Column(Text, nullable=True)
     reviewed_at         = Column(DateTime(timezone=True), nullable=True)

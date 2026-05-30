@@ -35,7 +35,7 @@ const PrincipalClassPulsePage = lazy(() => import('./PrincipalClassPulsePage'));
 function RouteFallback() {
   return (
     <div className="flex items-center justify-center py-20">
-      <div style={{ borderColor: '#e2e8f0', borderTopColor: '#3b82f6',
+      <div style={{ borderColor: '#e2e8f0', borderTopColor: 'var(--color-secondary)',
                     width: 32, height: 32, borderWidth: 4,
                     borderRadius: '9999px', borderStyle: 'solid' }}
            className="animate-spin" />
@@ -224,7 +224,7 @@ function PrincipalOverview() {
                 contentStyle={{ fontSize: 12 }}
                 labelFormatter={(d) => `Date: ${d}`}
               />
-              <Line type="monotone" dataKey="pct" stroke="#3b82f6" strokeWidth={2}
+              <Line type="monotone" dataKey="pct" stroke="#f57c00" strokeWidth={2}
                     dot={{ r: 2 }} activeDot={{ r: 4 }} name="Attendance %" />
             </LineChart>
           </ResponsiveContainer>

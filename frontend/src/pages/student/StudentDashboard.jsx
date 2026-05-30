@@ -722,6 +722,10 @@ function StudentLeavePage() {
   const [form, setForm] = useState({
     leave_type: 'medical', from_date: '', to_date: '', reason: '', document_url: '',
   });
+  // S3 upload state for supporting document (issues #45 / #116)
+  const [docFile, setDocFile] = useState(null);
+  const [docError, setDocError] = useState('');
+  const MAX_DOC_SIZE_BYTES = 5 * 1024 * 1024;
 
   const loadRequests = () => {
     setLoading(true);
@@ -732,26 +736,79 @@ function StudentLeavePage() {
   };
   useEffect(() => { loadRequests(); }, []);
 
+  const handleDocPick = (e) => {
+    setDocError('');
+    const file = e.target.files?.[0] || null;
+    if (!file) { setDocFile(null); return; }
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+      setDocError('Only PDF, JPG, JPEG, PNG are allowed.');
+      setDocFile(null);
+      return;
+    }
+    if (file.size > MAX_DOC_SIZE_BYTES) {
+      setDocError('File too large — max 5 MB.');
+      setDocFile(null);
+      return;
+    }
+    setDocFile(file);
+  };
+
   const handleApply = async () => {
     if (!form.from_date || !form.to_date || !form.reason.trim()) {
       setFlash('Please fill in all required fields.'); return;
     }
     setSubmitting(true);
     try {
+      // 1. Upload supporting document to S3 first (if picked).
+      let s3Key = null;
+      if (docFile) {
+        const fd = new FormData();
+        fd.append('file', docFile);
+        try {
+          const up = await api.post('/uploads/leave-document', fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          s3Key = up.data?.s3_key || null;
+        } catch (upErr) {
+          // 503 → storage not configured; let leave still submit without file.
+          if (upErr?.response?.status === 503) {
+            setFlash('File storage is not configured — submitting without document.');
+          } else {
+            setFlash(upErr?.response?.data?.detail || 'Failed to upload document.');
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
+      // 2. Submit the leave request.
       await api.post('/leave/apply', {
         leave_type: form.leave_type,
         from_date: form.from_date,
         to_date: form.to_date,
         reason: form.reason,
         document_url: form.document_url || null,
+        document_s3_key: s3Key,
       });
       setFlash('Leave request submitted successfully!');
       setShowModal(false);
       setForm({ leave_type: 'medical', from_date: '', to_date: '', reason: '', document_url: '' });
+      setDocFile(null);
+      setDocError('');
       loadRequests();
     } catch (err) {
       setFlash(err.response?.data?.detail || 'Failed to submit leave request.');
     } finally { setSubmitting(false); }
+  };
+
+  const handleViewDoc = async (s3Key) => {
+    if (!s3Key) return;
+    try {
+      const { data } = await api.get(`/uploads/signed-url/${encodeURIComponent(s3Key)}`);
+      if (data?.url) window.open(data.url, '_blank', 'noopener');
+    } catch (err) {
+      setFlash(err?.response?.data?.detail || 'Failed to open document.');
+    }
   };
 
   const handleCancel = async (id) => {
@@ -834,6 +891,14 @@ function StudentLeavePage() {
                           Cancel
                         </button>
                       )}
+                      {lr.document_s3_key && (
+                        <button
+                          onClick={() => handleViewDoc(lr.document_s3_key)}
+                          className="text-xs px-3 py-1 ml-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium"
+                        >
+                          📎 View Document
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -913,6 +978,27 @@ function StudentLeavePage() {
                 onChange={e => setForm(prev => ({ ...prev, document_url: e.target.value }))}
                 placeholder="https://drive.google.com/..."
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]" />
+            </div>
+
+            {/* Supporting document upload (S3) — issues #45 / #116 */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                Supporting document <span className="text-slate-400 normal-case">(optional — PDF/JPG/PNG, max 5 MB)</span>
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleDocPick}
+                className="w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+              />
+              {docFile && !docError && (
+                <p className="text-xs text-emerald-600 mt-1">
+                  Selected: {docFile.name} ({(docFile.size / 1024).toFixed(0)} KB)
+                </p>
+              )}
+              {docError && (
+                <p className="text-xs text-red-600 mt-1">{docError}</p>
+              )}
             </div>
 
             <button
