@@ -76,9 +76,9 @@ export async function pinnedFetch(url, init = {}) {
 //   //
 //   // The pin looks like: sha256/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX==
 //
-// TODO: Upgrade to full native SSL pinning with react-native-ssl-pinning (or
-// OkHttp CertificatePinner) once an EAS dev build is ready. The current
-// implementation is JS-level awareness only and never blocks in __DEV__.
+// FUTURE (opt-in, requires an EAS dev build): upgrade to full native SSL
+// pinning with react-native-ssl-pinning (or OkHttp CertificatePinner). The
+// current implementation is JS-level awareness only and never blocks in __DEV__.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const Constants = require('expo-constants').default;

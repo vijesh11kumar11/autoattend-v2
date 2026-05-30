@@ -156,9 +156,9 @@ class Settings(BaseSettings):
     APP_ENV: str = "production"
     APP_VERSION: str = "2.0.0"
 
-    # ── OpenTelemetry (DISABLED — placeholder for future enablement) ──
-    # TODO: Enable OpenTelemetry when needed
-    # To re-enable: uncomment OTel init block in main.py, set this var
+    # ── OpenTelemetry (DISABLED — opt-in observability) ──
+    # OPTIONAL (opt-in): OpenTelemetry tracing is intentionally disabled.
+    # To enable: uncomment the OTel init block in main.py, set this var
     # in your .env, and install opentelemetry-sdk opentelemetry-exporter-otlp
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
 

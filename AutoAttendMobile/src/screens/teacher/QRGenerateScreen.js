@@ -308,7 +308,7 @@ export default function QRGenerateScreen() {
   }, [phase, sessionId]);
 
   // ── BLE beacon broadcast ──────────────────────────────────────────────────
-  // TODO: BLE advertising disabled — using GPS proximity instead.
+  // NOTE: BLE advertising is disabled by design — using GPS proximity instead.
   // We are NOT placing physical Bluetooth beacons in classrooms; attendance
   // proximity is verified purely by GPS (teacher session location + student
   // radius check on the backend). BLE advertising is therefore not started.
@@ -472,7 +472,7 @@ export default function QRGenerateScreen() {
   //  BLE ADVERTISING HELPER
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // TODO: BLE advertising disabled — using GPS proximity instead.
+  // NOTE: BLE advertising is disabled by design — using GPS proximity instead.
   // Physical classroom beacons are not used; proximity is GPS-only. This
   // helper is intentionally a no-op and its caller (the broadcast useEffect
   // above) is commented out. Retained for future reactivation.

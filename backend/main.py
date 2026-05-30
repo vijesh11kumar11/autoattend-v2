@@ -44,8 +44,8 @@ if _SENTRY_DSN:
         _logging.getLogger(__name__).warning("Sentry init skipped (%s)", _exc)
 
 # ─────────────────────────────────────────────────────────────────────
-# TODO: Enable OpenTelemetry when needed
-# To re-enable: uncomment the imports and initialization below,
+# OPTIONAL (opt-in): OpenTelemetry tracing — intentionally disabled.
+# To enable: uncomment the imports and initialization below,
 # set OTEL_EXPORTER_OTLP_ENDPOINT in your .env, and
 # install opentelemetry-sdk opentelemetry-exporter-otlp
 # ─────────────────────────────────────────────────────────────────────
@@ -158,9 +158,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TODO: Enable OpenTelemetry when needed
+# OPTIONAL (opt-in): OpenTelemetry tracing — intentionally disabled.
 # (Continuation of the OTel block at the top of this file.)
-# To re-enable: uncomment these instrumentor calls after uncommenting
+# To enable: uncomment these instrumentor calls after uncommenting
 # the imports above, and ensure OTEL_EXPORTER_OTLP_ENDPOINT is set.
 # ─────────────────────────────────────────────────────────────────────
 # if _otel_endpoint:
@@ -169,8 +169,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ─────────────────────────────────────────────────────────────────────
-# TODO: Enable Prometheus metrics when needed
-# To re-enable: uncomment below, install
+# OPTIONAL (opt-in): Prometheus metrics — intentionally disabled.
+# To enable: uncomment below, install
 # prometheus-fastapi-instrumentator, and set up
 # a Prometheus scrape target pointing at /metrics
 # ─────────────────────────────────────────────────────────────────────
