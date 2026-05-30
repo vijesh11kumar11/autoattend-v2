@@ -957,6 +957,34 @@ expo start
 - Press `i` — iOS simulator
 - Scan QR — Expo Go on a physical device
 
+### 6. Running with Docker (full stack)
+
+The repository ships a production-style container setup: a multi-stage,
+non-root backend image, an nginx-served frontend image, and a Compose stack
+that also provisions PostgreSQL.
+
+```bash
+# 1. Provide backend secrets (never commit real values)
+cp backend/.env.example backend/.env
+# edit backend/.env
+
+# 2. Build and start the whole stack
+docker compose up --build
+```
+
+- Backend API → http://localhost:8000 (Swagger at `/api/docs` when `DEBUG=true`)
+- Frontend (nginx) → http://localhost:8080
+- PostgreSQL → localhost:5432
+
+On startup the backend container runs `alembic upgrade head` automatically via
+its entrypoint (set `RUN_MIGRATIONS=false` to skip). The backend image exposes a
+`/api/health` health check; the frontend waits for the backend to become healthy
+before starting. Tune worker count with `WEB_CONCURRENCY` (default `2`).
+
+> For production, set `DEBUG=false`, configure `COOKIE_SECURE=true`,
+> `COOKIE_SAMESITE`, and `CORS_ALLOW_ORIGINS` as described in
+> [backend/DEPLOYMENT_SECURITY.md](backend/DEPLOYMENT_SECURITY.md).
+
 ---
 
 ## Tech Stack
