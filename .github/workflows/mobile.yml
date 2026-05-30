@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────────────────────────────
+# Mobile CI — ESLint for the Expo / React Native app.
+# ──────────────────────────────────────────────────────────────────────
+name: mobile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "AutoAttendMobile/**"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "AutoAttendMobile/**"
+      - ".github/workflows/mobile.yml"
+
+defaults:
+  run:
+    working-directory: AutoAttendMobile
+
+jobs:
+  lint:
+    name: eslint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: AutoAttendMobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: ESLint
+        run: npm run lint
