@@ -43,6 +43,11 @@ const CHALLENGES       = ['BLINK', 'SMILE'];
 const CHALLENGE_WINDOW = 5; // countdown seconds
 const SKIP_KEY         = 'aa_face_skip_ts';
 
+/** AsyncStorage key recording that this device has completed face setup. */
+function faceRegisteredKey(userId) {
+  return `face_biometric_registered_${userId}`;
+}
+
 /** Decode JWT payload — no library, atob available in RN 0.76 Hermes */
 function decodeJWT(token) {
   try {
@@ -151,6 +156,12 @@ export default function FaceSetupScreen({ navigation, route }) {
           'Authorization': `Bearer ${temp_token}`,
         },
       });
+      // Record device-local face setup completion (issues #15 / #87) so the
+      // app knows this student has enrolled their face biometric here.
+      try {
+        await AsyncStorage.setItem(faceRegisteredKey(payload.id), Date.now().toString());
+        await AsyncStorage.removeItem(SKIP_KEY);
+      } catch { /* non-fatal */ }
       setScreen('success');
       // Auto-navigate to dashboard after brief pause
       setTimeout(async () => {

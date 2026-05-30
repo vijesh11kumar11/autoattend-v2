@@ -52,6 +52,14 @@
       "expo-camera",
       "expo-location",
       "expo-local-authentication",
+      "expo-screen-capture",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "AutoAttend needs camera access for attendance verification",
+          "enableFrameProcessors": true
+        }
+      ],
       [
         "expo-notifications",
         {

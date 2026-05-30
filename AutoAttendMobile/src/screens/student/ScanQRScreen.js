@@ -21,7 +21,8 @@
  *   @expo/vector-icons (bundled), react-native-safe-area-context,
  *   expo-secure-store (for device_id)
  *
- * expo-face-detector NOT available → timed auto-capture (3s) used instead.
+ * Face capture uses timed auto-capture (3s); on-device face detection is
+ * available via src/utils/faceDetectionUtils.js (react-native-vision-camera).
  */
 
 import React, {
@@ -54,6 +55,14 @@ import { BleManager }                      from 'react-native-ble-plx';
 import * as Haptics                        from 'expo-haptics';
 import client                              from '../../api/client';
 import { useAuth }                         from '../../context/AuthContext';
+import { usePreventScreenshot }            from '../../utils/screenshotUtils';
+import { checkBiometricSupport, verifyBiometric } from '../../utils/biometricUtils';
+
+// Exact, spec-mandated student-facing messages (issues #15 / #87).
+const BIOMETRIC_FAIL_MESSAGE =
+  'Face verification failed. Please contact your teacher to mark attendance manually.';
+const NO_BIOMETRIC_HARDWARE_MESSAGE =
+  'This device does not support biometric authentication. Contact your administrator.';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const STATES = Object.freeze({
@@ -82,6 +91,10 @@ function getBleManager() {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ScanQRScreen({ navigation }) {
   const { user } = useAuth();
+
+  // Block screenshots/screen-recording on this attendance screen (issue #120).
+  // Fails silently if unsupported (e.g. Expo Go / web).
+  usePreventScreenshot();
 
   // ── State machine ─────────────────────────────────────────────────────────
   const [screen,  setScreen]  = useState(STATES.IDLE);
@@ -448,6 +461,34 @@ export default function ScanQRScreen({ navigation }) {
 
   // ─── POST attendance/mark ─────────────────────────────────────────────────
   const submitAttendance = useCallback(async (qrData) => {
+    // ── Mandatory device biometric gate (issues #15 / #87) ──────────────────
+    // Students MUST pass a device biometric every time before attendance is
+    // submitted. No PIN/password fallback, no bypass. Any error here blocks
+    // the submission and surfaces the spec-mandated message.
+    try {
+      const support = await checkBiometricSupport();
+      if (!support.available && support.reason === 'no_hardware') {
+        setQrScanned(false);
+        setFailureData({ type: 'no_biometric_hardware' });
+        goTo(STATES.FAILED);
+        return;
+      }
+
+      const bio = await verifyBiometric('Verify your identity to mark attendance');
+      if (!bio.success) {
+        setQrScanned(false);
+        setFailureData({ type: 'biometric_failed' });
+        goTo(STATES.FAILED);
+        return;
+      }
+    } catch {
+      // Treat any unexpected biometric error as a hard failure — never bypass.
+      setQrScanned(false);
+      setFailureData({ type: 'biometric_failed' });
+      goTo(STATES.FAILED);
+      return;
+    }
+
     goTo(STATES.SUBMITTING);
     const deviceId = await SecureStore.getItemAsync('aa_device_id') ?? '';
 
@@ -552,6 +593,7 @@ export default function ScanQRScreen({ navigation }) {
         const t = failureData?.type;
         if (t === 'qr_expired')      { setQrScanned(false); goTo(STATES.QR_SCAN); }
         else if (t === 'no_bluetooth') goTo(STATES.QR_SCAN);
+        else if (t === 'biometric_failed') { setQrScanned(false); goTo(STATES.QR_SCAN); }
         else                          goTo(STATES.FACE);
       }}
       onDashboard={() => navigation.navigate('Dashboard')}
@@ -864,6 +906,21 @@ function FailedScreen({ data, onTryAgain, onDashboard }) {
       title: 'Face Not Matched',
       body: 'Your face could not be verified. Ensure good lighting and face the camera directly.',
       actions: [{ label: 'Try Again', onPress: onTryAgain, primary: true }],
+    },
+    biometric_failed: {
+      icon: 'finger-print-outline',
+      title: 'Biometric Verification Failed',
+      body: BIOMETRIC_FAIL_MESSAGE,
+      actions: [
+        { label: 'Try Again', onPress: onTryAgain, primary: true },
+        { label: 'Dashboard', onPress: onDashboard, primary: false },
+      ],
+    },
+    no_biometric_hardware: {
+      icon: 'alert-circle-outline',
+      title: 'Biometric Not Supported',
+      body: NO_BIOMETRIC_HARDWARE_MESSAGE,
+      actions: [{ label: 'Dashboard', onPress: onDashboard, primary: true }],
     },
     already_marked: {
       icon: 'checkmark-done-circle-outline',

@@ -50,6 +50,7 @@ import QRCode            from 'react-native-qrcode-svg';
 import { BleManager }    from 'react-native-ble-plx';
 import client            from '../../api/client';
 import { API_BASE_URL }  from '../../config';
+import { usePreventScreenshot } from '../../utils/screenshotUtils';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const QR_SIZE          = 280;
@@ -98,6 +99,9 @@ const StudentChip = memo(
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function QRGenerateScreen() {
+  // Block screenshots / screen recording while the attendance QR is on screen (#120).
+  usePreventScreenshot();
+
   // ── Phase ─────────────────────────────────────────────────────────────────
   const [phase, setPhase] = useState('setup'); // 'setup' | 'active'
 
