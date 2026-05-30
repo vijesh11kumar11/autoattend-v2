@@ -145,6 +145,7 @@ export default function HODDashboard({ navigation }) {
             { icon: 'layers-outline',   label: 'Sections',  onPress: () => navigation.navigate('Sections') },
             { icon: 'book-outline',     label: 'Subjects',  onPress: () => navigation.navigate('Subjects') },
             { icon: 'calendar-outline', label: 'Timetable', onPress: () => navigation.navigate('HODTimetable') },
+            { icon: 'cloud-upload-outline', label: 'Import Students', onPress: () => navigation.navigate('ExcelImport') },
           ].map((a, i) => (
             <TouchableOpacity key={i} style={styles.actionBtn} onPress={a.onPress} activeOpacity={0.8}>
               <Ionicons name={a.icon} size={24} color={PRIMARY} />

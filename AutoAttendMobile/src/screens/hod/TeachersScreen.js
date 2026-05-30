@@ -1,23 +1,28 @@
 /**
  * HOD — Teachers Screen
  * Shows all teachers in the department with today's session status.
- * API: GET /api/hod/dashboard → teachers[]
+ * API: GET  /api/hod/dashboard  → teachers[]
+ *      POST /api/hod/add-teacher {name, email, phone?}  (requires recent auth)
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, RefreshControl,
+  ActivityIndicator, Alert, FlatList, Modal, RefreshControl,
   SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 
 const PRIMARY = '#1a237e';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function TeachersScreen({ navigation }) {
   const [teachers, setTeachers]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]         = useState('');
+  const [adding, setAdding]         = useState(false);
+  const [form, setForm]             = useState({ name: '', email: '', phone: '' });
+  const [busy, setBusy]             = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -28,6 +33,24 @@ export default function TeachersScreen({ navigation }) {
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
   const onRefresh = useCallback(async () => { setRefreshing(true); await fetchData(); setRefreshing(false); }, [fetchData]);
+
+  const openAdd = () => { setForm({ name: '', email: '', phone: '' }); setAdding(true); };
+
+  const saveTeacher = async () => {
+    if (form.name.trim().length < 2) return Alert.alert('Validation', 'Name must be at least 2 characters.');
+    if (!EMAIL_RE.test(form.email.trim())) return Alert.alert('Validation', 'Enter a valid email address.');
+    setBusy(true);
+    try {
+      const payload = { name: form.name.trim(), email: form.email.trim().toLowerCase() };
+      if (form.phone.trim()) payload.phone = form.phone.trim();
+      const { data } = await client.post('/hod/add-teacher', payload);
+      setAdding(false);
+      await fetchData();
+      Alert.alert('Teacher Added', data?.message ?? `${payload.name} was added. Default password: password123`);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.detail ?? 'Could not add teacher.');
+    } finally { setBusy(false); }
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -49,7 +72,13 @@ export default function TeachersScreen({ navigation }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />}
         ListHeaderComponent={
           <View>
-            <Text style={styles.heading}>👩‍🏫 Teachers ({teachers.length})</Text>
+            <View style={styles.headerRow}>
+              <Text style={styles.heading}>👩‍🏫 Teachers ({teachers.length})</Text>
+              <TouchableOpacity style={styles.addBtn} onPress={openAdd}>
+                <Ionicons name="person-add-outline" size={15} color="#fff" />
+                <Text style={styles.addTxt}>Add</Text>
+              </TouchableOpacity>
+            </View>
             <TextInput style={styles.search} placeholder="Search name, email, subject…"
               placeholderTextColor="#94a3b8" value={search} onChangeText={setSearch} />
           </View>
@@ -95,6 +124,34 @@ export default function TeachersScreen({ navigation }) {
           );
         }}
       />
+
+      {/* Add Teacher modal */}
+      <Modal visible={adding} animationType="slide" transparent onRequestClose={() => setAdding(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add Teacher</Text>
+            <Text style={styles.label}>Name</Text>
+            <TextInput style={styles.input} value={form.name} placeholder="Full name" placeholderTextColor="#94a3b8"
+              onChangeText={t => setForm(f => ({ ...f, name: t }))} />
+            <Text style={styles.label}>Email</Text>
+            <TextInput style={styles.input} value={form.email} placeholder="teacher@college.edu" placeholderTextColor="#94a3b8"
+              autoCapitalize="none" keyboardType="email-address"
+              onChangeText={t => setForm(f => ({ ...f, email: t }))} />
+            <Text style={styles.label}>Phone (optional)</Text>
+            <TextInput style={styles.input} value={form.phone} placeholder="10-digit number" placeholderTextColor="#94a3b8"
+              keyboardType="phone-pad" onChangeText={t => setForm(f => ({ ...f, phone: t }))} />
+            <Text style={styles.hint}>New teacher joins your department with default password “password123”.</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+              <TouchableOpacity style={[styles.btn, { backgroundColor: '#f1f5f9' }]} onPress={() => setAdding(false)}>
+                <Text style={[styles.btnTxt, { color: '#475569' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btn, { backgroundColor: PRIMARY }]} onPress={saveTeacher} disabled={busy}>
+                {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTxt}>Add</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -104,6 +161,9 @@ const styles = StyleSheet.create({
   list: { padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   heading: { fontSize: 20, fontWeight: '700', color: PRIMARY, marginBottom: 12 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  addBtn: { flexDirection: 'row', backgroundColor: PRIMARY, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, gap: 4, alignItems: 'center', marginBottom: 12 },
+  addTxt: { color: '#fff', fontWeight: '700', fontSize: 12 },
   search: { backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 14, color: '#1e293b', borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 16 },
   card: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: '#e2e8f0' },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#eef2ff', alignItems: 'center', justifyContent: 'center' },
@@ -118,4 +178,12 @@ const styles = StyleSheet.create({
   noSess: { fontSize: 10, color: '#cbd5e1', fontStyle: 'italic' },
   empty: { alignItems: 'center', paddingTop: 40 },
   emptyTxt: { fontSize: 14, color: '#94a3b8', marginTop: 10 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 20 },
+  modalCard: { backgroundColor: '#fff', borderRadius: 14, padding: 18 },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: PRIMARY, marginBottom: 6 },
+  label: { fontSize: 12, color: '#475569', fontWeight: '700', marginTop: 10, marginBottom: 4 },
+  input: { backgroundColor: '#f1f5f9', borderRadius: 10, padding: 12, fontSize: 13, color: '#1e293b', borderWidth: 1, borderColor: '#e2e8f0' },
+  hint: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginTop: 10 },
+  btn: { flex: 1, padding: 12, borderRadius: 10, alignItems: 'center' },
+  btnTxt: { color: '#fff', fontWeight: '700' },
 });

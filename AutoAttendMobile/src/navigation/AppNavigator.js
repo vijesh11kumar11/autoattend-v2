@@ -48,6 +48,7 @@ import DeptOverviewScreen      from '../screens/hod/DeptOverviewScreen';
 import SectionsScreen           from '../screens/hod/SectionsScreen';
 import SubjectsScreen           from '../screens/hod/SubjectsScreen';
 import HODTimetableScreen       from '../screens/hod/HODTimetableScreen';
+import ExcelImportScreen        from '../screens/hod/ExcelImportScreen';
 import TutorManagementScreen    from '../screens/hod/TutorManagementScreen';
 import HODReportsHomeScreen     from '../screens/hod/HODReportsHomeScreen';
 import LiveAnalyticsScreen      from '../screens/hod/LiveAnalyticsScreen';
@@ -261,6 +262,7 @@ function HODNavigator() {
       <HODStack.Screen name="Sections"          component={SectionsScreen}            options={{ headerShown: true, title: 'Sections',            ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="Subjects"          component={SubjectsScreen}            options={{ headerShown: true, title: 'Subjects',            ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="HODTimetable"      component={HODTimetableScreen}        options={{ headerShown: true, title: 'Timetable',           ...SHARED_TAB_OPTS }} />
+      <HODStack.Screen name="ExcelImport"       component={ExcelImportScreen}         options={{ headerShown: true, title: 'Import Students',     ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="TutorManagement"   component={TutorManagementScreen}     options={{ headerShown: true, title: 'Tutor Management',    ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="HODReportsHome"    component={HODReportsHomeScreen}      options={{ headerShown: true, title: 'Reports',             ...SHARED_TAB_OPTS }} />
       <HODStack.Screen name="LiveAnalytics"     component={LiveAnalyticsScreen}       options={{ headerShown: true, title: 'Live Sessions',       ...SHARED_TAB_OPTS }} />
