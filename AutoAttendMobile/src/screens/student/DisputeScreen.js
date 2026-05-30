@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client       from '../../api/client';
+import { addToQueue } from '../../utils/offlineQueue';
 import ErrorState   from '../../components/ErrorState';
 
 const PRIMARY = '#1a237e';
@@ -76,19 +77,40 @@ export default function DisputeScreen({ route, navigation }) {
     }
     setFormErr('');
     setSubmitting(true);
+    const disputePayload = {
+      session_id: sidNum,
+      reason:     reason.trim(),
+      proof_note: proofNote.trim() || undefined,
+    };
     try {
-      const { data } = await client.post('/student/portal/dispute-attendance', {
-        session_id: sidNum,
-        reason:     reason.trim(),
-        proof_note: proofNote.trim() || undefined,
-      });
+      const { data } = await client.post('/student/portal/dispute-attendance', disputePayload);
       Alert.alert('Dispute Filed', data?.message || 'Your dispute has been submitted.');
       setReason('');
       setProofNote('');
       setSessionId('');
       await fetchDisputes();
     } catch (err) {
-      const detail = err.response?.data?.detail || err?.message || 'Could not file dispute.';
+      // Offline path (issues #88/#121): queue on network failure, sync later.
+      if (!err?.response) {
+        try {
+          await addToQueue('dispute', '/student/portal/dispute-attendance', 'post', disputePayload);
+          Alert.alert(
+            'Saved Offline',
+            'You are offline. Your dispute will be submitted automatically when you reconnect.',
+          );
+          setReason('');
+          setProofNote('');
+          setSessionId('');
+          return;
+        } catch {
+          // Fall through to the normal error UI if queueing itself fails.
+        }
+      }
+      const detail =
+        err.response?.data?.message ||
+        err.response?.data?.detail ||
+        err?.message ||
+        'Could not file dispute.';
       Alert.alert('Submission Failed', String(detail));
     } finally {
       setSubmitting(false);

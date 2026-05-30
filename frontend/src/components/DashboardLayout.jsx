@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
+import OfflineIndicator from './OfflineIndicator';
 
 // Maps pathname → page title shown in Navbar
 const TITLE_MAP = {
@@ -111,6 +112,7 @@ export default function DashboardLayout({ children }) {
           padding:    '1.5rem',
         }}
       >
+        <OfflineIndicator />
         {children}
       </main>
     </div>

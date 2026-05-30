@@ -57,6 +57,7 @@ import client                              from '../../api/client';
 import { useAuth }                         from '../../context/AuthContext';
 import { usePreventScreenshot }            from '../../utils/screenshotUtils';
 import { checkBiometricSupport, verifyBiometric } from '../../utils/biometricUtils';
+import { addToQueue }                     from '../../utils/offlineQueue';
 
 // Exact, spec-mandated student-facing messages (issues #15 / #87).
 const BIOMETRIC_FAIL_MESSAGE =
@@ -519,7 +520,7 @@ export default function ScanQRScreen({ navigation }) {
     }
 
     try {
-      const { data } = await client.post('/attendance/mark', {
+      const attendancePayload = {
         session_id:               parsedSession,
         face_token:               faceToken,
         qr_data:                  qrData,
@@ -531,11 +532,40 @@ export default function ScanQRScreen({ navigation }) {
         subject_id:               selectedSubject?.id ?? null,
         mock_location_detected:   mockFlag,
         is_rooted:                isRooted,
-      });
+      };
+      const { data } = await client.post('/attendance/mark', attendancePayload);
       setSuccessData(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       goTo(STATES.SUCCESS);
     } catch (err) {
+      // ── Offline path (issues #88/#121) ────────────────────────────────
+      // No HTTP response means the request never reached the server (no
+      // network). Instead of failing, persist it to the offline queue so it
+      // syncs automatically on reconnect. SERVER WINS: if the session has
+      // closed by then, the queued item is rejected and the user is notified.
+      if (!err?.response) {
+        try {
+          await addToQueue('attendance', '/attendance/mark', 'post', {
+            session_id:               parsedSession,
+            face_token:               faceToken,
+            qr_data:                  qrData,
+            student_latitude:         gpsCoords?.lat  ?? null,
+            student_longitude:        gpsCoords?.lon  ?? null,
+            student_gps_accuracy:     gpsCoords?.accuracy ?? null,
+            bluetooth_token_detected: bluetoothToken ?? null,
+            device_id:                deviceId,
+            subject_id:               selectedSubject?.id ?? null,
+            mock_location_detected:   mockFlag,
+            is_rooted:                isRooted,
+          });
+          setFailureData({ type: 'offline_queued' });
+          goTo(STATES.FAILED);
+          return;
+        } catch {
+          // Fall through to the normal error UI if queueing itself fails.
+        }
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const detail  = (err.response?.data?.detail ?? '').toLowerCase();
       const status  = err.response?.status;
@@ -927,6 +957,12 @@ function FailedScreen({ data, onTryAgain, onDashboard }) {
       title: 'Already Marked',
       body: 'Your attendance is already recorded for this class today.',
       actions: [{ label: 'View Dashboard', onPress: onDashboard, primary: true }],
+    },
+    offline_queued: {
+      icon: 'cloud-offline-outline',
+      title: 'Saved Offline',
+      body: 'You are offline. Your attendance will be submitted automatically when you reconnect.',
+      actions: [{ label: 'Dashboard', onPress: onDashboard, primary: true }],
     },
     unknown: {
       icon: 'alert-circle-outline',

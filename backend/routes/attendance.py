@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -332,11 +333,27 @@ def mark_attendance(
     session: Optional[AttendanceSession] = (
         db.query(AttendanceSession).filter(AttendanceSession.id == body.session_id).first()
     )
-    if not session or session.status != SessionStatus.active:
-        logger.warning("❌ STEP 1a │ session_id=%d │ not found or inactive", body.session_id)
+    if not session:
+        logger.warning("❌ STEP 1a │ session_id=%d │ not found", body.session_id)
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            "Attendance session not found or is no longer active.",
+            "Attendance session not found.",
+        )
+    if session.status != SessionStatus.active:
+        # Session existed but is already closed/ended. This is the conflict
+        # case for the offline operation queue (issues #88/#121): a late
+        # submission that was queued while offline arrives after the teacher
+        # closed the session. Policy is SERVER WINS — reject with 409 and a
+        # machine-readable "session_closed" marker so clients can drop the
+        # queued item and notify the user to resubmit.
+        logger.warning("❌ STEP 1a │ session_id=%d │ already closed (status=%s)",
+                       body.session_id, session.status.value)
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": "session_closed",
+                "message": "Attendance session already closed",
+            },
         )
     logger.info("✅ STEP 1a │ Session found │ id=%d │ status=%s │ subject_id=%d",
                 session.id, session.status.value, session.subject_id)

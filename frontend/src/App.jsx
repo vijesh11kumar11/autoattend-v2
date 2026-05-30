@@ -12,6 +12,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { OfflineQueueProvider } from './context/OfflineQueueContext';
 
 // ── Eager imports (always needed) ─────────────────────────────────────
 import LoginPage      from './pages/LoginPage';
@@ -203,7 +204,9 @@ export default function App() {
     // inside BrowserRouter (provided in index.js).
     <ErrorBoundary>
       <AuthProvider>
-        <AppRoutes />
+        <OfflineQueueProvider>
+          <AppRoutes />
+        </OfflineQueueProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

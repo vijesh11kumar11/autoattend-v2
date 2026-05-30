@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -423,9 +424,19 @@ def dispute_attendance(
     if not session:
         raise HTTPException(404, "Session not found.")
 
-    # Must be within 7 days
+    # Must be within the 7-day dispute window.
+    # Policy SERVER WINS (issues #88/#121): an offline dispute that syncs after
+    # the window has closed is rejected with 409 + a machine-readable
+    # "window_expired" marker so the client drops the queued item and asks the
+    # user to resubmit. The human-readable message is preserved for online UX.
     if session.date < date.today() - timedelta(days=7):
-        raise HTTPException(400, "Cannot dispute attendance older than 7 days.")
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": "window_expired",
+                "message": "Cannot dispute attendance older than 7 days.",
+            },
+        )
 
     # Student must have an absent record for this session
     record = db.query(AttendanceRecord).filter(

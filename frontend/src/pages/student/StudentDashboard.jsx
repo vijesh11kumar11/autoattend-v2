@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import { addToQueue } from '../../utils/offlineQueue';
 import { useAuth } from '../../context/AuthContext';
 import DashboardLayout from '../../components/DashboardLayout';
 import FeedPage from '../shared/FeedPage';
@@ -163,19 +164,29 @@ function StudentHome() {
       setFlash('Reason must be at least 5 characters.'); return;
     }
     setSubmitting(true);
+    const disputePayload = {
+      session_id: disputeModal,
+      reason: disputeReason,
+      proof_note: disputeNote || null,
+    };
     try {
-      await api.post('/student/portal/dispute-attendance', {
-        session_id: disputeModal,
-        reason: disputeReason,
-        proof_note: disputeNote || null,
-      });
+      await api.post('/student/portal/dispute-attendance', disputePayload);
       setFlash('Dispute submitted! Your teacher will be notified.');
       setDisputeModal(null);
       setDisputeReason('');
       setDisputeNote('');
       loadDashboard();
     } catch (err) {
-      setFlash(err.response?.data?.detail || 'Failed to submit dispute.');
+      // Offline path (issues #88/#121): queue on network failure, sync later.
+      if (!err?.response) {
+        addToQueue('dispute', '/student/portal/dispute-attendance', 'post', disputePayload);
+        setFlash('You are offline. Your dispute will be submitted automatically when you reconnect.');
+        setDisputeModal(null);
+        setDisputeReason('');
+        setDisputeNote('');
+        return;
+      }
+      setFlash(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.');
     } finally { setSubmitting(false); }
   };
 
@@ -798,6 +809,24 @@ function StudentLeavePage() {
       setDocError('');
       loadRequests();
     } catch (err) {
+      // Offline path (issues #88/#121): queue on network failure, sync later.
+      // Note: a picked document cannot be uploaded offline, so the queued
+      // leave is submitted without the attachment when connectivity returns.
+      if (!err?.response) {
+        addToQueue('leave', '/leave/apply', 'post', {
+          leave_type: form.leave_type,
+          from_date: form.from_date,
+          to_date: form.to_date,
+          reason: form.reason,
+          document_url: form.document_url || null,
+        });
+        setFlash('You are offline. Your leave request will be submitted automatically when you reconnect.');
+        setShowModal(false);
+        setForm({ leave_type: 'medical', from_date: '', to_date: '', reason: '', document_url: '' });
+        setDocFile(null);
+        setDocError('');
+        return;
+      }
       setFlash(err.response?.data?.detail || 'Failed to submit leave request.');
     } finally { setSubmitting(false); }
   };

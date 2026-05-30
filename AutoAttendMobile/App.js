@@ -22,6 +22,7 @@ import ErrorBoundary  from './src/components/ErrorBoundary';
 import OfflineBanner  from './src/components/OfflineBanner';
 import BlockedScreen  from './src/screens/shared/BlockedScreen';
 import { AuthProvider } from './src/context/AuthContext';
+import { OfflineQueueProvider } from './src/context/OfflineQueueContext';
 import AppNavigator    from './src/navigation/AppNavigator';
 import { API_BASE_URL, STARTUP_PING_TIMEOUT } from './src/config';
 import { isDeviceCompromised } from './src/utils/securityUtils';
@@ -117,8 +118,10 @@ export default function App() {
       <ErrorBoundary>
         <PaperProvider theme={theme}>
           <AuthProvider>
-            <OfflineBanner />
-            <AppNavigator />
+            <OfflineQueueProvider>
+              <OfflineBanner />
+              <AppNavigator />
+            </OfflineQueueProvider>
           </AuthProvider>
         </PaperProvider>
       </ErrorBoundary>

@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client       from '../../api/client';
+import { addToQueue } from '../../utils/offlineQueue';
 import ErrorState   from '../../components/ErrorState';
 
 const PRIMARY = '#1a237e';
@@ -114,19 +115,35 @@ export default function LeaveRequestScreen() {
   const submitLeave = async () => {
     if (!validateForm()) return;
     setSubmitting(true);
+    const leavePayload = {
+      leave_type:   leaveType,
+      from_date:    fromDate,
+      to_date:      toDate,
+      reason:       reason.trim(),
+      document_url: docUrl.trim() || undefined,
+    };
     try {
-      await client.post('/leave/apply', {
-        leave_type:   leaveType,
-        from_date:    fromDate,
-        to_date:      toDate,
-        reason:       reason.trim(),
-        document_url: docUrl.trim() || undefined,
-      });
+      await client.post('/leave/apply', leavePayload);
       Alert.alert('Submitted', 'Your leave request has been submitted for approval.');
       setModalOpen(false);
       resetForm();
       await fetchRequests();
     } catch (err) {
+      // Offline path (issues #88/#121): queue on network failure, sync later.
+      if (!err?.response) {
+        try {
+          await addToQueue('leave', '/leave/apply', 'post', leavePayload);
+          Alert.alert(
+            'Saved Offline',
+            'You are offline. Your leave request will be submitted automatically when you reconnect.',
+          );
+          setModalOpen(false);
+          resetForm();
+          return;
+        } catch {
+          // Fall through to the normal error UI if queueing itself fails.
+        }
+      }
       const detail = err.response?.data?.detail || err?.message || 'Could not submit leave request.';
       Alert.alert('Submission Failed', String(detail));
     } finally {
