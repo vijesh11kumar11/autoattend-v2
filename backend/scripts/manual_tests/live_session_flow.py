@@ -3,7 +3,7 @@ ClassPulse Live — Smoke test for the F02–F10 features.
 
 Run from the `backend/` folder while the API is up on http://localhost:8000:
 
-    python test_live_session_flow.py
+    python scripts/manual_tests/live_session_flow.py
 
 Prereqs (seeded users):
     teacher01@svec.edu.in  / password123

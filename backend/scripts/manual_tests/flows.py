@@ -2,7 +2,7 @@
 AutoAttend v2 — Simulate all 5 test flows via API and direct DB.
 This script acts as an integration test that exercises the backend APIs.
 
-Run:  python test_flows.py
+Run:  python scripts/manual_tests/flows.py
 """
 
 import os
@@ -10,7 +10,9 @@ import sys
 
 import requests
 
-sys.path.insert(0, os.path.dirname(__file__))
+# Add the backend/ root (three levels up: manual_tests/ -> scripts/ -> backend/)
+# to the import path so `from database import ...` resolves.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # Suppress SQLAlchemy SQL echo
 import logging
