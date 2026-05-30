@@ -19,6 +19,11 @@ import axios from 'axios';
 import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, API_TIMEOUT } from '../config';
+import {
+  isPinningConfigured,
+  urlMatchesPinnedDomain,
+  PINNED_DOMAIN,
+} from '../utils/sslPinning';
 
 const TOKEN_KEY         = 'aa_auth_token';
 const REFRESH_TOKEN_KEY = 'aa_refresh_token';
@@ -129,6 +134,23 @@ const client = axios.create({
 // ── Request interceptor ───────────────────────────────────────────────
 client.interceptors.request.use(
   async (config) => {
+    // ── SSL pin awareness (issue #10) ──────────────────────────────────
+    // Expo Go cannot terminate the TLS handshake, so we only LOG that pinning
+    // is configured for the production domain. This never blocks the request
+    // and is a no-op in development (Expo Go compatibility).
+    // TODO: Upgrade to full native SSL pinning with react-native-ssl-pinning
+    // when an EAS dev build is ready. Current implementation is JS-level
+    // awareness only.
+    if (!__DEV__ && isPinningConfigured()) {
+      const absoluteUrl = config.url?.startsWith('http')
+        ? config.url
+        : `${config.baseURL || ''}${config.url || ''}`;
+      if (urlMatchesPinnedDomain(absoluteUrl)) {
+        // eslint-disable-next-line no-console
+        console.log(`[ssl-pinning] active for ${PINNED_DOMAIN} (JS-level awareness)`);
+      }
+    }
+
     const [token, deviceId] = await Promise.all([
       SecureStore.getItemAsync(TOKEN_KEY),
       getDeviceId(),

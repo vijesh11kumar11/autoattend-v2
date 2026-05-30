@@ -83,6 +83,8 @@
       "androidMode": "default"
     },
     "extra": {
+      "sslPin": "sha256/NnfKqDbhvUeabxD97xg7r9JvWoGY7BJjg8XThNJxVbk=",
+      "sslPinnedDomain": "traceln.onrender.com",
       "eas": {
         "projectId": "a2f08237-c0ec-4f7d-8bfb-49c8ac17b361"
       }
