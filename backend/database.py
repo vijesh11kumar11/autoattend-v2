@@ -261,7 +261,7 @@ def _autotenant_and_softdelete(orm_execute_state):  # type: ignore[misc]
     orm_execute_state.statement = orm_execute_state.statement.options(
         with_loader_criteria(
             SoftDeleteMixin,
-            lambda cls: cls.is_deleted == False,  # noqa: E712
+            lambda cls: cls.is_deleted.is_(False),
             include_aliases=True,
         )
     )
@@ -285,7 +285,7 @@ def active_query(session, model_cls):
     """Convenience helper: return a query pre-filtered to non-deleted rows.
     Prefer using the ORM listener directly; this is for explicit callsites.
     """
-    return session.query(model_cls).filter(model_cls.is_deleted == False)  # noqa: E712
+    return session.query(model_cls).filter(model_cls.is_deleted.is_(False))
 
 
 def tenant_query(session, model_cls, college_id: int):
