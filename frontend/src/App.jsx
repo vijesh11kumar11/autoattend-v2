@@ -36,6 +36,7 @@ const StudentLiveSession = lazy(() => import('./pages/live/StudentLiveSession'))
 const SuperAdminLoginPage = lazy(() => import('./pages/superadmin/SuperAdminLoginPage'));
 const SuperAdminLayout = lazy(() => import('./pages/superadmin/SuperAdminLayout'));
 const SuperAdminColleges = lazy(() => import('./pages/superadmin/CollegesPage'));
+const SuperAdminCollegeDetail = lazy(() => import('./pages/superadmin/CollegeDetailPage'));
 const SuperAdminStats = lazy(() => import('./pages/superadmin/StatsPage'));
 
 // ── Loading fallback ──────────────────────────────────────────────────
@@ -139,6 +140,7 @@ function AppRoutes() {
         <Route path="/admin" element={<SuperAdminLayout />}>
           <Route index element={<Navigate to="colleges" replace />} />
           <Route path="colleges" element={<SuperAdminColleges />} />
+          <Route path="colleges/:collegeId" element={<SuperAdminCollegeDetail />} />
           <Route path="stats" element={<SuperAdminStats />} />
         </Route>
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -26,7 +26,19 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from database import College, User, UserRole, get_db
+from database import (
+    AttendanceRecord,
+    AttendanceSession,
+    AttendanceStatus,
+    College,
+    Course,
+    Department,
+    Section,
+    Subject,
+    User,
+    UserRole,
+    get_db,
+)
 from utils.auth_utils import hash_password, require_super_admin
 from utils.pagination import CursorPage, encode_cursor
 
@@ -422,4 +434,163 @@ def platform_stats(
         "total_users": int(total_users),
         "total_students": int(total_students),
         "colleges_by_plan": plan_counts,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 7. GET /api/admin/colleges/{college_id}/analytics — per-college usage
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@router.get("/colleges/{college_id}/analytics")
+def college_analytics(
+    college_id: int,
+    current_user: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Rich end-to-end usage breakdown for a single college.
+
+    Read-only aggregation across users, academic structure and attendance
+    activity. Soft-deleted colleges are still viewable (so suspended
+    tenants can be inspected); all child counts use the default
+    non-deleted scope.
+    """
+    college = (
+        db.query(College)
+        .execution_options(include_deleted=True)
+        .filter(College.id == college_id)
+        .first()
+    )
+    if not college:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "College not found")
+
+    # ── Users by role + active/inactive ──────────────────────────────
+    by_role = {"principal": 0, "hod": 0, "teacher": 0, "student": 0, "super_admin": 0}
+    total_users = 0
+    for role_value, count in (
+        db.query(User.role, func.count(User.id))
+        .filter(User.college_id == college_id)
+        .group_by(User.role)
+        .all()
+    ):
+        key = role_value.value if hasattr(role_value, "value") else str(role_value)
+        by_role[key] = int(count)
+        total_users += int(count)
+
+    active_users = (
+        db.query(func.count(User.id))
+        .filter(User.college_id == college_id, User.is_active.is_(True))
+        .scalar()
+        or 0
+    )
+
+    # ── Academic structure ───────────────────────────────────────────
+    dept_count = (
+        db.query(func.count(Department.id)).filter(Department.college_id == college_id).scalar()
+        or 0
+    )
+    course_count = (
+        db.query(func.count(Course.id)).filter(Course.college_id == college_id).scalar() or 0
+    )
+    section_count = (
+        db.query(func.count(Section.id)).filter(Section.college_id == college_id).scalar() or 0
+    )
+    subject_count = (
+        db.query(func.count(Subject.id)).filter(Subject.college_id == college_id).scalar() or 0
+    )
+
+    # ── Attendance activity ──────────────────────────────────────────
+    session_count = (
+        db.query(func.count(AttendanceSession.id))
+        .filter(AttendanceSession.college_id == college_id)
+        .scalar()
+        or 0
+    )
+    thirty_days_ago = (datetime.now(UTC) - timedelta(days=30)).date()
+    sessions_last_30d = (
+        db.query(func.count(AttendanceSession.id))
+        .filter(
+            AttendanceSession.college_id == college_id,
+            AttendanceSession.date >= thirty_days_ago,
+        )
+        .scalar()
+        or 0
+    )
+    last_session_date = (
+        db.query(func.max(AttendanceSession.date))
+        .filter(AttendanceSession.college_id == college_id)
+        .scalar()
+    )
+
+    record_count = (
+        db.query(func.count(AttendanceRecord.id))
+        .filter(AttendanceRecord.college_id == college_id)
+        .scalar()
+        or 0
+    )
+    attended_count = (
+        db.query(func.count(AttendanceRecord.id))
+        .filter(
+            AttendanceRecord.college_id == college_id,
+            AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]),
+        )
+        .scalar()
+        or 0
+    )
+    attendance_rate = round((attended_count / record_count) * 100, 1) if record_count else 0.0
+
+    last_user_login = (
+        db.query(func.max(User.last_login)).filter(User.college_id == college_id).scalar()
+    )
+
+    recent_logins = [
+        {
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "role": u.role.value if hasattr(u.role, "value") else str(u.role),
+            "last_login": u.last_login,
+        }
+        for u in (
+            db.query(User)
+            .filter(User.college_id == college_id, User.last_login.isnot(None))
+            .order_by(User.last_login.desc())
+            .limit(5)
+            .all()
+        )
+    ]
+
+    return {
+        "college": {
+            "id": college.id,
+            "name": college.name,
+            "domain": college.domain,
+            "college_code": college.college_code,
+            "plan": college.plan or "trial",
+            "status": college.status or "active",
+            "created_at": college.created_at,
+            "is_deleted": bool(college.is_deleted),
+        },
+        "users": {
+            "total": int(total_users),
+            "active": int(active_users),
+            "inactive": int(max(total_users - active_users, 0)),
+            "by_role": by_role,
+        },
+        "structure": {
+            "departments": int(dept_count),
+            "courses": int(course_count),
+            "sections": int(section_count),
+            "subjects": int(subject_count),
+        },
+        "activity": {
+            "attendance_sessions": int(session_count),
+            "sessions_last_30d": int(sessions_last_30d),
+            "last_session_date": last_session_date,
+            "attendance_records": int(record_count),
+            "attendance_attended": int(attended_count),
+            "attendance_rate": attendance_rate,
+            "last_user_login": last_user_login,
+        },
+        "recent_logins": recent_logins,
     }

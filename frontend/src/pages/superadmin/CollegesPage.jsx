@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../api/axios';
 import AddPrincipalModal from './AddPrincipalModal';
 
@@ -99,7 +100,12 @@ export default function CollegesPage() {
                 className={`border-t border-slate-100 ${c.is_deleted ? 'opacity-60' : ''}`}
               >
                 <Td className={c.is_deleted ? 'line-through' : 'font-medium text-slate-800'}>
-                  {c.name}
+                  <Link
+                    to={`/admin/colleges/${c.id}`}
+                    className="hover:text-amber-600 hover:underline"
+                  >
+                    {c.name}
+                  </Link>
                 </Td>
                 <Td className="text-slate-600">{c.domain || '—'}</Td>
                 <Td>
@@ -118,9 +124,15 @@ export default function CollegesPage() {
                   {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
                 </Td>
                 <Td className="text-right">
+                  <Link
+                    to={`/admin/colleges/${c.id}`}
+                    className="px-2 py-1 text-xs rounded text-blue-700 hover:bg-blue-50"
+                  >
+                    View
+                  </Link>
                   <button
                     onClick={() => setEditing(c)}
-                    className="px-2 py-1 text-xs rounded text-slate-700 hover:bg-slate-100"
+                    className="ml-1 px-2 py-1 text-xs rounded text-slate-700 hover:bg-slate-100"
                   >
                     Edit
                   </button>
