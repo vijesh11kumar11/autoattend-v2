@@ -11,11 +11,12 @@ Creates:
 
 Idempotent: clears prior demo rows (by join_link prefix) before inserting.
 """
+
 from __future__ import annotations
 
 import logging
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from database import (
     Capsule,
@@ -48,9 +49,7 @@ def main() -> None:
     try:
         # ── Pick a teacher + subject + students from existing data ────
         teacher = (
-            db.query(User)
-            .filter(User.role == UserRole.teacher, User.is_active.is_(True))
-            .first()
+            db.query(User).filter(User.role == UserRole.teacher, User.is_active.is_(True)).first()
         )
         if not teacher:
             log.error("No teacher found. Run seed.py first.")
@@ -75,9 +74,9 @@ def main() -> None:
                 User.role == UserRole.student,
                 User.is_active.is_(True),
             )
-            .filter(User.section_id == section_id) if section_id else db.query(User).filter(
-                User.role == UserRole.student, User.is_active.is_(True)
-            )
+            .filter(User.section_id == section_id)
+            if section_id
+            else db.query(User).filter(User.role == UserRole.student, User.is_active.is_(True))
         )
         students = students.limit(10).all()
         if len(students) < 3:
@@ -90,7 +89,7 @@ def main() -> None:
         )
         db.commit()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # ── 1. Standalone session (ended, with health report) ─────────
         s1 = LiveSession(
@@ -160,7 +159,11 @@ def main() -> None:
                     user_id=stu.id,
                     participant_type=LiveParticipantType.student,
                     joined_at=now - timedelta(hours=3),
-                    left_at=now - timedelta(hours=2, minutes=10) if is_present else now - timedelta(hours=2, minutes=55),
+                    left_at=(
+                        now - timedelta(hours=2, minutes=10)
+                        if is_present
+                        else now - timedelta(hours=2, minutes=55)
+                    ),
                     total_duration_seconds=2700 if is_present else 200,
                     is_attendance_counted=is_present,
                     is_active=False,

@@ -3,12 +3,12 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
 const DAY_COLORS = {
-  Monday:    'border-l-blue-500',
-  Tuesday:   'border-l-emerald-500',
+  Monday: 'border-l-blue-500',
+  Tuesday: 'border-l-emerald-500',
   Wednesday: 'border-l-purple-500',
-  Thursday:  'border-l-amber-500',
-  Friday:    'border-l-red-500',
-  Saturday:  'border-l-slate-400',
+  Thursday: 'border-l-amber-500',
+  Friday: 'border-l-red-500',
+  Saturday: 'border-l-slate-400',
 };
 
 export default function MyClassesPage() {
@@ -19,10 +19,7 @@ export default function MyClassesPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([
-      api.get(`/faculty/${user.id}/classes`),
-      api.get('/faculty/my-timetable'),
-    ])
+    Promise.all([api.get(`/faculty/${user.id}/classes`), api.get('/faculty/my-timetable')])
       .then(([classRes, ttRes]) => {
         setSubjects(classRes.data || []);
         setTimetable(ttRes.data?.timetable || []);
@@ -50,11 +47,13 @@ export default function MyClassesPage() {
       <div className="card overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b font-semibold text-slate-700 flex items-center justify-between">
           <span>📚 My Subjects</span>
-          <span className="text-sm font-normal text-slate-400">{subjects.length} subject{subjects.length !== 1 ? 's' : ''}</span>
+          <span className="text-sm font-normal text-slate-400">
+            {subjects.length} subject{subjects.length !== 1 ? 's' : ''}
+          </span>
         </div>
         {subjects.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-            {subjects.map(s => (
+            {subjects.map((s) => (
               <div key={s.id} className="border rounded-xl p-4 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between">
                   <div>
@@ -80,7 +79,7 @@ export default function MyClassesPage() {
         </div>
         {timetable.length > 0 ? (
           <div className="divide-y">
-            {timetable.map(day => (
+            {timetable.map((day) => (
               <div key={day.day} className="p-4">
                 <h3 className="font-semibold text-slate-700 mb-3">{day.day}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -92,7 +91,9 @@ export default function MyClassesPage() {
                       <p className="font-medium text-slate-700 text-sm">{slot.subject_name}</p>
                       <p className="text-xs text-slate-400">{slot.subject_code}</p>
                       <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
-                        <span className="font-mono">{slot.start_time} – {slot.end_time}</span>
+                        <span className="font-mono">
+                          {slot.start_time} – {slot.end_time}
+                        </span>
                         <span>🏫 {slot.room}</span>
                       </div>
                     </div>

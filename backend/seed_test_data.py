@@ -6,16 +6,26 @@ and links everything together for full testing.
 Run:  python seed_test_data.py
 """
 
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 
-from datetime import datetime, timezone
 from argon2 import PasswordHasher
-from database import SessionLocal, Base, engine
+
 from database import (
-    College, Department, Course, Section, Subject, User, Timetable,
-    TutorAssignment, AttendanceSession, AttendanceRecord, AttendanceAudit,
-    UserRole, DayOfWeek,
+    AttendanceAudit,
+    AttendanceRecord,
+    AttendanceSession,
+    College,
+    Course,
+    Department,
+    Section,
+    SessionLocal,
+    Timetable,
+    TutorAssignment,
+    User,
+    UserRole,
 )
 
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -26,9 +36,9 @@ db = SessionLocal()
 try:
     # ── Lookup existing entities ─────────────────────────────────
     college = db.query(College).first()
-    dept    = db.query(Department).filter_by(code="CSE").first()
-    course  = db.query(Course).filter_by(code="BTECH-CSE").first()
-    priya   = db.query(User).filter_by(email="priya.teacher@svec.edu.in").first()
+    dept = db.query(Department).filter_by(code="CSE").first()
+    course = db.query(Course).filter_by(code="BTECH-CSE").first()
+    priya = db.query(User).filter_by(email="priya.teacher@svec.edu.in").first()
 
     if not all([college, dept, course, priya]):
         print("❌ Run seed.py first! Missing base data.")
@@ -40,9 +50,7 @@ try:
     print(f"ℹ️  Teacher: {priya.name} (id={priya.id})")
 
     # ── 1. Create Section A ──────────────────────────────────────
-    section = db.query(Section).filter_by(
-        course_id=course.id, semester=6, name="A"
-    ).first()
+    section = db.query(Section).filter_by(course_id=course.id, semester=6, name="A").first()
     if not section:
         section = Section(
             department_id=dept.id,
@@ -97,25 +105,89 @@ try:
     # We'll rename/update them and create the rest
 
     FIRST_NAMES = [
-        "Vijesh", "Arun", "Sneha", "Deepak", "Kavya",
-        "Rahul", "Meera", "Suresh", "Divya", "Karthik",
-        "Preethi", "Naveen", "Lakshmi", "Manoj", "Swathi",
-        "Ganesh", "Pooja", "Srinivas", "Anjali", "Venkat",
-        "Rajesh", "Nandini", "Prasad", "Bhavya", "Harish",
-        "Ramya", "Chandra", "Sahithi", "Vikram", "Madhavi",
-        "Raju", "Keerthi", "Sunil", "Lavanya", "Pavan",
-        "Sirisha", "Tarun", "Mounika", "Akhil", "Revathi",
+        "Vijesh",
+        "Arun",
+        "Sneha",
+        "Deepak",
+        "Kavya",
+        "Rahul",
+        "Meera",
+        "Suresh",
+        "Divya",
+        "Karthik",
+        "Preethi",
+        "Naveen",
+        "Lakshmi",
+        "Manoj",
+        "Swathi",
+        "Ganesh",
+        "Pooja",
+        "Srinivas",
+        "Anjali",
+        "Venkat",
+        "Rajesh",
+        "Nandini",
+        "Prasad",
+        "Bhavya",
+        "Harish",
+        "Ramya",
+        "Chandra",
+        "Sahithi",
+        "Vikram",
+        "Madhavi",
+        "Raju",
+        "Keerthi",
+        "Sunil",
+        "Lavanya",
+        "Pavan",
+        "Sirisha",
+        "Tarun",
+        "Mounika",
+        "Akhil",
+        "Revathi",
     ]
 
     LAST_NAMES = [
-        "Kumar", "Patel", "Reddy", "Sharma", "Nair",
-        "Verma", "Iyer", "Rao", "Gupta", "Pillai",
-        "Menon", "Saxena", "Das", "Choudhury", "Joshi",
-        "Naidu", "Mishra", "Shetty", "Kapoor", "Rajan",
-        "Babu", "Devi", "Yadav", "Singh", "Gowda",
-        "Patil", "Sekhar", "Kumari", "Malhotra", "Hegde",
-        "Chowdary", "Priya", "Prasad", "Kaur", "Tiwari",
-        "Mohan", "Raj", "Rani", "Varma", "Sundaram",
+        "Kumar",
+        "Patel",
+        "Reddy",
+        "Sharma",
+        "Nair",
+        "Verma",
+        "Iyer",
+        "Rao",
+        "Gupta",
+        "Pillai",
+        "Menon",
+        "Saxena",
+        "Das",
+        "Choudhury",
+        "Joshi",
+        "Naidu",
+        "Mishra",
+        "Shetty",
+        "Kapoor",
+        "Rajan",
+        "Babu",
+        "Devi",
+        "Yadav",
+        "Singh",
+        "Gowda",
+        "Patil",
+        "Sekhar",
+        "Kumari",
+        "Malhotra",
+        "Hegde",
+        "Chowdary",
+        "Priya",
+        "Prasad",
+        "Kaur",
+        "Tiwari",
+        "Mohan",
+        "Raj",
+        "Rani",
+        "Varma",
+        "Sundaram",
     ]
 
     students = []
@@ -176,34 +248,42 @@ try:
 
     # CS001-CS020 → Priya Reddy
     for s in students[:20]:
-        existing = db.query(TutorAssignment).filter_by(
-            student_id=s.id, academic_year=academic_year
-        ).first()
+        existing = (
+            db.query(TutorAssignment)
+            .filter_by(student_id=s.id, academic_year=academic_year)
+            .first()
+        )
         if existing:
             continue
-        db.add(TutorAssignment(
-            tutor_id=priya.id,
-            student_id=s.id,
-            academic_year=academic_year,
-            is_active=True,
-            note="Seed assignment",
-        ))
+        db.add(
+            TutorAssignment(
+                tutor_id=priya.id,
+                student_id=s.id,
+                academic_year=academic_year,
+                is_active=True,
+                note="Seed assignment",
+            )
+        )
     print(f"✅ Tutor assignments: CS001-CS020 → {priya.name}")
 
     # CS021-CS040 → Ravi Kumar
     for s in students[20:]:
-        existing = db.query(TutorAssignment).filter_by(
-            student_id=s.id, academic_year=academic_year
-        ).first()
+        existing = (
+            db.query(TutorAssignment)
+            .filter_by(student_id=s.id, academic_year=academic_year)
+            .first()
+        )
         if existing:
             continue
-        db.add(TutorAssignment(
-            tutor_id=tutor2.id,
-            student_id=s.id,
-            academic_year=academic_year,
-            is_active=True,
-            note="Seed assignment",
-        ))
+        db.add(
+            TutorAssignment(
+                tutor_id=tutor2.id,
+                student_id=s.id,
+                academic_year=academic_year,
+                is_active=True,
+                note="Seed assignment",
+            )
+        )
     print(f"✅ Tutor assignments: CS021-CS040 → {tutor2.name}")
 
     # ── 7. Clean up old test attendance data ─────────────────────
@@ -217,18 +297,19 @@ try:
 
     db.commit()
     print("\n🎉 Test data seeded successfully!")
-    print(f"\n📋 Summary:")
+    print("\n📋 Summary:")
     print(f"   Section: 6-A (id={section.id})")
-    print(f"   Students: 40 (CS001–CS040)")
-    print(f"   Ward students under Priya: CS001–CS020")
-    print(f"   Ward students under Ravi: CS021–CS040")
-    print(f"   All passwords: password123")
-    print(f"   Student email pattern: student01@svec.edu.in ... student40@svec.edu.in")
+    print("   Students: 40 (CS001–CS040)")
+    print("   Ward students under Priya: CS001–CS020")
+    print("   Ward students under Ravi: CS021–CS040")
+    print("   All passwords: password123")
+    print("   Student email pattern: student01@svec.edu.in ... student40@svec.edu.in")
 
 except Exception as e:
     db.rollback()
     print(f"❌ Error: {e}")
     import traceback
+
     traceback.print_exc()
 finally:
     db.close()

@@ -11,9 +11,9 @@
  *    artifacts on Android and iOS.
  */
 
-import * as Device      from 'expo-device';
-import * as FileSystem  from 'expo-file-system';
-import { Platform }     from 'react-native';
+import * as Device from 'expo-device';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
 const ANDROID_ROOT_PATHS = [
   'file:///system/app/Superuser.apk',
@@ -54,7 +54,7 @@ export async function checkDeviceSecurity() {
   }
 
   const paths = Platform.OS === 'ios' ? IOS_JAILBREAK_PATHS : ANDROID_ROOT_PATHS;
-  const hit   = await _existsAny(paths);
+  const hit = await _existsAny(paths);
   if (hit) {
     return { isSecure: false, reason: `suspicious_path:${hit}` };
   }

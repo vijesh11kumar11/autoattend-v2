@@ -27,11 +27,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # ── Enum type names (must match SAEnum(name=...) in database.py) ──
-LIVE_SESSION_TYPE   = sa.Enum("standalone", "capsule_locked", "public",          name="livesessiontype")
-LIVE_SESSION_STATUS = sa.Enum("scheduled", "waiting", "live", "ended", "cancelled", name="livesessionstatus")
-LIVE_PARTICIPANT_TYPE = sa.Enum("teacher", "student", "guest", "external",       name="liveparticipanttype")
-LIVE_CONNECTION_QUALITY = sa.Enum("excellent", "good", "poor", "offline",        name="liveconnectionquality")
-LIVE_EVENT_TYPE = sa.Enum(
+# Use postgresql.ENUM(create_type=False): we create the types ourselves
+# via _ensure_pg_enum() (raw idempotent SQL) so op.create_table must NOT
+# re-emit CREATE TYPE (which would fail with DuplicateObject).
+# NOTE: sa.Enum silently ignores create_type — only postgresql.ENUM honors it.
+LIVE_SESSION_TYPE       = postgresql.ENUM("standalone", "capsule_locked", "public",                                name="livesessiontype",       create_type=False)
+LIVE_SESSION_STATUS     = postgresql.ENUM("scheduled", "waiting", "live", "ended", "cancelled",                    name="livesessionstatus",     create_type=False)
+LIVE_PARTICIPANT_TYPE   = postgresql.ENUM("teacher", "student", "guest", "external",                               name="liveparticipanttype",   create_type=False)
+LIVE_CONNECTION_QUALITY = postgresql.ENUM("excellent", "good", "poor", "offline",                                  name="liveconnectionquality", create_type=False)
+LIVE_EVENT_TYPE         = postgresql.ENUM(
     "session_start", "session_end",
     "student_joined", "student_left",
     "ai_observation", "ai_intervention",
@@ -41,23 +45,75 @@ LIVE_EVENT_TYPE = sa.Enum(
     "breakout_started", "breakout_ended",
     "hot_doubt_detected", "liveness_check",
     "bandwidth_switch", "whiteboard_generated",
-    name="liveeventtype",
+    name="liveeventtype", create_type=False,
 )
-LIVE_EVENT_TRIGGER = sa.Enum("ai", "teacher", "student", "system",   name="liveeventtrigger")
-PULSE_CHECK_TRIGGER = sa.Enum("teacher", "ai",                       name="pulsechecktrigger")
-PULSE_CHECK_ANSWER  = sa.Enum("A", "B", "C", "D",                    name="pulsecheckanswer")
-KNOWLEDGE_LEVEL     = sa.Enum("strong", "moderate", "weak", "not_covered", name="knowledgelevel")
+LIVE_EVENT_TRIGGER  = postgresql.ENUM("ai", "teacher", "student", "system",        name="liveeventtrigger",  create_type=False)
+PULSE_CHECK_TRIGGER = postgresql.ENUM("teacher", "ai",                             name="pulsechecktrigger", create_type=False)
+PULSE_CHECK_ANSWER  = postgresql.ENUM("A", "B", "C", "D",                          name="pulsecheckanswer",  create_type=False)
+KNOWLEDGE_LEVEL     = postgresql.ENUM("strong", "moderate", "weak", "not_covered", name="knowledgelevel",    create_type=False)
+
+# Companion objects WITH create_type=True for the explicit .create() calls
+# below (we want those to actually create the types).
+_CREATE_ENUMS = [
+    sa.Enum("standalone", "capsule_locked", "public",          name="livesessiontype"),
+    sa.Enum("scheduled", "waiting", "live", "ended", "cancelled", name="livesessionstatus"),
+    sa.Enum("teacher", "student", "guest", "external",       name="liveparticipanttype"),
+    sa.Enum("excellent", "good", "poor", "offline",          name="liveconnectionquality"),
+    sa.Enum(
+        "session_start", "session_end",
+        "student_joined", "student_left",
+        "ai_observation", "ai_intervention",
+        "teacher_response", "confusion_detected",
+        "topic_change", "pace_alert",
+        "pulse_check_started", "pulse_check_ended",
+        "breakout_started", "breakout_ended",
+        "hot_doubt_detected", "liveness_check",
+        "bandwidth_switch", "whiteboard_generated",
+        name="liveeventtype",
+    ),
+    sa.Enum("ai", "teacher", "student", "system",         name="liveeventtrigger"),
+    sa.Enum("teacher", "ai",                              name="pulsechecktrigger"),
+    sa.Enum("A", "B", "C", "D",                           name="pulsecheckanswer"),
+    sa.Enum("strong", "moderate", "weak", "not_covered",  name="knowledgelevel"),
+]
+
+
+def _ensure_pg_enum(bind, name: str, values: tuple[str, ...]) -> None:
+    """Idempotent CREATE TYPE for a PostgreSQL ENUM (raw SQL, transaction-safe)."""
+    quoted_values = ", ".join("'" + v.replace("'", "''") + "'" for v in values)
+    bind.exec_driver_sql(f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{name}') THEN
+                CREATE TYPE {name} AS ENUM ({quoted_values});
+            END IF;
+        END
+        $$;
+    """)
 
 
 def upgrade() -> None:
     # ── Create enum types up-front (idempotent) ───────────────────────
     bind = op.get_bind()
-    for enum_t in (
-        LIVE_SESSION_TYPE, LIVE_SESSION_STATUS, LIVE_PARTICIPANT_TYPE,
-        LIVE_CONNECTION_QUALITY, LIVE_EVENT_TYPE, LIVE_EVENT_TRIGGER,
-        PULSE_CHECK_TRIGGER, PULSE_CHECK_ANSWER, KNOWLEDGE_LEVEL,
-    ):
-        enum_t.create(bind, checkfirst=True)
+    _ensure_pg_enum(bind, "livesessiontype",      ("standalone", "capsule_locked", "public"))
+    _ensure_pg_enum(bind, "livesessionstatus",    ("scheduled", "waiting", "live", "ended", "cancelled"))
+    _ensure_pg_enum(bind, "liveparticipanttype",  ("teacher", "student", "guest", "external"))
+    _ensure_pg_enum(bind, "liveconnectionquality", ("excellent", "good", "poor", "offline"))
+    _ensure_pg_enum(bind, "liveeventtype", (
+        "session_start", "session_end",
+        "student_joined", "student_left",
+        "ai_observation", "ai_intervention",
+        "teacher_response", "confusion_detected",
+        "topic_change", "pace_alert",
+        "pulse_check_started", "pulse_check_ended",
+        "breakout_started", "breakout_ended",
+        "hot_doubt_detected", "liveness_check",
+        "bandwidth_switch", "whiteboard_generated",
+    ))
+    _ensure_pg_enum(bind, "liveeventtrigger",  ("ai", "teacher", "student", "system"))
+    _ensure_pg_enum(bind, "pulsechecktrigger", ("teacher", "ai"))
+    _ensure_pg_enum(bind, "pulsecheckanswer",  ("A", "B", "C", "D"))
+    _ensure_pg_enum(bind, "knowledgelevel",    ("strong", "moderate", "weak", "not_covered"))
 
     # ── live_sessions ─────────────────────────────────────────────────
     op.create_table(

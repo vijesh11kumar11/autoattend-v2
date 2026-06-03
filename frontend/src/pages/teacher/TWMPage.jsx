@@ -11,25 +11,27 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '../../api/axios';
 
 const STATUS_COLORS = {
-  safe:     'bg-emerald-100 text-emerald-700',
-  warning:  'bg-amber-100 text-amber-700',
+  safe: 'bg-emerald-100 text-emerald-700',
+  warning: 'bg-amber-100 text-amber-700',
   critical: 'bg-orange-100 text-orange-700',
   detained: 'bg-red-100 text-red-700',
 };
 
 const TABS = [
-  { key: 'meeting', label: '📋 Meeting', },
-  { key: 'report',  label: '📊 Ward Report', },
-  { key: 'history', label: '📜 History', },
+  { key: 'meeting', label: '📋 Meeting' },
+  { key: 'report', label: '📊 Ward Report' },
+  { key: 'history', label: '📜 History' },
 ];
 
 // ── Student Card for active session ──────────────────────────────
 function StudentCard({ student, onToggle, onNote, disabled }) {
   const isPresent = student.status === 'present' || student.status === 'late';
   return (
-    <div className={`card p-4 border-2 transition-all ${
-      isPresent ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200'
-    }`}>
+    <div
+      className={`card p-4 border-2 transition-all ${
+        isPresent ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200'
+      }`}
+    >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold text-slate-700 text-sm truncate">{student.name}</p>
@@ -52,7 +54,7 @@ function StudentCard({ student, onToggle, onNote, disabled }) {
         type="text"
         placeholder="Add note..."
         value={student.note || ''}
-        onChange={e => onNote(student.student_id, e.target.value)}
+        onChange={(e) => onNote(student.student_id, e.target.value)}
         disabled={disabled}
         className="mt-2 w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg
                    focus:outline-none focus:border-[#1a237e] disabled:bg-slate-50"
@@ -66,9 +68,11 @@ function StudentCard({ student, onToggle, onNote, disabled }) {
 function WardStudentRow({ student, selected, onSelect }) {
   const meta = STATUS_COLORS[student.attendance_status] || STATUS_COLORS.safe;
   return (
-    <div className={`card p-4 border-l-4 ${
-      student.needs_attention ? 'border-l-red-500' : 'border-l-emerald-500'
-    }`}>
+    <div
+      className={`card p-4 border-l-4 ${
+        student.needs_attention ? 'border-l-red-500' : 'border-l-emerald-500'
+      }`}
+    >
       <div className="flex items-center justify-between gap-3 mb-2">
         <div className="flex items-center gap-3 min-w-0">
           <input
@@ -83,7 +87,9 @@ function WardStudentRow({ student, selected, onSelect }) {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-lg font-bold ${student.overall_pct >= 75 ? 'text-emerald-600' : student.overall_pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
+          <span
+            className={`text-lg font-bold ${student.overall_pct >= 75 ? 'text-emerald-600' : student.overall_pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}
+          >
             {student.overall_pct}%
           </span>
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta}`}>
@@ -93,21 +99,28 @@ function WardStudentRow({ student, selected, onSelect }) {
       </div>
       {/* Per-subject breakdown */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
-        {(student.subjects || student.per_subject || []).map(subj => (
-          <div key={subj.subject_id} className={`text-xs px-2 py-1.5 rounded-lg border ${
-            subj.pct >= 75 ? 'bg-emerald-50 border-emerald-200' :
-            subj.pct >= 60 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
-          }`}>
+        {(student.subjects || student.per_subject || []).map((subj) => (
+          <div
+            key={subj.subject_id}
+            className={`text-xs px-2 py-1.5 rounded-lg border ${
+              subj.pct >= 75
+                ? 'bg-emerald-50 border-emerald-200'
+                : subj.pct >= 60
+                  ? 'bg-amber-50 border-amber-200'
+                  : 'bg-red-50 border-red-200'
+            }`}
+          >
             <span className="font-medium">{subj.subject_code}</span>
             <span className="ml-1 font-bold">{subj.pct}%</span>
-            <span className="text-slate-400 ml-1">({subj.present}/{subj.total})</span>
+            <span className="text-slate-400 ml-1">
+              ({subj.present}/{subj.total})
+            </span>
           </div>
         ))}
       </div>
     </div>
   );
 }
-
 
 export default function TWMPage() {
   const [tab, setTab] = useState('meeting');
@@ -118,8 +131,8 @@ export default function TWMPage() {
 
   // ── Active session ──
   const [sessionId, setSessionId] = useState(null);
-  const [students, setStudents] = useState([]);      // active session students
-  const [notes, setNotes] = useState({});             // student_id → note
+  const [students, setStudents] = useState([]); // active session students
+  const [notes, setNotes] = useState({}); // student_id → note
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [flash, setFlash] = useState('');
@@ -141,8 +154,9 @@ export default function TWMPage() {
   // ── Load dashboard ──
   const loadDashboard = useCallback(() => {
     const params = academicYear ? { academic_year: academicYear } : {};
-    api.get('/twm/dashboard', { params })
-      .then(r => {
+    api
+      .get('/twm/dashboard', { params })
+      .then((r) => {
         setDashboard(r.data);
         if (r.data.academic_year && !academicYear) {
           setAcademicYear(r.data.academic_year);
@@ -152,11 +166,16 @@ export default function TWMPage() {
       .finally(() => setDashLoading(false));
   }, [academicYear]);
 
-  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   // ── Start TWM session ──
   const handleStart = async () => {
-    if (!academicYear) { setFlash('Please enter academic year.'); return; }
+    if (!academicYear) {
+      setFlash('Please enter academic year.');
+      return;
+    }
     setStarting(true);
     try {
       const today = new Date().toLocaleDateString('en-CA');
@@ -166,11 +185,13 @@ export default function TWMPage() {
         academic_year: academicYear,
       });
       setSessionId(data.session_id);
-      setStudents(data.ward_students.map(s => ({ ...s, note: '' })));
+      setStudents(data.ward_students.map((s) => ({ ...s, note: '' })));
       setFlash(`TWM session started — ${data.total} students enrolled.`);
     } catch (err) {
       setFlash(err.response?.data?.detail || 'Failed to start session.');
-    } finally { setStarting(false); }
+    } finally {
+      setStarting(false);
+    }
   };
 
   // ── Toggle student attendance ──
@@ -182,18 +203,18 @@ export default function TWMPage() {
         status: newStatus,
         note: notes[studentId] || null,
       });
-      setStudents(prev => prev.map(s =>
-        s.student_id === studentId ? { ...s, status: newStatus } : s
-      ));
-    } catch { /* silent */ }
+      setStudents((prev) =>
+        prev.map((s) => (s.student_id === studentId ? { ...s, status: newStatus } : s))
+      );
+    } catch {
+      /* silent */
+    }
   };
 
   // ── Update local note ──
   const updateNote = (studentId, note) => {
-    setNotes(prev => ({ ...prev, [studentId]: note }));
-    setStudents(prev => prev.map(s =>
-      s.student_id === studentId ? { ...s, note } : s
-    ));
+    setNotes((prev) => ({ ...prev, [studentId]: note }));
+    setStudents((prev) => prev.map((s) => (s.student_id === studentId ? { ...s, note } : s)));
   };
 
   // ── Mark all present ──
@@ -201,9 +222,11 @@ export default function TWMPage() {
     if (!sessionId) return;
     try {
       await api.post(`/twm/${sessionId}/mark-all-present`);
-      setStudents(prev => prev.map(s => ({ ...s, status: 'present' })));
+      setStudents((prev) => prev.map((s) => ({ ...s, status: 'present' })));
       setFlash('All students marked present.');
-    } catch { setFlash('Failed to mark all present.'); }
+    } catch {
+      setFlash('Failed to mark all present.');
+    }
   };
 
   // ── End session ──
@@ -212,7 +235,7 @@ export default function TWMPage() {
     setEnding(true);
     try {
       // Bulk save notes
-      const records = students.map(s => ({
+      const records = students.map((s) => ({
         student_id: s.student_id,
         status: s.status,
         note: s.note || null,
@@ -225,26 +248,35 @@ export default function TWMPage() {
       loadDashboard();
     } catch (err) {
       setFlash(err.response?.data?.detail || 'Failed to end session.');
-    } finally { setEnding(false); }
+    } finally {
+      setEnding(false);
+    }
   };
 
   // ── Load ward report ──
   useEffect(() => {
     if (tab !== 'report' || !academicYear) return;
     setWardLoading(true);
-    api.get('/twm/ward-combined-report', { params: { academic_year: academicYear } })
-      .then(r => setWardReport(r.data || []))
+    api
+      .get('/twm/ward-combined-report', { params: { academic_year: academicYear } })
+      .then((r) => setWardReport(r.data || []))
       .catch(() => {})
       .finally(() => setWardLoading(false));
   }, [tab, academicYear]);
 
   // ── Send report to selected students ──
   const handleSendReport = async () => {
-    if (!selectedForReport.size) { setFlash('Select students to send report.'); return; }
+    if (!selectedForReport.size) {
+      setFlash('Select students to send report.');
+      return;
+    }
 
     // Need a session to attach report to — use most recent
     const recentSession = dashboard?.recent_twm_sessions?.[0];
-    if (!recentSession) { setFlash('Start a TWM session first before sending reports.'); return; }
+    if (!recentSession) {
+      setFlash('Start a TWM session first before sending reports.');
+      return;
+    }
 
     setSendingReport(true);
     try {
@@ -256,11 +288,13 @@ export default function TWMPage() {
       setSelectedForReport(new Set());
     } catch (err) {
       setFlash(err.response?.data?.detail || 'Failed to send reports.');
-    } finally { setSendingReport(false); }
+    } finally {
+      setSendingReport(false);
+    }
   };
 
   const toggleReportSelect = (id) => {
-    setSelectedForReport(prev => {
+    setSelectedForReport((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -271,7 +305,7 @@ export default function TWMPage() {
     if (selectedForReport.size === wardReport.length) {
       setSelectedForReport(new Set());
     } else {
-      setSelectedForReport(new Set(wardReport.map(s => s.student_id)));
+      setSelectedForReport(new Set(wardReport.map((s) => s.student_id)));
     }
   };
 
@@ -279,24 +313,31 @@ export default function TWMPage() {
   useEffect(() => {
     if (tab !== 'history') return;
     setHistoryLoading(true);
-    api.get('/twm/history')
-      .then(r => setHistory(r.data || []))
+    api
+      .get('/twm/history')
+      .then((r) => setHistory(r.data || []))
       .catch(() => {})
       .finally(() => setHistoryLoading(false));
   }, [tab]);
 
   // ── View session detail ──
   const viewSessionReport = async (sid) => {
-    if (expandedSession === sid) { setExpandedSession(null); setSessionReport(null); return; }
+    if (expandedSession === sid) {
+      setExpandedSession(null);
+      setSessionReport(null);
+      return;
+    }
     setExpandedSession(sid);
     try {
       const { data } = await api.get(`/twm/session/${sid}/report`);
       setSessionReport(data);
-    } catch { setSessionReport(null); }
+    } catch {
+      setSessionReport(null);
+    }
   };
 
   // ── Derived counts ──
-  const presentCount = students.filter(s => s.status === 'present' || s.status === 'late').length;
+  const presentCount = students.filter((s) => s.status === 'present' || s.status === 'late').length;
   const totalCount = students.length;
 
   if (dashLoading) {
@@ -313,7 +354,9 @@ export default function TWMPage() {
       {flash && (
         <div className="card px-5 py-3 bg-emerald-50 text-emerald-700 text-sm flex items-center justify-between">
           <span>{flash}</span>
-          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">✕</button>
+          <button onClick={() => setFlash('')} className="opacity-50 hover:opacity-100">
+            ✕
+          </button>
         </div>
       )}
 
@@ -323,7 +366,9 @@ export default function TWMPage() {
         <p className="text-blue-200 text-sm mt-1">
           {dashboard?.summary?.total_ward || 0} ward students
           {dashboard?.summary?.needs_attention > 0 && (
-            <span className="ml-2 text-red-300">· {dashboard.summary.needs_attention} need attention</span>
+            <span className="ml-2 text-red-300">
+              · {dashboard.summary.needs_attention} need attention
+            </span>
           )}
         </p>
       </div>
@@ -356,7 +401,7 @@ export default function TWMPage() {
 
       {/* Tab bar */}
       <div className="flex rounded-lg bg-slate-100 p-1">
-        {TABS.map(t => (
+        {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -378,22 +423,26 @@ export default function TWMPage() {
               <h2 className="text-base font-bold text-slate-800">Start New TWM Session</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Academic Year</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                    Academic Year
+                  </label>
                   <input
                     type="text"
                     value={academicYear}
-                    onChange={e => setAcademicYear(e.target.value)}
+                    onChange={(e) => setAcademicYear(e.target.value)}
                     placeholder="e.g. 2025-26"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]"
                     maxLength={20}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">Meeting Notes (optional)</label>
+                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1 block">
+                    Meeting Notes (optional)
+                  </label>
                   <input
                     type="text"
                     value={meetingNotes}
-                    onChange={e => setMeetingNotes(e.target.value)}
+                    onChange={(e) => setMeetingNotes(e.target.value)}
                     placeholder="e.g. Mid-sem review"
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#1a237e]"
                     maxLength={500}
@@ -418,7 +467,8 @@ export default function TWMPage() {
                     <span className="font-bold text-slate-700">TWM Session #{sessionId}</span>
                   </div>
                   <p className="text-sm text-slate-400 mt-0.5">
-                    {presentCount}/{totalCount} present ({totalCount > 0 ? Math.round(presentCount / totalCount * 100) : 0}%)
+                    {presentCount}/{totalCount} present (
+                    {totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0}%)
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -440,7 +490,7 @@ export default function TWMPage() {
 
               {/* Student grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {students.map(s => (
+                {students.map((s) => (
                   <StudentCard
                     key={s.student_id}
                     student={s}
@@ -461,7 +511,9 @@ export default function TWMPage() {
           <div className="card p-4 flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="font-bold text-slate-700">Combined Attendance Report</h2>
-              <p className="text-xs text-slate-400">Attendance from all subjects for your ward students · AY: {academicYear}</p>
+              <p className="text-xs text-slate-400">
+                Attendance from all subjects for your ward students · AY: {academicYear}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -484,14 +536,16 @@ export default function TWMPage() {
             <div className="card p-8 text-center text-slate-400 text-sm">Loading report…</div>
           ) : wardReport.length > 0 ? (
             <div className="space-y-3">
-              {[...wardReport].sort((a, b) => a.overall_pct - b.overall_pct).map(s => (
-                <WardStudentRow
-                  key={s.student_id}
-                  student={s}
-                  selected={selectedForReport.has(s.student_id)}
-                  onSelect={toggleReportSelect}
-                />
-              ))}
+              {[...wardReport]
+                .sort((a, b) => a.overall_pct - b.overall_pct)
+                .map((s) => (
+                  <WardStudentRow
+                    key={s.student_id}
+                    student={s}
+                    selected={selectedForReport.has(s.student_id)}
+                    onSelect={toggleReportSelect}
+                  />
+                ))}
             </div>
           ) : (
             <div className="card p-8 text-center text-slate-400">
@@ -507,7 +561,7 @@ export default function TWMPage() {
           {historyLoading ? (
             <div className="card p-8 text-center text-slate-400 text-sm">Loading history…</div>
           ) : history.length > 0 ? (
-            history.map(s => (
+            history.map((s) => (
               <div key={s.session_id} className="card overflow-hidden">
                 <button
                   onClick={() => viewSessionReport(s.session_id)}
@@ -519,39 +573,71 @@ export default function TWMPage() {
                       {s.notes && <span className="text-slate-400 text-sm ml-2">({s.notes})</span>}
                     </p>
                     <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5">
-                      <span>{s.start_time} {s.end_time ? `– ${s.end_time}` : ''}</span>
-                      <span>{s.present}/{s.total} present</span>
-                      {s.auto_report_sent && <span className="text-emerald-500">📤 Report sent</span>}
+                      <span>
+                        {s.start_time} {s.end_time ? `– ${s.end_time}` : ''}
+                      </span>
+                      <span>
+                        {s.present}/{s.total} present
+                      </span>
+                      {s.auto_report_sent && (
+                        <span className="text-emerald-500">📤 Report sent</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                    }`}>{s.status}</span>
-                    <span className="text-slate-400">{expandedSession === s.session_id ? '▲' : '▼'}</span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        s.status === 'active'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {s.status}
+                    </span>
+                    <span className="text-slate-400">
+                      {expandedSession === s.session_id ? '▲' : '▼'}
+                    </span>
                   </div>
                 </button>
 
                 {/* Expanded session report */}
                 {expandedSession === s.session_id && sessionReport && (
                   <div className="border-t divide-y">
-                    {sessionReport.students?.map(st => (
-                      <div key={st.student_id} className="px-5 py-3 flex items-center justify-between">
+                    {sessionReport.students?.map((st) => (
+                      <div
+                        key={st.student_id}
+                        className="px-5 py-3 flex items-center justify-between"
+                      >
                         <div>
                           <p className="text-sm font-medium text-slate-700">{st.name}</p>
                           <p className="text-xs text-slate-400">{st.roll_number}</p>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            st.twm_status === 'present' ? 'bg-emerald-100 text-emerald-700' :
-                            st.twm_status === 'late'    ? 'bg-amber-100 text-amber-700' :
-                            'bg-red-100 text-red-700'
-                          }`}>{st.twm_status}</span>
-                          <span className={`text-sm font-bold ${
-                            st.overall_pct >= 75 ? 'text-emerald-600' :
-                            st.overall_pct >= 60 ? 'text-amber-500' : 'text-red-500'
-                          }`}>{st.overall_pct}%</span>
-                          {st.twm_note && <span className="text-xs text-slate-400 italic">"{st.twm_note}"</span>}
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              st.twm_status === 'present'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : st.twm_status === 'late'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {st.twm_status}
+                          </span>
+                          <span
+                            className={`text-sm font-bold ${
+                              st.overall_pct >= 75
+                                ? 'text-emerald-600'
+                                : st.overall_pct >= 60
+                                  ? 'text-amber-500'
+                                  : 'text-red-500'
+                            }`}
+                          >
+                            {st.overall_pct}%
+                          </span>
+                          {st.twm_note && (
+                            <span className="text-xs text-slate-400 italic">"{st.twm_note}"</span>
+                          )}
                         </div>
                       </div>
                     ))}

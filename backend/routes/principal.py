@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -22,15 +22,15 @@ router = APIRouter(prefix="/api/principal", tags=["principal"])
 
 @router.get("/security-events")
 def list_security_events(
-    event_type:    Optional[str]      = Query(None, max_length=64),
-    severity:      Optional[str]      = Query(None, regex="^(INFO|WARN|CRITICAL)$"),
-    user_id:       Optional[int]      = Query(None, ge=1),
-    date_from:     Optional[datetime] = None,
-    date_to:       Optional[datetime] = None,
-    page:          int = Query(1,  ge=1),
-    page_size:     int = Query(50, ge=1, le=200),
-    current_user:  dict     = Depends(principal_only),
-    db:            Session  = Depends(get_db),
+    event_type: Optional[str] = Query(None, max_length=64),
+    severity: Optional[str] = Query(None, regex="^(INFO|WARN|CRITICAL)$"),
+    user_id: Optional[int] = Query(None, ge=1),
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(principal_only),
+    db: Session = Depends(get_db),
 ):
     """Paginated view of structured security events for principal review."""
     q = db.query(SecurityEvent)
@@ -54,29 +54,29 @@ def list_security_events(
         )
 
     total = q.count()
-    rows  = (
+    rows = (
         q.order_by(desc(SecurityEvent.timestamp_utc))
-         .offset((page - 1) * page_size)
-         .limit(page_size)
-         .all()
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
     )
 
     return {
-        "page":       page,
-        "page_size":  page_size,
-        "total":      total,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
         "items": [
             {
-                "id":            r.id,
-                "event_type":    r.event_type,
-                "severity":      r.severity,
+                "id": r.id,
+                "event_type": r.event_type,
+                "severity": r.severity,
                 "timestamp_utc": r.timestamp_utc.isoformat() if r.timestamp_utc else None,
-                "user_id":       r.user_id,
-                "college_id":    r.college_id,
-                "ip_address":    r.ip_address,
-                "user_agent":    r.user_agent,
-                "request_id":    r.request_id,
-                "details":       r.details or {},
+                "user_id": r.user_id,
+                "college_id": r.college_id,
+                "ip_address": r.ip_address,
+                "user_agent": r.user_agent,
+                "request_id": r.request_id,
+                "details": r.details or {},
             }
             for r in rows
         ],

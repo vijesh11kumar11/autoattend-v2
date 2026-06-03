@@ -5,8 +5,16 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Image, Linking, RefreshControl,
-  SafeAreaView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Linking,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
@@ -31,13 +39,26 @@ export default function FeedScreen() {
     try {
       const { data } = await client.get('/feed');
       setItems(Array.isArray(data) ? data : (data?.articles ?? data?.items ?? data?.feed ?? []));
-    } catch (err) { console.warn('[Feed] fetch error:', err?.message); }
+    } catch (err) {
+      console.warn('[Feed] fetch error:', err?.message);
+    }
   }, []);
 
-  useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
-  const onRefresh = useCallback(async () => { setRefreshing(true); await fetchData(); setRefreshing(false); }, [fetchData]);
+  useEffect(() => {
+    fetchData().finally(() => setLoading(false));
+  }, [fetchData]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }, [fetchData]);
 
-  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={PRIMARY} /></View>;
+  if (loading)
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={PRIMARY} />
+      </View>
+    );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -45,7 +66,9 @@ export default function FeedScreen() {
         data={items}
         keyExtractor={(item, i) => String(item.id ?? i)}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />
+        }
         ListHeaderComponent={<Text style={styles.heading}>📰 Career & News Feed</Text>}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -59,12 +82,23 @@ export default function FeedScreen() {
             <TouchableOpacity
               style={styles.card}
               onPress={() => url && Linking.openURL(url).catch(() => {})}
-              activeOpacity={url ? 0.7 : 1}>
-              {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.img} /> : null}
+              activeOpacity={url ? 0.7 : 1}
+            >
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={styles.img} />
+              ) : null}
               <View style={styles.body}>
-                {item.category ? <Text style={styles.cat}>{String(item.category).toUpperCase()}</Text> : null}
-                <Text style={styles.title} numberOfLines={2}>{item.title ?? item.headline ?? '—'}</Text>
-                {item.summary ? <Text style={styles.summary} numberOfLines={3}>{item.summary}</Text> : null}
+                {item.category ? (
+                  <Text style={styles.cat}>{String(item.category).toUpperCase()}</Text>
+                ) : null}
+                <Text style={styles.title} numberOfLines={2}>
+                  {item.title ?? item.headline ?? '—'}
+                </Text>
+                {item.summary ? (
+                  <Text style={styles.summary} numberOfLines={3}>
+                    {item.summary}
+                  </Text>
+                ) : null}
                 <View style={styles.metaRow}>
                   <Text style={styles.meta}>{item.source ?? item.author ?? ''}</Text>
                   <Text style={styles.meta}>· {timeAgo(item.published_at ?? item.created_at)}</Text>
@@ -83,7 +117,14 @@ const styles = StyleSheet.create({
   list: { padding: 16 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   heading: { fontSize: 22, fontWeight: '700', color: PRIMARY, marginBottom: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
   img: { width: '100%', height: 160, backgroundColor: '#e2e8f0' },
   body: { padding: 14 },
   cat: { fontSize: 10, fontWeight: '800', color: PRIMARY, letterSpacing: 0.6, marginBottom: 4 },

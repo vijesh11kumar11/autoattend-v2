@@ -20,9 +20,13 @@ function OTPInput({ value, onChange, disabled }) {
   const refsArr = useRef([]);
   // Populate ref slots without calling hooks in a loop
   function refFor(i) {
-    return el => { refsArr.current[i] = el; };
+    return (el) => {
+      refsArr.current[i] = el;
+    };
   }
-  function focusAt(i) { refsArr.current[i]?.focus(); }
+  function focusAt(i) {
+    refsArr.current[i]?.focus();
+  }
 
   const digits = (value || '').split('').slice(0, 6).concat(Array(6).fill('')).slice(0, 6);
 
@@ -58,8 +62,8 @@ function OTPInput({ value, onChange, disabled }) {
           maxLength={1}
           disabled={disabled}
           value={d}
-          onChange={e => handleChange(i, e)}
-          onKeyDown={e => handleKeyDown(i, e)}
+          onChange={(e) => handleChange(i, e)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={i === 0 ? handlePaste : undefined}
           className="w-10 h-11 border rounded-lg text-center text-lg font-mono focus:ring-2
                      focus:ring-primary focus:border-primary outline-none transition
@@ -84,13 +88,13 @@ function Countdown({ seconds }) {
 // ── Password strength meter ───────────────────────────────────────────
 function passwordStrength(password) {
   let score = 0;
-  if (password.length >= 8)                score++;
-  if (/[A-Z]/.test(password))              score++;
-  if (/\d/.test(password))                 score++;
+  if (password.length >= 8) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/\d/.test(password)) score++;
   if (/[!@#$%^&*()_+\-=[\]{};':"|,.<>/?]/.test(password)) score++;
-  const labels  = ['', 'Weak', 'Fair', 'Strong', 'Very Strong'];
-  const colors  = ['', 'bg-red-400', 'bg-amber-400', 'bg-blue-500', 'bg-emerald-500'];
-  const txts    = ['', 'text-red-500', 'text-amber-500', 'text-blue-600', 'text-emerald-600'];
+  const labels = ['', 'Weak', 'Fair', 'Strong', 'Very Strong'];
+  const colors = ['', 'bg-red-400', 'bg-amber-400', 'bg-blue-500', 'bg-emerald-500'];
+  const txts = ['', 'text-red-500', 'text-amber-500', 'text-blue-600', 'text-emerald-600'];
   return { score, label: labels[score], barColor: colors[score], textColor: txts[score] };
 }
 
@@ -114,25 +118,25 @@ function PasswordStrengthBar({ password }) {
 // Main component
 // ═══════════════════════════════════════════════════════════════════════
 
-const RESEND_COOLDOWN = 60;   // seconds
-const OTP_TTL        = 600;   // 10 minutes
+const RESEND_COOLDOWN = 60; // seconds
+const OTP_TTL = 600; // 10 minutes
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
 
-  const [step,         setStep]         = useState(1);   // 1-4
-  const [identifier,   setIdentifier]   = useState('');
-  const [phoneMasked,  setPhoneMasked]  = useState('');
-  const [emailMasked,  setEmailMasked]  = useState('');
-  const [otpSms,       setOtpSms]       = useState('');
-  const [otpEmail,     setOtpEmail]     = useState('');
-  const [newPassword,  setNewPassword]  = useState('');
-  const [confirmPwd,   setConfirmPwd]   = useState('');
-  const [showPwd,      setShowPwd]      = useState(false);
-  const [error,        setError]        = useState('');
-  const [loading,      setLoading]      = useState(false);
-  const [otpTimer,     setOtpTimer]     = useState(OTP_TTL);
-  const [resendTimer,  setResendTimer]  = useState(0);
+  const [step, setStep] = useState(1); // 1-4
+  const [identifier, setIdentifier] = useState('');
+  const [phoneMasked, setPhoneMasked] = useState('');
+  const [emailMasked, setEmailMasked] = useState('');
+  const [otpSms, setOtpSms] = useState('');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(OTP_TTL);
+  const [resendTimer, setResendTimer] = useState(0);
   const timerRef = useRef(null);
 
   // Start timers when entering step 2
@@ -142,8 +146,8 @@ export default function ForgotPasswordPage() {
     setResendTimer(RESEND_COOLDOWN);
 
     timerRef.current = setInterval(() => {
-      setOtpTimer(t  => Math.max(0, t - 1));
-      setResendTimer(t => Math.max(0, t - 1));
+      setOtpTimer((t) => Math.max(0, t - 1));
+      setResendTimer((t) => Math.max(0, t - 1));
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [step]);
@@ -156,26 +160,36 @@ export default function ForgotPasswordPage() {
   }, [step, navigate]);
 
   // ── Step 1: send OTP ─────────────────────────────────────────────
-  const handleSendOTP = useCallback(async (e) => {
-    e.preventDefault();
-    if (!identifier.trim()) { setError('Enter your roll number or email'); return; }
-    setError(''); setLoading(true);
-    try {
-      const { data } = await api.post('/auth/forgot-password', { identifier: identifier.trim() });
-      setPhoneMasked(data.phone_masked || '');
-      setEmailMasked(data.email_masked || '');
-      setStep(2);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to send OTP. Check your identifier and try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [identifier]);
+  const handleSendOTP = useCallback(
+    async (e) => {
+      e.preventDefault();
+      if (!identifier.trim()) {
+        setError('Enter your roll number or email');
+        return;
+      }
+      setError('');
+      setLoading(true);
+      try {
+        const { data } = await api.post('/auth/forgot-password', { identifier: identifier.trim() });
+        setPhoneMasked(data.phone_masked || '');
+        setEmailMasked(data.email_masked || '');
+        setStep(2);
+      } catch (err) {
+        setError(
+          err.response?.data?.detail || 'Failed to send OTP. Check your identifier and try again.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [identifier]
+  );
 
   // ── Resend OTP ────────────────────────────────────────────────────
   const handleResend = useCallback(async () => {
     if (resendTimer > 0) return;
-    setError(''); setLoading(true);
+    setError('');
+    setLoading(true);
     try {
       const { data } = await api.post('/auth/forgot-password', { identifier: identifier.trim() });
       setPhoneMasked(data.phone_masked || '');
@@ -190,59 +204,79 @@ export default function ForgotPasswordPage() {
   }, [identifier, resendTimer]);
 
   // ── Step 2 → 3 ────────────────────────────────────────────────────
-  const handleOTPContinue = useCallback((e) => {
-    e.preventDefault();
-    if (otpSms.length   < 6) { setError('Enter full 6-digit SMS OTP');   return; }
-    if (otpEmail.length < 6) { setError('Enter full 6-digit email OTP'); return; }
-    if (otpTimer <= 0)       { setError('OTPs have expired. Please resend.'); return; }
-    setError('');
-    setStep(3);
-  }, [otpSms, otpEmail, otpTimer]);
+  const handleOTPContinue = useCallback(
+    (e) => {
+      e.preventDefault();
+      if (otpSms.length < 6) {
+        setError('Enter full 6-digit SMS OTP');
+        return;
+      }
+      if (otpEmail.length < 6) {
+        setError('Enter full 6-digit email OTP');
+        return;
+      }
+      if (otpTimer <= 0) {
+        setError('OTPs have expired. Please resend.');
+        return;
+      }
+      setError('');
+      setStep(3);
+    },
+    [otpSms, otpEmail, otpTimer]
+  );
 
   // ── Step 3: reset password ────────────────────────────────────────
-  const handleReset = useCallback(async (e) => {
-    e.preventDefault();
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.'); return;
-    }
-    if (newPassword !== confirmPwd) {
-      setError('Passwords do not match.'); return;
-    }
-    if (passwordStrength(newPassword).score < 2) {
-      setError('Choose a stronger password.'); return;
-    }
-    setError(''); setLoading(true);
-    try {
-      await api.post('/auth/reset-password', {
-        identifier:   identifier.trim(),
-        otp_sms:      otpSms,
-        otp_email:    otpEmail,
-        new_password: newPassword,
-      });
-      setStep(4);
-    } catch (err) {
-      const msg = err.response?.data?.detail;
-      // If OTP expired/invalid, send user back to step 2
-      if (err.response?.status === 400 || err.response?.status === 422) {
-        setError(msg || 'Invalid or expired OTP. Please re-enter OTPs.');
-        setStep(2);
-      } else {
-        setError(msg || 'Password reset failed. Please try again.');
+  const handleReset = useCallback(
+    async (e) => {
+      e.preventDefault();
+      if (newPassword.length < 8) {
+        setError('Password must be at least 8 characters.');
+        return;
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [identifier, otpSms, otpEmail, newPassword, confirmPwd]);
+      if (newPassword !== confirmPwd) {
+        setError('Passwords do not match.');
+        return;
+      }
+      if (passwordStrength(newPassword).score < 2) {
+        setError('Choose a stronger password.');
+        return;
+      }
+      setError('');
+      setLoading(true);
+      try {
+        await api.post('/auth/reset-password', {
+          identifier: identifier.trim(),
+          otp_sms: otpSms,
+          otp_email: otpEmail,
+          new_password: newPassword,
+        });
+        setStep(4);
+      } catch (err) {
+        const msg = err.response?.data?.detail;
+        // If OTP expired/invalid, send user back to step 2
+        if (err.response?.status === 400 || err.response?.status === 422) {
+          setError(msg || 'Invalid or expired OTP. Please re-enter OTPs.');
+          setStep(2);
+        } else {
+          setError(msg || 'Password reset failed. Please try again.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [identifier, otpSms, otpEmail, newPassword, confirmPwd]
+  );
 
   // ── Layout shell ──────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
       <div className="w-full max-w-md">
-
         {/* Logo / brand */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700
-                          flex items-center justify-center text-white text-xl font-bold mx-auto mb-3 shadow-lg">
+          <div
+            className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700
+                          flex items-center justify-center text-white text-xl font-bold mx-auto mb-3 shadow-lg"
+          >
             AA
           </div>
           <h1 className="text-2xl font-extrabold text-slate-800">AutoAttend AI</h1>
@@ -253,15 +287,19 @@ export default function ForgotPasswordPage() {
         <div className="flex items-center mb-6">
           {[1, 2, 3, 4].map((n, idx) => (
             <div key={n} className="flex items-center flex-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold
                               transition-colors
-                              ${step >= n
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-slate-200 text-slate-400'}`}>
+                              ${
+                                step >= n ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
+                              }`}
+              >
                 {step > n ? '✓' : n}
               </div>
               {idx < 3 && (
-                <div className={`flex-1 h-0.5 mx-1 transition-colors ${step > n ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                <div
+                  className={`flex-1 h-0.5 mx-1 transition-colors ${step > n ? 'bg-blue-600' : 'bg-slate-200'}`}
+                />
               )}
             </div>
           ))}
@@ -269,7 +307,6 @@ export default function ForgotPasswordPage() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-lg p-7 space-y-5">
-
           {/* Error banner */}
           {error && (
             <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
@@ -287,13 +324,15 @@ export default function ForgotPasswordPage() {
                 </p>
               </div>
               <div className="space-y-1">
-                <label className="label-text" htmlFor="identifier">Roll Number or Email</label>
+                <label className="label-text" htmlFor="identifier">
+                  Roll Number or Email
+                </label>
                 <input
                   id="identifier"
                   type="text"
                   autoComplete="username"
                   value={identifier}
-                  onChange={e => setIdentifier(e.target.value)}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   placeholder="e.g. CS2024001 or you@college.edu"
                   className="input-field"
                 />
@@ -303,7 +342,9 @@ export default function ForgotPasswordPage() {
               </button>
               <p className="text-center text-sm text-slate-500">
                 Remember your password?{' '}
-                <Link to="/login" className="text-blue-600 hover:underline font-medium">Sign in</Link>
+                <Link to="/login" className="text-blue-600 hover:underline font-medium">
+                  Sign in
+                </Link>
               </p>
             </form>
           )}
@@ -321,9 +362,13 @@ export default function ForgotPasswordPage() {
               {/* Timer */}
               <div className="text-sm text-slate-500 flex items-center justify-between">
                 <span>
-                  {otpTimer > 0
-                    ? <>OTPs expire in <Countdown seconds={otpTimer} /></>
-                    : <span className="text-red-500 font-medium">OTPs have expired</span>}
+                  {otpTimer > 0 ? (
+                    <>
+                      OTPs expire in <Countdown seconds={otpTimer} />
+                    </>
+                  ) : (
+                    <span className="text-red-500 font-medium">OTPs have expired</span>
+                  )}
                 </span>
                 <button
                   type="button"
@@ -354,7 +399,10 @@ export default function ForgotPasswordPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => { setStep(1); setError(''); }}
+                  onClick={() => {
+                    setStep(1);
+                    setError('');
+                  }}
                   className="btn-secondary flex-1"
                 >
                   Back
@@ -376,19 +424,21 @@ export default function ForgotPasswordPage() {
 
               {/* New password */}
               <div className="space-y-1.5">
-                <label className="label-text" htmlFor="new-pwd">New Password</label>
+                <label className="label-text" htmlFor="new-pwd">
+                  New Password
+                </label>
                 <div className="relative">
                   <input
                     id="new-pwd"
                     type={showPwd ? 'text' : 'password'}
                     autoComplete="new-password"
                     value={newPassword}
-                    onChange={e => setNewPassword(e.target.value)}
+                    onChange={(e) => setNewPassword(e.target.value)}
                     className="input-field pr-10"
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPwd(s => !s)}
+                    onClick={() => setShowPwd((s) => !s)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     aria-label="Toggle password visibility"
                   >
@@ -400,16 +450,20 @@ export default function ForgotPasswordPage() {
 
               {/* Confirm password */}
               <div className="space-y-1">
-                <label className="label-text" htmlFor="confirm-pwd">Confirm Password</label>
+                <label className="label-text" htmlFor="confirm-pwd">
+                  Confirm Password
+                </label>
                 <input
                   id="confirm-pwd"
                   type="password"
                   autoComplete="new-password"
                   value={confirmPwd}
-                  onChange={e => setConfirmPwd(e.target.value)}
-                  className={`input-field ${confirmPwd && confirmPwd !== newPassword
-                    ? 'border-red-300 focus:ring-red-400'
-                    : ''}`}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  className={`input-field ${
+                    confirmPwd && confirmPwd !== newPassword
+                      ? 'border-red-300 focus:ring-red-400'
+                      : ''
+                  }`}
                 />
                 {confirmPwd && confirmPwd !== newPassword && (
                   <p className="text-xs text-red-500">Passwords don't match</p>
@@ -419,13 +473,17 @@ export default function ForgotPasswordPage() {
               {/* Password hints */}
               <ul className="text-xs text-slate-500 space-y-0.5">
                 {[
-                  [newPassword.length >= 8,                                       'At least 8 characters'],
-                  [/[A-Z]/.test(newPassword),                                     'One uppercase letter'],
-                  [/\d/.test(newPassword),                                        'One number'],
-                  [/[!@#$%^&*()_+\-=[\]{};':"|,.<>/?]/.test(newPassword),        'One special character'],
+                  [newPassword.length >= 8, 'At least 8 characters'],
+                  [/[A-Z]/.test(newPassword), 'One uppercase letter'],
+                  [/\d/.test(newPassword), 'One number'],
+                  [/[!@#$%^&*()_+\-=[\]{};':"|,.<>/?]/.test(newPassword), 'One special character'],
                 ].map(([ok, hint]) => (
-                  <li key={hint} className={`flex items-center gap-1.5 ${ok ? 'text-emerald-600' : ''}`}>
-                    <span>{ok ? '✓' : '·'}</span>{hint}
+                  <li
+                    key={hint}
+                    className={`flex items-center gap-1.5 ${ok ? 'text-emerald-600' : ''}`}
+                  >
+                    <span>{ok ? '✓' : '·'}</span>
+                    {hint}
                   </li>
                 ))}
               </ul>
@@ -433,7 +491,10 @@ export default function ForgotPasswordPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => { setStep(2); setError(''); }}
+                  onClick={() => {
+                    setStep(2);
+                    setError('');
+                  }}
                   className="btn-secondary flex-1"
                 >
                   Back
@@ -454,12 +515,14 @@ export default function ForgotPasswordPage() {
                 All your existing sessions have been logged out for security.
               </p>
               <p className="text-xs text-slate-400">Redirecting to sign in…</p>
-              <Link to="/login" className="inline-block text-blue-600 hover:underline text-sm font-medium">
+              <Link
+                to="/login"
+                className="inline-block text-blue-600 hover:underline text-sm font-medium"
+              >
                 Sign in now →
               </Link>
             </div>
           )}
-
         </div>
       </div>
     </div>

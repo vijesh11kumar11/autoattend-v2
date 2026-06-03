@@ -14,9 +14,9 @@ import { useAuth } from '../../context/AuthContext';
 
 const ROLE_LABEL = {
   principal: 'Principal',
-  hod:       'HOD',
-  teacher:   'Teacher',
-  student:   'Student',
+  hod: 'HOD',
+  teacher: 'Teacher',
+  student: 'Student',
 };
 
 function Field({ label, value }) {
@@ -34,7 +34,7 @@ export default function ProfilePage() {
   // ── Profile load ────────────────────────────────────────────────
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -48,18 +48,26 @@ export default function ProfilePage() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Password change (dual OTP) ──────────────────────────────────
-  const [stage,   setStage]   = useState('idle');   // idle | otp_sent | submitting
-  const [pwForm,  setPwForm]  = useState({ otp_sms: '', otp_email: '', new_password: '', confirm: '' });
-  const [pwInfo,  setPwInfo]  = useState(null);     // {phone_masked, email_masked, ...}
+  const [stage, setStage] = useState('idle'); // idle | otp_sent | submitting
+  const [pwForm, setPwForm] = useState({
+    otp_sms: '',
+    otp_email: '',
+    new_password: '',
+    confirm: '',
+  });
+  const [pwInfo, setPwInfo] = useState(null); // {phone_masked, email_masked, ...}
   const [pwError, setPwError] = useState('');
-  const [pwOk,    setPwOk]    = useState('');
+  const [pwOk, setPwOk] = useState('');
 
   async function requestOtp() {
-    setPwError(''); setPwOk('');
+    setPwError('');
+    setPwOk('');
     try {
       setStage('submitting');
       const { data } = await api.post('/api/auth/request-password-change', {});
@@ -73,7 +81,8 @@ export default function ProfilePage() {
 
   async function confirmPwChange(e) {
     e?.preventDefault?.();
-    setPwError(''); setPwOk('');
+    setPwError('');
+    setPwOk('');
     if (pwForm.new_password.length < 8) {
       setPwError('New password must be at least 8 characters.');
       return;
@@ -89,8 +98,8 @@ export default function ProfilePage() {
     try {
       setStage('submitting');
       await api.post('/api/auth/confirm-password-change', {
-        otp_sms:      pwForm.otp_sms,
-        otp_email:    pwForm.otp_email,
+        otp_sms: pwForm.otp_sms,
+        otp_email: pwForm.otp_email,
         new_password: pwForm.new_password,
       });
       setPwOk('Password changed successfully. You will be logged out in 3 seconds.');
@@ -111,7 +120,10 @@ export default function ProfilePage() {
 
   if (error) {
     return (
-      <div role="alert" className="max-w-2xl mx-auto bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+      <div
+        role="alert"
+        className="max-w-2xl mx-auto bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl"
+      >
         {error}
       </div>
     );
@@ -133,16 +145,16 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-          <Field label="Email"        value={profile.email} />
-          <Field label="Phone"        value={profile.phone} />
+          <Field label="Email" value={profile.email} />
+          <Field label="Phone" value={profile.phone} />
           {profile.role === 'student' && (
             <>
               <Field label="Roll number" value={profile.roll_number} />
-              <Field label="Semester"    value={profile.semester} />
+              <Field label="Semester" value={profile.semester} />
             </>
           )}
           <Field label="Face enrolled" value={profile.face_enrolled ? 'Yes' : 'No'} />
-          <Field label="TOTP enabled"  value={profile.totp_enabled ? 'Yes' : 'No'} />
+          <Field label="TOTP enabled" value={profile.totp_enabled ? 'Yes' : 'No'} />
           {profile.role !== 'student' && (
             <Field label="Face auth enabled" value={profile.face_auth_enabled ? 'Yes' : 'No'} />
           )}
@@ -157,12 +169,18 @@ export default function ProfilePage() {
         </p>
 
         {pwOk && (
-          <div role="status" className="mt-4 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-lg text-sm">
+          <div
+            role="status"
+            className="mt-4 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-lg text-sm"
+          >
             {pwOk}
           </div>
         )}
         {pwError && (
-          <div role="alert" className="mt-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+          <div
+            role="alert"
+            className="mt-4 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm"
+          >
             {pwError}
           </div>
         )}
@@ -197,7 +215,9 @@ export default function ProfilePage() {
                   autoComplete="one-time-code"
                   maxLength={6}
                   value={pwForm.otp_sms}
-                  onChange={(e) => setPwForm({ ...pwForm, otp_sms: e.target.value.replace(/\D/g, '') })}
+                  onChange={(e) =>
+                    setPwForm({ ...pwForm, otp_sms: e.target.value.replace(/\D/g, '') })
+                  }
                   className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm tracking-widest font-mono"
                   placeholder="••••••"
                   required
@@ -210,7 +230,9 @@ export default function ProfilePage() {
                   autoComplete="one-time-code"
                   maxLength={6}
                   value={pwForm.otp_email}
-                  onChange={(e) => setPwForm({ ...pwForm, otp_email: e.target.value.replace(/\D/g, '') })}
+                  onChange={(e) =>
+                    setPwForm({ ...pwForm, otp_email: e.target.value.replace(/\D/g, '') })
+                  }
                   className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm tracking-widest font-mono"
                   placeholder="••••••"
                   required
@@ -219,7 +241,9 @@ export default function ProfilePage() {
             </div>
 
             <label className="block">
-              <span className="text-xs text-slate-600 font-semibold">New password (min 8 chars)</span>
+              <span className="text-xs text-slate-600 font-semibold">
+                New password (min 8 chars)
+              </span>
               <input
                 type="password"
                 autoComplete="new-password"
@@ -253,7 +277,10 @@ export default function ProfilePage() {
               </button>
               <button
                 type="button"
-                onClick={() => { setStage('idle'); setPwForm({ otp_sms: '', otp_email: '', new_password: '', confirm: '' }); }}
+                onClick={() => {
+                  setStage('idle');
+                  setPwForm({ otp_sms: '', otp_email: '', new_password: '', confirm: '' });
+                }}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold"
               >
                 Cancel

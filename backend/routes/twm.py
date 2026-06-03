@@ -14,10 +14,11 @@ Endpoints:
   GET    /api/twm/history                  — past sessions
 """
 
-from datetime import date, datetime, time, timedelta, timezone
-from typing import List, Optional
+import logging
+from datetime import UTC, date, datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -30,14 +31,16 @@ from database import (
     CapsuleInteraction,
     SessionStatus,
     Subject,
+    TutorAssignment,
     TWMAttendance,
     TWMSession,
-    TutorAssignment,
     User,
     get_db,
 )
 from utils.auth_utils import teacher_or_above
 from utils.notification_utils import send_push_to_many
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/twm", tags=["twm"])
 
@@ -45,6 +48,7 @@ THRESHOLD = 75  # attendance warning threshold
 
 
 # ── Pydantic schemas ────────────────────────────────────────────────
+
 
 class StartTWMRequest(BaseModel):
     date: date
@@ -59,25 +63,28 @@ class MarkStudentRequest(BaseModel):
 
 
 class MarkBulkRequest(BaseModel):
-    records: List[MarkStudentRequest]
+    records: list[MarkStudentRequest]
 
 
 class SendReportRequest(BaseModel):
     session_id: int
-    student_ids: List[int]
+    student_ids: list[int]
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
+
 
 def _get_ward_student_ids(tutor_id: int, academic_year: str, db: Session) -> list[int]:
     """Active ward student IDs for this tutor + academic year."""
     return [
         a.student_id
-        for a in db.query(TutorAssignment).filter(
+        for a in db.query(TutorAssignment)
+        .filter(
             TutorAssignment.tutor_id == tutor_id,
             TutorAssignment.academic_year == academic_year,
             TutorAssignment.is_active.is_(True),
-        ).all()
+        )
+        .all()
     ]
 
 
@@ -145,6 +152,7 @@ def _attendance_status_label(pct: float) -> str:
 # ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/start")
 def start_twm(
     body: StartTWMRequest,
@@ -182,11 +190,13 @@ def start_twm(
 
     # Create absent records for all ward students
     for sid in ward_ids:
-        db.add(TWMAttendance(
-            session_id=session.id,
-            student_id=sid,
-            status=AttendanceStatus.absent,
-        ))
+        db.add(
+            TWMAttendance(
+                session_id=session.id,
+                student_id=sid,
+                status=AttendanceStatus.absent,
+            )
+        )
     db.commit()
     db.refresh(session)
 
@@ -195,12 +205,14 @@ def start_twm(
     for sid in ward_ids:
         u = db.query(User).filter(User.id == sid).first()
         if u:
-            students.append({
-                "student_id": u.id,
-                "name": u.name,
-                "roll_number": u.roll_number,
-                "status": "absent",
-            })
+            students.append(
+                {
+                    "student_id": u.id,
+                    "name": u.name,
+                    "roll_number": u.roll_number,
+                    "status": "absent",
+                }
+            )
 
     return {
         "session_id": session.id,
@@ -218,19 +230,27 @@ def mark_student(
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
 ):
-    sess = db.query(TWMSession).filter(
-        TWMSession.id == session_id,
-        TWMSession.tutor_id == current_user["id"],
-    ).first()
+    sess = (
+        db.query(TWMSession)
+        .filter(
+            TWMSession.id == session_id,
+            TWMSession.tutor_id == current_user["id"],
+        )
+        .first()
+    )
     if not sess:
         raise HTTPException(404, "TWM session not found.")
     if sess.status != SessionStatus.active:
         raise HTTPException(400, "Session is not active.")
 
-    rec = db.query(TWMAttendance).filter(
-        TWMAttendance.session_id == session_id,
-        TWMAttendance.student_id == body.student_id,
-    ).first()
+    rec = (
+        db.query(TWMAttendance)
+        .filter(
+            TWMAttendance.session_id == session_id,
+            TWMAttendance.student_id == body.student_id,
+        )
+        .first()
+    )
     if not rec:
         raise HTTPException(404, "Student not in this TWM session.")
 
@@ -253,10 +273,14 @@ def mark_bulk(
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
 ):
-    sess = db.query(TWMSession).filter(
-        TWMSession.id == session_id,
-        TWMSession.tutor_id == current_user["id"],
-    ).first()
+    sess = (
+        db.query(TWMSession)
+        .filter(
+            TWMSession.id == session_id,
+            TWMSession.tutor_id == current_user["id"],
+        )
+        .first()
+    )
     if not sess:
         raise HTTPException(404, "TWM session not found.")
     if sess.status != SessionStatus.active:
@@ -264,10 +288,14 @@ def mark_bulk(
 
     updated = 0
     for item in body.records:
-        rec = db.query(TWMAttendance).filter(
-            TWMAttendance.session_id == session_id,
-            TWMAttendance.student_id == item.student_id,
-        ).first()
+        rec = (
+            db.query(TWMAttendance)
+            .filter(
+                TWMAttendance.session_id == session_id,
+                TWMAttendance.student_id == item.student_id,
+            )
+            .first()
+        )
         if rec:
             try:
                 rec.status = AttendanceStatus(item.status)
@@ -287,10 +315,14 @@ def mark_all_present(
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
 ):
-    sess = db.query(TWMSession).filter(
-        TWMSession.id == session_id,
-        TWMSession.tutor_id == current_user["id"],
-    ).first()
+    sess = (
+        db.query(TWMSession)
+        .filter(
+            TWMSession.id == session_id,
+            TWMSession.tutor_id == current_user["id"],
+        )
+        .first()
+    )
     if not sess:
         raise HTTPException(404, "TWM session not found.")
     if sess.status != SessionStatus.active:
@@ -299,10 +331,12 @@ def mark_all_present(
     count = (
         db.query(TWMAttendance)
         .filter(TWMAttendance.session_id == session_id)
-        .update({
-            TWMAttendance.status: AttendanceStatus.present,
-            TWMAttendance.marked_at: func.now(),
-        })
+        .update(
+            {
+                TWMAttendance.status: AttendanceStatus.present,
+                TWMAttendance.marked_at: func.now(),
+            }
+        )
     )
     db.commit()
     return {"ok": True, "marked_present": count}
@@ -314,10 +348,14 @@ def end_twm(
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
 ):
-    sess = db.query(TWMSession).filter(
-        TWMSession.id == session_id,
-        TWMSession.tutor_id == current_user["id"],
-    ).first()
+    sess = (
+        db.query(TWMSession)
+        .filter(
+            TWMSession.id == session_id,
+            TWMSession.tutor_id == current_user["id"],
+        )
+        .first()
+    )
     if not sess:
         raise HTTPException(404, "TWM session not found.")
     if sess.status != SessionStatus.active:
@@ -393,17 +431,19 @@ def twm_dashboard(
         if att["needs_attention"]:
             counts["needs_attention"] += 1
 
-        ward_students.append({
-            "student_id": u.id,
-            "name": u.name,
-            "roll_number": u.roll_number,
-            "section": u.section.name if u.section_id and u.section else "",
-            "overall_pct": att["overall_pct"],
-            "per_subject": att["subjects"],
-            "needs_attention": att["needs_attention"],
-            "attendance_status": label,
-            "last_twm_attendance_status": last_twm[0].value if last_twm else None,
-        })
+        ward_students.append(
+            {
+                "student_id": u.id,
+                "name": u.name,
+                "roll_number": u.roll_number,
+                "section": u.section.name if u.section_id and u.section else "",
+                "overall_pct": att["overall_pct"],
+                "per_subject": att["subjects"],
+                "needs_attention": att["needs_attention"],
+                "attendance_status": label,
+                "last_twm_attendance_status": last_twm[0].value if last_twm else None,
+            }
+        )
 
     # Recent TWM sessions
     recent_sessions = (
@@ -416,15 +456,19 @@ def twm_dashboard(
     recent_list = []
     for s in recent_sessions:
         recs = db.query(TWMAttendance).filter(TWMAttendance.session_id == s.id).all()
-        present = sum(1 for r in recs if r.status in (AttendanceStatus.present, AttendanceStatus.late))
-        recent_list.append({
-            "session_id": s.id,
-            "date": str(s.date),
-            "status": s.status.value,
-            "present_count": present,
-            "total": len(recs),
-            "notes": s.notes,
-        })
+        present = sum(
+            1 for r in recs if r.status in (AttendanceStatus.present, AttendanceStatus.late)
+        )
+        recent_list.append(
+            {
+                "session_id": s.id,
+                "date": str(s.date),
+                "status": s.status.value,
+                "present_count": present,
+                "total": len(recs),
+                "notes": s.notes,
+            }
+        )
 
     return {
         "academic_year": academic_year,
@@ -443,10 +487,14 @@ def session_report(
     current_user: dict = Depends(teacher_or_above),
     db: Session = Depends(get_db),
 ):
-    sess = db.query(TWMSession).filter(
-        TWMSession.id == session_id,
-        TWMSession.tutor_id == current_user["id"],
-    ).first()
+    sess = (
+        db.query(TWMSession)
+        .filter(
+            TWMSession.id == session_id,
+            TWMSession.tutor_id == current_user["id"],
+        )
+        .first()
+    )
     if not sess:
         raise HTTPException(404, "TWM session not found.")
 
@@ -455,18 +503,20 @@ def session_report(
     for r in recs:
         u = db.query(User).filter(User.id == r.student_id).first()
         att = _student_attendance_summary(r.student_id, db)
-        students.append({
-            "student_id": r.student_id,
-            "name": u.name if u else "",
-            "roll_number": u.roll_number if u else "",
-            "twm_status": r.status.value,
-            "twm_note": r.note,
-            "marked_at": str(r.marked_at) if r.marked_at else None,
-            "overall_pct": att["overall_pct"],
-            "needs_attention": att["needs_attention"],
-            "attendance_status": _attendance_status_label(att["overall_pct"]),
-            "per_subject": att["subjects"],
-        })
+        students.append(
+            {
+                "student_id": r.student_id,
+                "name": u.name if u else "",
+                "roll_number": u.roll_number if u else "",
+                "twm_status": r.status.value,
+                "twm_note": r.note,
+                "marked_at": str(r.marked_at) if r.marked_at else None,
+                "overall_pct": att["overall_pct"],
+                "needs_attention": att["needs_attention"],
+                "attendance_status": _attendance_status_label(att["overall_pct"]),
+                "per_subject": att["subjects"],
+            }
+        )
 
     present = sum(1 for s in students if s["twm_status"] in ("present", "late"))
 
@@ -481,18 +531,23 @@ def session_report(
     try:
         ward_ids = [r.student_id for r in recs]
         if ward_ids:
-            cutoff = datetime.now(tz=timezone.utc) - timedelta(days=7)
-            inters = db.query(CapsuleInteraction).filter(
-                CapsuleInteraction.student_id.in_(ward_ids),
-                CapsuleInteraction.first_opened_at.isnot(None),
-                CapsuleInteraction.first_opened_at >= cutoff,
-            ).all()
+            cutoff = datetime.now(tz=UTC) - timedelta(days=7)
+            inters = (
+                db.query(CapsuleInteraction)
+                .filter(
+                    CapsuleInteraction.student_id.in_(ward_ids),
+                    CapsuleInteraction.first_opened_at.isnot(None),
+                    CapsuleInteraction.first_opened_at >= cutoff,
+                )
+                .all()
+            )
             opened = len(inters)
             attempted = sum(1 for i in inters if i.quiz_attempted)
             passed = sum(1 for i in inters if i.quiz_passed)
 
             # most-failed capsule (failed quizzes ↑)
             from collections import Counter
+
             fail_counter = Counter(
                 i.capsule_id for i in inters if i.quiz_attempted and not i.quiz_passed
             )
@@ -502,7 +557,9 @@ def session_report(
                 cap = db.query(Capsule).filter(Capsule.id == cap_id).first()
                 if cap:
                     most_failed = {
-                        "capsule_id": cap.id, "title": cap.title, "fail_count": fcnt,
+                        "capsule_id": cap.id,
+                        "title": cap.title,
+                        "fail_count": fcnt,
                     }
 
             engagement_pct = round((opened / (len(ward_ids) * 5)) * 100, 1) if ward_ids else 0.0
@@ -514,7 +571,10 @@ def session_report(
                 "most_failed_capsule": most_failed,
             }
     except Exception:
-        pass
+        # ClassPulse engagement is a supplementary widget; if its aggregation
+        # fails, fall back to the zeroed defaults rather than failing the
+        # whole dashboard. Logged for visibility.
+        logger.warning("Failed to compute ClassPulse engagement for TWM dashboard", exc_info=True)
 
     return {
         "session_id": sess.id,
@@ -547,15 +607,17 @@ def ward_combined_report(
         if not u:
             continue
         att = _student_attendance_summary(sid, db)
-        result.append({
-            "student_id": u.id,
-            "name": u.name,
-            "roll_number": u.roll_number,
-            "subjects": att["subjects"],
-            "overall_pct": att["overall_pct"],
-            "needs_attention": att["needs_attention"],
-            "attendance_status": _attendance_status_label(att["overall_pct"]),
-        })
+        result.append(
+            {
+                "student_id": u.id,
+                "name": u.name,
+                "roll_number": u.roll_number,
+                "subjects": att["subjects"],
+                "overall_pct": att["overall_pct"],
+                "needs_attention": att["needs_attention"],
+                "attendance_status": _attendance_status_label(att["overall_pct"]),
+            }
+        )
 
     return result
 
@@ -568,10 +630,14 @@ def send_report_to_ward(
 ):
     tutor_id = current_user["id"]
 
-    sess = db.query(TWMSession).filter(
-        TWMSession.id == body.session_id,
-        TWMSession.tutor_id == tutor_id,
-    ).first()
+    sess = (
+        db.query(TWMSession)
+        .filter(
+            TWMSession.id == body.session_id,
+            TWMSession.tutor_id == tutor_id,
+        )
+        .first()
+    )
     if not sess:
         raise HTTPException(404, "TWM session not found.")
 
@@ -625,16 +691,20 @@ def twm_history(
     result = []
     for s in sessions:
         recs = db.query(TWMAttendance).filter(TWMAttendance.session_id == s.id).all()
-        present = sum(1 for r in recs if r.status in (AttendanceStatus.present, AttendanceStatus.late))
-        result.append({
-            "session_id": s.id,
-            "date": str(s.date),
-            "start_time": str(s.start_time),
-            "end_time": str(s.end_time) if s.end_time else None,
-            "status": s.status.value,
-            "present": present,
-            "total": len(recs),
-            "notes": s.notes,
-            "auto_report_sent": s.auto_report_sent,
-        })
+        present = sum(
+            1 for r in recs if r.status in (AttendanceStatus.present, AttendanceStatus.late)
+        )
+        result.append(
+            {
+                "session_id": s.id,
+                "date": str(s.date),
+                "start_time": str(s.start_time),
+                "end_time": str(s.end_time) if s.end_time else None,
+                "status": s.status.value,
+                "present": present,
+                "total": len(recs),
+                "notes": s.notes,
+                "auto_report_sent": s.auto_report_sent,
+            }
+        )
     return result

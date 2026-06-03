@@ -12,11 +12,27 @@ import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 
 const KIND_META = {
-  alert:            { icon: '🔔', label: 'Alert',           color: 'bg-blue-50 border-blue-200 text-blue-700' },
-  dispute_update:   { icon: '⚖️', label: 'Dispute update',  color: 'bg-violet-50 border-violet-200 text-violet-700' },
-  dispute_pending:  { icon: '⚖️', label: 'Dispute pending', color: 'bg-amber-50 border-amber-200 text-amber-700' },
-  leave_decision:   { icon: '✋', label: 'Leave decision',  color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
-  leave_pending:    { icon: '✋', label: 'Leave pending',   color: 'bg-amber-50 border-amber-200 text-amber-700' },
+  alert: { icon: '🔔', label: 'Alert', color: 'bg-blue-50 border-blue-200 text-blue-700' },
+  dispute_update: {
+    icon: '⚖️',
+    label: 'Dispute update',
+    color: 'bg-violet-50 border-violet-200 text-violet-700',
+  },
+  dispute_pending: {
+    icon: '⚖️',
+    label: 'Dispute pending',
+    color: 'bg-amber-50 border-amber-200 text-amber-700',
+  },
+  leave_decision: {
+    icon: '✋',
+    label: 'Leave decision',
+    color: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  },
+  leave_pending: {
+    icon: '✋',
+    label: 'Leave pending',
+    color: 'bg-amber-50 border-amber-200 text-amber-700',
+  },
 };
 
 const SEEN_TS_KEY = 'aa.notif.seen_ts';
@@ -26,13 +42,13 @@ function fmtTime(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const diff = Date.now() - d.getTime();
-  const min  = Math.round(diff / 60000);
-  if (min < 1)  return 'just now';
+  const min = Math.round(diff / 60000);
+  if (min < 1) return 'just now';
   if (min < 60) return `${min}m ago`;
   const hr = Math.round(min / 60);
-  if (hr < 24)  return `${hr}h ago`;
+  if (hr < 24) return `${hr}h ago`;
   const day = Math.round(hr / 24);
-  if (day < 7)  return `${day}d ago`;
+  if (day < 7) return `${day}d ago`;
   return d.toLocaleString();
 }
 
@@ -54,18 +70,23 @@ export default function NotificationsInboxPage() {
   const { user } = useAuth();
   const role = user?.role || 'student';
 
-  const [items,   setItems]   = useState([]);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState('');
-  const [filter,  setFilter]  = useState('all');
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('all');
 
   const refresh = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
       const { data } = await api.get('/api/notifications/me', { params: { limit: 50 } });
       setItems(Array.isArray(data?.items) ? data.items : []);
       // Mark all as seen — clears the navbar bell badge.
-      try { localStorage.setItem(SEEN_TS_KEY, String(Date.now())); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(SEEN_TS_KEY, String(Date.now()));
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       setError(err?.response?.data?.detail || 'Failed to load notifications.');
     } finally {
@@ -73,14 +94,16 @@ export default function NotificationsInboxPage() {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const kinds = useMemo(() => {
-    const set = new Set(items.map(i => i.kind).filter(Boolean));
+    const set = new Set(items.map((i) => i.kind).filter(Boolean));
     return ['all', ...Array.from(set)];
   }, [items]);
 
-  const visible = filter === 'all' ? items : items.filter(i => i.kind === filter);
+  const visible = filter === 'all' ? items : items.filter((i) => i.kind === filter);
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
@@ -126,7 +149,10 @@ export default function NotificationsInboxPage() {
       )}
 
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+        <div
+          role="alert"
+          className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm"
+        >
           {error}
         </div>
       )}
@@ -142,12 +168,21 @@ export default function NotificationsInboxPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {visible.map((it, idx) => {
-              const meta = KIND_META[it.kind] || { icon: '🔔', label: it.kind || 'Notification', color: 'bg-slate-50 border-slate-200 text-slate-700' };
+              const meta = KIND_META[it.kind] || {
+                icon: '🔔',
+                label: it.kind || 'Notification',
+                color: 'bg-slate-50 border-slate-200 text-slate-700',
+              };
               const href = deepLink(role, it);
               const body = (
                 <div className="px-4 py-3 hover:bg-slate-50">
                   <div className="flex items-start gap-3">
-                    <span className={'text-lg leading-none flex-shrink-0 mt-0.5 border rounded-full w-8 h-8 flex items-center justify-center ' + meta.color}>
+                    <span
+                      className={
+                        'text-lg leading-none flex-shrink-0 mt-0.5 border rounded-full w-8 h-8 flex items-center justify-center ' +
+                        meta.color
+                      }
+                    >
                       {meta.icon}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -168,7 +203,13 @@ export default function NotificationsInboxPage() {
               );
               return (
                 <li key={idx}>
-                  {href ? <Link to={href} className="block">{body}</Link> : body}
+                  {href ? (
+                    <Link to={href} className="block">
+                      {body}
+                    </Link>
+                  ) : (
+                    body
+                  )}
                 </li>
               );
             })}

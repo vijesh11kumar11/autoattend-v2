@@ -21,13 +21,12 @@ import io
 import logging
 import random
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from azure.cognitiveservices.vision.face import FaceClient
 from azure.cognitiveservices.vision.face.models import (
     APIErrorException,
-    TrainingStatusType,
 )
 from msrest.authentication import CognitiveServicesCredentials
 from sqlalchemy.orm import Session
@@ -48,6 +47,7 @@ _face_client: Optional[FaceClient] = None
 # 1. Client factory (cached singleton)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def get_face_client() -> FaceClient:
     """
     Return a cached FaceClient. Creates one on first call.
@@ -65,6 +65,7 @@ def get_face_client() -> FaceClient:
 # ═══════════════════════════════════════════════════════════════════════
 # 2. PersonGroup bootstrap — call once on app startup
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def ensure_person_group(group_id: str, college_name: str) -> bool:
     """
@@ -96,6 +97,7 @@ def ensure_person_group(group_id: str, college_name: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════
 # Internal helpers
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _image_stream(image_bytes: bytes) -> io.BytesIO:
     """Wrap bytes in a seekable BytesIO stream (Azure SDK requires seek)."""
@@ -139,9 +141,7 @@ def _detect_single_face(client: FaceClient, image_bytes: bytes) -> object:
     if face.face_attributes and face.face_attributes.blur:
         blur_level = face.face_attributes.blur.blur_level
         if str(blur_level).lower() == "high":
-            raise ValueError(
-                "Image is too blurry. Please take a sharper photo in good lighting."
-            )
+            raise ValueError("Image is too blurry. Please take a sharper photo in good lighting.")
 
     return face
 
@@ -149,6 +149,7 @@ def _detect_single_face(client: FaceClient, image_bytes: bytes) -> object:
 # ═══════════════════════════════════════════════════════════════════════
 # 3. Enroll student face
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def enroll_student_face(
     student_id: int,
@@ -172,7 +173,7 @@ def enroll_student_face(
     client = get_face_client()
     try:
         _validate_image_size(image_bytes)
-        _detect_single_face(client, image_bytes)   # validates quality
+        _detect_single_face(client, image_bytes)  # validates quality
 
         # Create Person (one Person = one student across all their face images)
         person = client.person_group_person.create(
@@ -192,15 +193,16 @@ def enroll_student_face(
         client.person_group.train(settings.AZURE_PERSON_GROUP_ID)
         logger.info(
             "PersonGroup '%s' training triggered after enrolling student_id=%d",
-            settings.AZURE_PERSON_GROUP_ID, student_id,
+            settings.AZURE_PERSON_GROUP_ID,
+            student_id,
         )
 
         # Persist to DB
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         db.query(User).filter(User.id == student_id).update(
             {
-                "azure_person_id":  str(person.person_id),
-                "face_enrolled":    True,
+                "azure_person_id": str(person.person_id),
+                "face_enrolled": True,
                 "face_enrolled_at": now,
             },
             synchronize_session=False,
@@ -216,13 +218,15 @@ def enroll_student_face(
     except APIErrorException as exc:
         logger.error(
             "enroll_student_face Azure error for student_id=%d: %s",
-            student_id, exc.message,
+            student_id,
+            exc.message,
         )
         return {"success": False, "error": "Azure Face API error. Please try again."}
     except Exception as exc:
         logger.error(
             "enroll_student_face unexpected error for student_id=%d: %s",
-            student_id, exc,
+            student_id,
+            exc,
         )
         return {"success": False, "error": "Enrollment failed. Please try again."}
 
@@ -253,9 +257,7 @@ def verify_student_face(
     # 1. Load student record
     student: Optional[User] = db.query(User).filter(User.id == student_id).first()
     if not student or not student.face_enrolled or not student.azure_person_id:
-        logger.warning(
-            "verify_student_face: student_id=%d not enrolled", student_id
-        )
+        logger.warning("verify_student_face: student_id=%d not enrolled", student_id)
         return {
             "verified": False,
             "confidence": 0.0,
@@ -267,7 +269,7 @@ def verify_student_face(
 
         # 2. Detect submitted face
         detected = _detect_single_face(client, image_bytes)
-        face_id  = str(detected.face_id)
+        face_id = str(detected.face_id)
 
         # 3. Check training is ready before Identify
         training_status = check_training_status(settings.AZURE_PERSON_GROUP_ID)
@@ -296,13 +298,13 @@ def verify_student_face(
                 student_id,
             )
             return {
-                "verified":   False,
+                "verified": False,
                 "confidence": 0.0,
-                "reason":     "Face not matched. Please try again or contact your HOD.",
+                "reason": "Face not matched. Please try again or contact your HOD.",
             }
 
         candidate = results[0].candidates[0]
-        confidence     = round(float(candidate.confidence), 4)
+        confidence = round(float(candidate.confidence), 4)
         matched_person = str(candidate.person_id)
 
         # 5. Cross-check matched person == enrolled student's person
@@ -310,66 +312,75 @@ def verify_student_face(
             logger.warning(
                 "verify_student_face: PERSON MISMATCH — student_id=%d "
                 "enrolled=%s matched=%s confidence=%.4f",
-                student_id, student.azure_person_id, matched_person, confidence,
+                student_id,
+                student.azure_person_id,
+                matched_person,
+                confidence,
             )
             return {
-                "verified":   False,
+                "verified": False,
                 "confidence": confidence,
-                "reason":     "Face did not match the enrolled record.",
+                "reason": "Face did not match the enrolled record.",
             }
 
         if confidence < _CONFIDENCE_THRESHOLD:
             logger.info(
                 "verify_student_face: low confidence — student_id=%d confidence=%.4f",
-                student_id, confidence,
+                student_id,
+                confidence,
             )
             return {
-                "verified":   False,
+                "verified": False,
                 "confidence": confidence,
-                "reason":     f"Low confidence ({confidence:.0%}). Please try again in better lighting.",
+                "reason": f"Low confidence ({confidence:.0%}). Please try again in better lighting.",
             }
 
         logger.info(
             "verify_student_face: SUCCESS — student_id=%d confidence=%.4f",
-            student_id, confidence,
+            student_id,
+            confidence,
         )
         return {
-            "verified":        True,
-            "confidence":      confidence,
+            "verified": True,
+            "confidence": confidence,
             "azure_person_id": matched_person,
         }
 
     except ValueError as exc:
         logger.warning(
             "verify_student_face validation error for student_id=%d: %s",
-            student_id, exc,
+            student_id,
+            exc,
         )
         return {"verified": False, "confidence": 0.0, "reason": str(exc)}
     except APIErrorException as exc:
         logger.error(
             "verify_student_face Azure error for student_id=%d: %s",
-            student_id, exc.message,
+            student_id,
+            exc.message,
         )
         return {
-            "verified":   False,
+            "verified": False,
             "confidence": 0.0,
-            "reason":     "Azure Face API error. Please try again.",
+            "reason": "Azure Face API error. Please try again.",
         }
     except Exception as exc:
         logger.error(
             "verify_student_face unexpected error for student_id=%d: %s",
-            student_id, exc,
+            student_id,
+            exc,
         )
         return {
-            "verified":   False,
+            "verified": False,
             "confidence": 0.0,
-            "reason":     "Verification failed. Please try again.",
+            "reason": "Verification failed. Please try again.",
         }
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 5. Delete student face
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def delete_student_face(
     student_id: int,
@@ -383,7 +394,7 @@ def delete_student_face(
 
     Returns True on full success, False on any error.
     """
-    client  = get_face_client()
+    client = get_face_client()
     student = db.query(User).filter(User.id == student_id).first()
 
     if not student:
@@ -401,44 +412,50 @@ def delete_student_face(
             )
             logger.info(
                 "delete_student_face: deleted Person %s for student_id=%d",
-                old_person_id, student_id,
+                old_person_id,
+                student_id,
             )
         except APIErrorException as exc:
             logger.error(
                 "delete_student_face Azure error for student_id=%d: %s",
-                student_id, exc.message,
+                student_id,
+                exc.message,
             )
             return False
         except Exception as exc:
             logger.error(
                 "delete_student_face unexpected error for student_id=%d: %s",
-                student_id, exc,
+                student_id,
+                exc,
             )
             return False
 
     # 2. Clear DB face fields
     db.query(User).filter(User.id == student_id).update(
         {
-            "azure_person_id":  None,
-            "face_enrolled":    False,
+            "azure_person_id": None,
+            "face_enrolled": False,
             "face_enrolled_at": None,
         },
         synchronize_session=False,
     )
 
     # 3. Write audit log
-    db.add(FaceChangeLog(
-        student_id=student_id,
-        changed_by=changed_by_id,
-        old_azure_person_id=old_person_id,
-        new_azure_person_id=None,
-        reason=reason,
-    ))
+    db.add(
+        FaceChangeLog(
+            student_id=student_id,
+            changed_by=changed_by_id,
+            old_azure_person_id=old_person_id,
+            new_azure_person_id=None,
+            reason=reason,
+        )
+    )
     db.commit()
 
     logger.info(
         "delete_student_face: face cleared for student_id=%d by user_id=%d",
-        student_id, changed_by_id,
+        student_id,
+        changed_by_id,
     )
     return True
 
@@ -446,6 +463,7 @@ def delete_student_face(
 # ═══════════════════════════════════════════════════════════════════════
 # 6. Training status check (with retry)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def check_training_status(group_id: str) -> str:
     """
@@ -463,7 +481,9 @@ def check_training_status(group_id: str) -> str:
             if result in ("succeeded", "running", "failed"):
                 logger.debug(
                     "check_training_status: group='%s' status='%s' attempt=%d",
-                    group_id, result, attempt,
+                    group_id,
+                    result,
+                    attempt,
                 )
                 return result
 
@@ -473,12 +493,14 @@ def check_training_status(group_id: str) -> str:
         except APIErrorException as exc:
             logger.error(
                 "check_training_status Azure error (attempt %d): %s",
-                attempt, exc.message,
+                attempt,
+                exc.message,
             )
         except Exception as exc:
             logger.error(
                 "check_training_status unexpected error (attempt %d): %s",
-                attempt, exc,
+                attempt,
+                exc,
             )
 
         if attempt < 3:
@@ -522,8 +544,8 @@ def create_liveness_challenge(student_id: int, db: Session) -> dict:
     On error returns: {error: str}
     """
     try:
-        challenge  = random.choice(_LIVENESS_CHALLENGES)
-        expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=_LIVENESS_EXPIRY_SECONDS)
+        challenge = random.choice(_LIVENESS_CHALLENGES)
+        expires_at = datetime.now(tz=UTC) + timedelta(seconds=_LIVENESS_EXPIRY_SECONDS)
 
         record = LivenessChallenge(
             student_id=student_id,
@@ -537,17 +559,21 @@ def create_liveness_challenge(student_id: int, db: Session) -> dict:
 
         logger.info(
             "create_liveness_challenge: student_id=%d challenge='%s' id=%d",
-            student_id, challenge, record.id,
+            student_id,
+            challenge,
+            record.id,
         )
         return {
             "challenge_id": record.id,
-            "challenge":    challenge,
-            "expires_in":   _LIVENESS_EXPIRY_SECONDS,
+            "challenge": challenge,
+            "expires_in": _LIVENESS_EXPIRY_SECONDS,
         }
 
     except Exception as exc:
         logger.error(
-            "create_liveness_challenge error for student_id=%d: %s", student_id, exc,
+            "create_liveness_challenge error for student_id=%d: %s",
+            student_id,
+            exc,
         )
         return {"error": "Failed to create liveness challenge. Please try again."}
 
@@ -577,24 +603,28 @@ def verify_liveness_frames(
     Returns: {liveness_confirmed: bool, reason: str}
     """
     client = get_face_client()
-    now    = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     # 1. Fetch and validate challenge record
     record = (
         db.query(LivenessChallenge)
         .filter(
-            LivenessChallenge.id         == challenge_id,
-            LivenessChallenge.used       == False,   # noqa: E712
-            LivenessChallenge.expires_at >  now,
+            LivenessChallenge.id == challenge_id,
+            LivenessChallenge.used == False,  # noqa: E712
+            LivenessChallenge.expires_at > now,
         )
         .with_for_update()
         .first()
     )
     if record is None:
         logger.warning(
-            "verify_liveness_frames: invalid/expired challenge_id=%d", challenge_id,
+            "verify_liveness_frames: invalid/expired challenge_id=%d",
+            challenge_id,
         )
-        return {"liveness_confirmed": False, "reason": "Liveness challenge expired or already used."}
+        return {
+            "liveness_confirmed": False,
+            "reason": "Liveness challenge expired or already used.",
+        }
 
     challenge = record.challenge
 
@@ -627,13 +657,13 @@ def verify_liveness_frames(
             logger.error("verify_liveness_frames Azure error frame %d: %s", i, exc.message)
             return {
                 "liveness_confirmed": False,
-                "reason":             "Face analysis failed. Please try again.",
+                "reason": "Face analysis failed. Please try again.",
             }
         except Exception as exc:
             logger.error("verify_liveness_frames error frame %d: %s", i, exc)
             return {
                 "liveness_confirmed": False,
-                "reason":             "Frame analysis error. Please try again.",
+                "reason": "Frame analysis error. Please try again.",
             }
 
     # 3. Nose-tip landmark shift (frames 0 → 2) proves movement
@@ -643,13 +673,14 @@ def verify_liveness_frames(
         if lm0 and lm2 and lm0.nose_tip and lm2.nose_tip:
             dx = abs(lm0.nose_tip.x - lm2.nose_tip.x)
             dy = abs(lm0.nose_tip.y - lm2.nose_tip.y)
-            movement = (dx ** 2 + dy ** 2) ** 0.5
+            movement = (dx**2 + dy**2) ** 0.5
             if movement < _MIN_LANDMARK_SHIFT:
                 record.used = True
                 db.commit()
                 logger.info(
                     "verify_liveness_frames: insufficient movement=%.2f challenge_id=%d",
-                    movement, challenge_id,
+                    movement,
+                    challenge_id,
                 )
                 return {
                     "liveness_confirmed": False,
@@ -662,8 +693,12 @@ def verify_liveness_frames(
     # 4. Challenge-specific attribute check
     try:
         if challenge in ("turn_left", "turn_right"):
-            yaw0 = detected[0].face_attributes.head_pose.yaw if detected[0].face_attributes else None
-            yaw2 = detected[2].face_attributes.head_pose.yaw if detected[2].face_attributes else None
+            yaw0 = (
+                detected[0].face_attributes.head_pose.yaw if detected[0].face_attributes else None
+            )
+            yaw2 = (
+                detected[2].face_attributes.head_pose.yaw if detected[2].face_attributes else None
+            )
             if yaw0 is not None and yaw2 is not None:
                 if abs(yaw0 - yaw2) < _MIN_YAW_DELTA:
                     record.used = True
@@ -699,6 +734,8 @@ def verify_liveness_frames(
 
     logger.info(
         "verify_liveness_frames: PASSED student_id=%d challenge='%s' challenge_id=%d",
-        record.student_id, challenge, challenge_id,
+        record.student_id,
+        challenge,
+        challenge_id,
     )
     return {"liveness_confirmed": True, "reason": "Liveness confirmed."}

@@ -146,6 +146,7 @@ def generate_bluetooth_token() -> str:
 # A captured token therefore expires within ≤30 s, neutralising replay
 # attacks that record the BLE advertisement and re-use it later.
 
+
 def _current_window(now_ts: float | None = None) -> int:
     return int((now_ts if now_ts is not None else time.time()) // BLE_WINDOW_SECONDS)
 
@@ -159,7 +160,7 @@ def compute_ble_window_token(secret: str, window: int | None = None) -> str:
         window = _current_window()
     msg = f"BLE:{window}".encode()
     digest = hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
-    return digest[:32]   # 16 bytes of HMAC = plenty for proximity proof
+    return digest[:32]  # 16 bytes of HMAC = plenty for proximity proof
 
 
 def seconds_until_next_window(now_ts: float | None = None) -> int:
@@ -168,8 +169,8 @@ def seconds_until_next_window(now_ts: float | None = None) -> int:
 
 
 def verify_bluetooth_token(
-    secret:           str,
-    presented_token:  str,
+    secret: str,
+    presented_token: str,
     tolerance_windows: int = 1,
 ) -> bool:
     """
@@ -184,4 +185,3 @@ def verify_bluetooth_token(
         if hmac.compare_digest(expected, presented_token):
             return True
     return False
-

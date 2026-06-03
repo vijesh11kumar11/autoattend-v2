@@ -23,7 +23,9 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 # ── Paths / TTL ──────────────────────────────────────────────────────────
-_BASE_UPLOADS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads", "classpulse"))
+_BASE_UPLOADS = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "uploads", "classpulse")
+)
 WATERMARKED_DIR = os.path.join(_BASE_UPLOADS, "watermarked")
 WATERMARK_TTL_SECONDS = 3600
 
@@ -109,8 +111,7 @@ async def watermark_pdf_for_student(
                     align=1,
                     rotate=0,  # rotate via morph below for stable bbox
                     overlay=True,
-                    morph=(fitz.Point(page_w / 2, page_h / 2),
-                           fitz.Matrix(1, 1).prerotate(-45)),
+                    morph=(fitz.Point(page_w / 2, page_h / 2), fitz.Matrix(1, 1).prerotate(-45)),
                 )
             except Exception as e:
                 logger.warning("diagonal watermark failed on a page: %s", e)
@@ -130,8 +131,7 @@ async def watermark_pdf_for_student(
 
             # ── (c) Header dark-red strip with sharing warning ──────────
             header_rect = fitz.Rect(0, 0, page_w, 18)
-            page.draw_rect(header_rect, color=(1, 0.94, 0.94),
-                           fill=(1, 0.94, 0.94), overlay=True)
+            page.draw_rect(header_rect, color=(1, 0.94, 0.94), fill=(1, 0.94, 0.94), overlay=True)
             page.insert_textbox(
                 fitz.Rect(8, 2, page_w - 8, 16),
                 header_text,
@@ -169,9 +169,7 @@ def _stable_int_hash(s: str) -> int:
     return int.from_bytes(digest[:4], "big")
 
 
-def add_invisible_steganographic_marker(
-    file_path: str, student_id: int, capsule_id: int
-) -> str:
+def add_invisible_steganographic_marker(file_path: str, student_id: int, capsule_id: int) -> str:
     """
     Embed an invisible (white-on-white, fontsize=1) tracer in the page-1
     margin of a PDF so leaked documents can be traced even if the visible
@@ -189,9 +187,7 @@ def add_invisible_steganographic_marker(
 
     timestamp = int(datetime.utcnow().timestamp())
     secret = getattr(settings, "SECRET_KEY", "") or ""
-    digest = hashlib.sha256(
-        f"{student_id}:{capsule_id}:{secret}".encode("utf-8")
-    ).hexdigest()[:16]
+    digest = hashlib.sha256(f"{student_id}:{capsule_id}:{secret}".encode()).hexdigest()[:16]
     marker = f"WATERMARK:{student_id}:{capsule_id}:{timestamp}:{digest}"
 
     with fitz.open(file_path) as doc:

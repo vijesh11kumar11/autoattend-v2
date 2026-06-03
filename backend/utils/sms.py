@@ -27,7 +27,7 @@ def send_sms(phone: str, message: str) -> dict:
         {"ok": False, "error": "<reason>"}  on failure
     """
     api_key = settings.FAST2SMS_API_KEY
-    if not api_key or api_key == "will_add_later":
+    if not api_key or not api_key.strip():
         # In production we MUST log loudly — silent SMS failures were
         # leaving parent-alert / OTP flows broken with no visibility.
         if not settings.DEBUG:

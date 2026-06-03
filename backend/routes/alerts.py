@@ -9,7 +9,7 @@ Endpoints:
 """
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -41,6 +41,7 @@ router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
 # ── scope helpers (mirrors faculty.py) ───────────────────────────────
 
+
 def _course_ids_for_dept(dept_id: int, db: Session) -> list[int]:
     return [r[0] for r in db.query(Course.id).filter(Course.department_id == dept_id).all()]
 
@@ -55,11 +56,14 @@ def _student_ids_for_courses(course_ids: list[int], db: Session) -> list[int]:
     if not course_ids:
         return []
     return [
-        r[0] for r in db.query(User.id).filter(
+        r[0]
+        for r in db.query(User.id)
+        .filter(
             User.course_id.in_(course_ids),
             User.role == UserRole.student,
             User.is_active == True,  # noqa: E712
-        ).all()
+        )
+        .all()
     ]
 
 
@@ -71,10 +75,13 @@ def _defaulter_student_ids(course_ids: list[int], db: Session) -> list[int]:
         return []
 
     ended_ids = [
-        r[0] for r in db.query(AttendanceSession.id).filter(
+        r[0]
+        for r in db.query(AttendanceSession.id)
+        .filter(
             AttendanceSession.subject_id.in_(subject_ids),
             AttendanceSession.status == SessionStatus.ended,
-        ).all()
+        )
+        .all()
     ]
     if not ended_ids:
         return []
@@ -83,9 +90,9 @@ def _defaulter_student_ids(course_ids: list[int], db: Session) -> list[int]:
         db.query(
             AttendanceRecord.student_id,
             func.count(AttendanceRecord.id).label("total"),
-            func.sum(
-                case((AttendanceRecord.status == AttendanceStatus.present, 1), else_=0)
-            ).label("present"),
+            func.sum(case((AttendanceRecord.status == AttendanceStatus.present, 1), else_=0)).label(
+                "present"
+            ),
         )
         .filter(
             AttendanceRecord.session_id.in_(ended_ids),
@@ -110,17 +117,18 @@ def _defaulter_student_ids(course_ids: list[int], db: Session) -> list[int]:
 # GET /api/alerts/hod/history
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/hod/history")
 def alert_history(
-    alert_type:   Optional[str]  = Query(None),
-    alert_status: Optional[str]  = Query(None, alias="status"),
-    date_from:    Optional[date] = Query(None),
-    date_to:      Optional[date] = Query(None),
-    limit:        int            = Query(100, ge=1, le=500),
-    current_user: dict           = Depends(hod_or_above),
-    db:           Session        = Depends(get_db),
+    alert_type: Optional[str] = Query(None),
+    alert_status: Optional[str] = Query(None, alias="status"),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
-    dept_id    = current_user.get("department_id")
+    dept_id = current_user.get("department_id")
     course_ids = _course_ids_for_dept(dept_id, db)
     student_ids = _student_ids_for_courses(course_ids, db)
 
@@ -135,7 +143,9 @@ def alert_history(
         try:
             q = q.filter(AlertsLog.status == AlertStatus(alert_status))
         except ValueError:
-            pass
+            # Unknown status value in the query string — ignore the filter
+            # instead of failing on user input. Logged for visibility.
+            logger.debug("Ignoring invalid alert status filter: %r", alert_status)
     if date_from:
         q = q.filter(AlertsLog.sent_at >= datetime.combine(date_from, datetime.min.time()))
     if date_to:
@@ -145,16 +155,16 @@ def alert_history(
 
     return [
         {
-            "id":             r.AlertsLog.id,
-            "student_id":     r.AlertsLog.student_id,
-            "student_name":   r.student_name,
-            "roll_number":    r.roll_number,
-            "alert_type":     r.AlertsLog.alert_type,
-            "channel":        r.AlertsLog.channel.value,
-            "status":         r.AlertsLog.status.value,
-            "message":        r.AlertsLog.message,
-            "sent_at":        r.AlertsLog.sent_at.isoformat() if r.AlertsLog.sent_at else None,
-            "external_id":    r.AlertsLog.external_id,
+            "id": r.AlertsLog.id,
+            "student_id": r.AlertsLog.student_id,
+            "student_name": r.student_name,
+            "roll_number": r.roll_number,
+            "alert_type": r.AlertsLog.alert_type,
+            "channel": r.AlertsLog.channel.value,
+            "status": r.AlertsLog.status.value,
+            "message": r.AlertsLog.message,
+            "sent_at": r.AlertsLog.sent_at.isoformat() if r.AlertsLog.sent_at else None,
+            "external_id": r.AlertsLog.external_id,
         }
         for r in rows
     ]
@@ -164,14 +174,15 @@ def alert_history(
 # GET /api/alerts/hod/defaulters/count
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/hod/defaulters/count")
 def defaulters_count(
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
-    dept_id    = current_user.get("department_id")
+    dept_id = current_user.get("department_id")
     course_ids = _course_ids_for_dept(dept_id, db)
-    ids        = _defaulter_student_ids(course_ids, db)
+    ids = _defaulter_student_ids(course_ids, db)
     return {"count": len(ids), "student_ids": ids}
 
 
@@ -179,15 +190,16 @@ def defaulters_count(
 # POST /api/alerts/hod/send-bulk
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class BulkAlertBody(BaseModel):
     message: str
 
 
 @router.post("/hod/send-bulk")
 def send_bulk_alert(
-    body:         BulkAlertBody,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: BulkAlertBody,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     """
     Send WhatsApp alerts to parents of all defaulters in the HOD's department.
@@ -198,7 +210,7 @@ def send_bulk_alert(
     if len(message) > 1600:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Message too long (max 1600 chars).")
 
-    dept_id    = current_user.get("department_id")
+    dept_id = current_user.get("department_id")
     course_ids = _course_ids_for_dept(dept_id, db)
     student_ids = _defaulter_student_ids(course_ids, db)
 
@@ -210,36 +222,39 @@ def send_bulk_alert(
         stu = db.query(User).filter(User.id == sid).first()
         if not stu or not stu.parent_phone:
             log = AlertsLog(
-                student_id = sid,
-                alert_type = "low_attendance",
-                message    = message,
-                status     = AlertStatus.failed,
-                channel    = AlertChannel.whatsapp,
+                student_id=sid,
+                alert_type="low_attendance",
+                message=message,
+                status=AlertStatus.failed,
+                channel=AlertChannel.whatsapp,
             )
             db.add(log)
-            results.append({"student_id": sid, "status": "failed",
-                             "reason": "No parent phone on record"})
+            results.append(
+                {"student_id": sid, "status": "failed", "reason": "No parent phone on record"}
+            )
             continue
 
-        wa = send_whatsapp_message(stu.parent_phone, message)
+        wa = send_whatsapp_message(stu.parent_phone, message, recipient_name=f"Parent of {stu.name}")
         log = AlertsLog(
-            student_id  = sid,
-            alert_type  = "low_attendance",
-            message     = message,
-            status      = AlertStatus.sent if wa["ok"] else AlertStatus.failed,
-            channel     = AlertChannel.whatsapp,
-            external_id = wa.get("sid"),
+            student_id=sid,
+            alert_type="low_attendance",
+            message=message,
+            status=AlertStatus.sent if wa["ok"] else AlertStatus.failed,
+            channel=AlertChannel.whatsapp,
+            external_id=wa.get("sid"),
         )
         db.add(log)
-        results.append({
-            "student_id":   sid,
-            "student_name": stu.name,
-            "status":       "sent" if wa["ok"] else "failed",
-            "reason":       wa.get("error"),
-        })
+        results.append(
+            {
+                "student_id": sid,
+                "student_name": stu.name,
+                "status": "sent" if wa["ok"] else "failed",
+                "reason": wa.get("error"),
+            }
+        )
 
     db.commit()
-    sent   = sum(1 for r in results if r["status"] == "sent")
+    sent = sum(1 for r in results if r["status"] == "sent")
     failed = sum(1 for r in results if r["status"] == "failed")
     return {"sent": sent, "failed": failed, "results": results}
 
@@ -248,16 +263,17 @@ def send_bulk_alert(
 # POST /api/alerts/hod/send-custom
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class CustomAlertBody(BaseModel):
     student_id: int
-    message:    str
+    message: str
 
 
 @router.post("/hod/send-custom")
 def send_custom_alert(
-    body:         CustomAlertBody,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: CustomAlertBody,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     message = body.message.strip()
     if not message:
@@ -265,9 +281,9 @@ def send_custom_alert(
     if len(message) > 1600:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Message too long (max 1600 chars).")
 
-    dept_id    = current_user.get("department_id")
+    dept_id = current_user.get("department_id")
     course_ids = _course_ids_for_dept(dept_id, db)
-    valid_ids  = set(_student_ids_for_courses(course_ids, db))
+    valid_ids = set(_student_ids_for_courses(course_ids, db))
 
     if body.student_id not in valid_ids:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Student not in your department.")
@@ -278,46 +294,48 @@ def send_custom_alert(
 
     if not stu.parent_phone:
         log = AlertsLog(
-            student_id = stu.id,
-            alert_type = "custom",
-            message    = message,
-            status     = AlertStatus.failed,
-            channel    = AlertChannel.whatsapp,
+            student_id=stu.id,
+            alert_type="custom",
+            message=message,
+            status=AlertStatus.failed,
+            channel=AlertChannel.whatsapp,
         )
         db.add(log)
         db.commit()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            "No parent phone number on record for this student.")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "No parent phone number on record for this student.",
+        )
 
-    wa = send_whatsapp_message(stu.parent_phone, message)
+    wa = send_whatsapp_message(stu.parent_phone, message, recipient_name=f"Parent of {stu.name}")
     log = AlertsLog(
-        student_id  = stu.id,
-        alert_type  = "custom",
-        message     = message,
-        status      = AlertStatus.sent if wa["ok"] else AlertStatus.failed,
-        channel     = AlertChannel.whatsapp,
-        external_id = wa.get("sid"),
+        student_id=stu.id,
+        alert_type="custom",
+        message=message,
+        status=AlertStatus.sent if wa["ok"] else AlertStatus.failed,
+        channel=AlertChannel.whatsapp,
+        external_id=wa.get("sid"),
     )
     db.add(log)
     db.commit()
 
     return {
-        "status":       "sent" if wa["ok"] else "failed",
+        "status": "sent" if wa["ok"] else "failed",
         "student_name": stu.name,
-        "reason":       wa.get("error"),
+        "reason": wa.get("error"),
     }
-
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # STUDENT — read own notification feed
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/student")
 def my_alerts(
-    limit:        int  = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(student_only),
-    db:           Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """Return this student's most-recent alerts (WhatsApp/SMS/in-app)."""
     rows = (
@@ -329,12 +347,12 @@ def my_alerts(
     )
     return [
         {
-            "id":          a.id,
-            "alert_type":  a.alert_type,
-            "message":     a.message,
-            "sent_at":     a.sent_at.isoformat() if a.sent_at else None,
-            "status":      a.status.value   if a.status   else None,
-            "channel":     a.channel.value  if a.channel  else None,
+            "id": a.id,
+            "alert_type": a.alert_type,
+            "message": a.message,
+            "sent_at": a.sent_at.isoformat() if a.sent_at else None,
+            "status": a.status.value if a.status else None,
+            "channel": a.channel.value if a.channel else None,
         }
         for a in rows
     ]

@@ -1,0 +1,34 @@
+# ──────────────────────────────────────────────────────────────────────
+# Docker CI — verify the backend & frontend images build cleanly.
+# ──────────────────────────────────────────────────────────────────────
+name: docker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/Dockerfile"
+      - "backend/**"
+      - "frontend/Dockerfile"
+      - "frontend/**"
+      - "docker-compose.yml"
+      - ".github/workflows/docker.yml"
+  pull_request:
+    paths:
+      - "backend/Dockerfile"
+      - "frontend/Dockerfile"
+      - "docker-compose.yml"
+      - ".github/workflows/docker.yml"
+
+jobs:
+  build-images:
+    name: build backend + frontend images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t autoattend-backend:ci ./backend
+
+      - name: Build frontend image
+        run: docker build -t autoattend-frontend:ci ./frontend

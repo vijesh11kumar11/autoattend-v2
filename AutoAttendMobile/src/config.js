@@ -10,23 +10,23 @@
  * STARTUP_PING_TIMEOUT  Startup backend health-check timeout (milliseconds).
  */
 
-const _ENV_URL  = process.env.EXPO_PUBLIC_API_URL;
+const _ENV_URL = process.env.EXPO_PUBLIC_API_URL;
 const _FALLBACK = 'http://192.168.1.100:8000';
 
-export const API_BASE_URL         = _ENV_URL ?? _FALLBACK;
-export const API_TIMEOUT          = 15_000;
+export const API_BASE_URL = _ENV_URL ?? _FALLBACK;
+export const API_TIMEOUT = 15_000;
 // STARTUP_PING_TIMEOUT is intentionally SHORTER than API_TIMEOUT (#89):
 // the startup health-check should fail fast so we can show "server
 // unreachable" before the user blames the next real request. Long-running
 // in-flight requests still get the full API_TIMEOUT window.
 export const STARTUP_PING_TIMEOUT = 10_000;
-export const IS_USING_FALLBACK    = !_ENV_URL;
+export const IS_USING_FALLBACK = !_ENV_URL;
 
 if (IS_USING_FALLBACK) {
-  // eslint-disable-next-line no-console
   console.warn(
-    '[config] EXPO_PUBLIC_API_URL is not set — falling back to ' + _FALLBACK +
-    '. Set EXPO_PUBLIC_API_URL in your .env / EAS build profile before shipping.'
+    '[config] EXPO_PUBLIC_API_URL is not set — falling back to ' +
+      _FALLBACK +
+      '. Set EXPO_PUBLIC_API_URL in your .env / EAS build profile before shipping.'
   );
 }
 
@@ -34,5 +34,5 @@ if (IS_USING_FALLBACK) {
 // Filenames (sans extension) of certificate files bundled with the app.
 // Drop the cert into android/app/src/main/assets/<name>.cer and
 // ios/<name>.cer, then list it here.
-export const PINNED_CERT_FILES   = ['traceln_render'];
+export const PINNED_CERT_FILES = ['traceln_render'];
 export const SSL_PINNING_ENABLED = false;

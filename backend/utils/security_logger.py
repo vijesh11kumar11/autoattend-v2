@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -31,31 +31,31 @@ logger = logging.getLogger(__name__)
 
 
 class SecurityEventType(str, Enum):
-    LOGIN_SUCCESS              = "LOGIN_SUCCESS"
-    LOGIN_FAILURE              = "LOGIN_FAILURE"
-    LOGIN_LOCKED               = "LOGIN_LOCKED"
-    TOTP_SUCCESS               = "TOTP_SUCCESS"
-    TOTP_FAILURE               = "TOTP_FAILURE"
-    TOTP_LOCKED                = "TOTP_LOCKED"
-    PASSWORD_CHANGED           = "PASSWORD_CHANGED"
-    PASSWORD_RESET             = "PASSWORD_RESET"
-    DEVICE_MISMATCH            = "DEVICE_MISMATCH"
-    FACE_VERIFY_SUCCESS        = "FACE_VERIFY_SUCCESS"
-    FACE_VERIFY_FAILURE        = "FACE_VERIFY_FAILURE"
-    QR_INVALID                 = "QR_INVALID"
-    GPS_SPOOFING_DETECTED      = "GPS_SPOOFING_DETECTED"
-    BLE_MISMATCH               = "BLE_MISMATCH"
+    LOGIN_SUCCESS = "LOGIN_SUCCESS"
+    LOGIN_FAILURE = "LOGIN_FAILURE"
+    LOGIN_LOCKED = "LOGIN_LOCKED"
+    TOTP_SUCCESS = "TOTP_SUCCESS"
+    TOTP_FAILURE = "TOTP_FAILURE"
+    TOTP_LOCKED = "TOTP_LOCKED"
+    PASSWORD_CHANGED = "PASSWORD_CHANGED"
+    PASSWORD_RESET = "PASSWORD_RESET"
+    DEVICE_MISMATCH = "DEVICE_MISMATCH"
+    FACE_VERIFY_SUCCESS = "FACE_VERIFY_SUCCESS"
+    FACE_VERIFY_FAILURE = "FACE_VERIFY_FAILURE"
+    QR_INVALID = "QR_INVALID"
+    GPS_SPOOFING_DETECTED = "GPS_SPOOFING_DETECTED"
+    BLE_MISMATCH = "BLE_MISMATCH"
     ATTENDANCE_FRAUD_SUSPECTED = "ATTENDANCE_FRAUD_SUSPECTED"
-    UNAUTHORIZED_ACCESS        = "UNAUTHORIZED_ACCESS"
-    TOKEN_EXPIRED              = "TOKEN_EXPIRED"
-    RATE_LIMIT_EXCEEDED        = "RATE_LIMIT_EXCEEDED"
-    ADMIN_ACTION               = "ADMIN_ACTION"
-    ROOTED_DEVICE_DETECTED     = "ROOTED_DEVICE_DETECTED"
+    UNAUTHORIZED_ACCESS = "UNAUTHORIZED_ACCESS"
+    TOKEN_EXPIRED = "TOKEN_EXPIRED"
+    RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
+    ADMIN_ACTION = "ADMIN_ACTION"
+    ROOTED_DEVICE_DETECTED = "ROOTED_DEVICE_DETECTED"
 
 
 class Severity(str, Enum):
-    INFO     = "INFO"
-    WARN     = "WARN"
+    INFO = "INFO"
+    WARN = "WARN"
     CRITICAL = "CRITICAL"
 
 
@@ -90,15 +90,15 @@ class SecurityEventLogger:
         db: Any = None,
     ) -> None:
         record = {
-            "ts":         datetime.now(tz=timezone.utc).isoformat(),
+            "ts": datetime.now(tz=UTC).isoformat(),
             "event_type": event_type.value,
-            "severity":   severity.value,
-            "user_id":    user_id,
+            "severity": severity.value,
+            "user_id": user_id,
             "college_id": college_id,
-            "ip":         ip_address,
-            "ua":         (user_agent or "")[:500] or None,
+            "ip": ip_address,
+            "ua": (user_agent or "")[:500] or None,
             "request_id": request_id,
-            "details":    details or {},
+            "details": details or {},
         }
 
         # 1) JSONL file
@@ -117,15 +117,16 @@ class SecurityEventLogger:
         if db is not None and severity in (Severity.WARN, Severity.CRITICAL):
             try:
                 from database import SecurityEvent  # local import avoids cycle
+
                 row = SecurityEvent(
-                    event_type    = event_type.value,
-                    severity      = severity.value,
-                    user_id       = user_id,
-                    college_id    = college_id,
-                    ip_address    = ip_address,
-                    user_agent    = (user_agent or "")[:500] or None,
-                    request_id    = request_id,
-                    details       = details or {},
+                    event_type=event_type.value,
+                    severity=severity.value,
+                    user_id=user_id,
+                    college_id=college_id,
+                    ip_address=ip_address,
+                    user_agent=(user_agent or "")[:500] or None,
+                    request_id=request_id,
+                    details=details or {},
                 )
                 db.add(row)
                 db.commit()
@@ -134,7 +135,9 @@ class SecurityEventLogger:
                 try:
                     db.rollback()
                 except Exception:
-                    pass
+                    # Rollback during error recovery may itself fail on a broken
+                    # connection; nothing more we can do here safely.
+                    logger.debug("security_logger rollback failed", exc_info=True)
 
 
 sec_logger = SecurityEventLogger()

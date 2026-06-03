@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Literal, Optional
+from typing import Literal
 
 from config import settings
 
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Optional import — keep startup safe even if the package is missing.
 try:
     from agora_token_builder import RtcTokenBuilder  # type: ignore
+
     _HAS_AGORA = True
 except Exception as exc:  # pragma: no cover
     RtcTokenBuilder = None  # type: ignore

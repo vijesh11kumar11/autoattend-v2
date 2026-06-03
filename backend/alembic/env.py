@@ -3,6 +3,7 @@ import sys
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 
 # ── make sure backend/ is on sys.path so imports resolve
@@ -10,10 +11,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from config import settings
-from database import Base  # noqa: F401 — imports all models via relationship chain
 # Explicit model imports ensure Alembic detects every table
 import database  # noqa: F401
+from config import settings
+from database import Base  # noqa: F401 — imports all models via relationship chain
 
 config = context.config
 

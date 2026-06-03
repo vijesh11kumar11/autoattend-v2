@@ -12,33 +12,52 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
-  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
 import api from '../../api/axios';
 import DashboardLayout from '../../components/DashboardLayout';
 
 // #97 — lazy-load every sub-route page so the Principal bundle only
 // fetches chunks the user actually visits.
-const CollegeReportsPage      = lazy(() => import('./CollegeReportsPage'));
-const DepartmentsPage         = lazy(() => import('./DepartmentsPage'));
-const PrincipalAlertsPage     = lazy(() => import('./PrincipalAlertsPage'));
-const PrincipalAuditPage      = lazy(() => import('./PrincipalAuditPage'));
-const FeedPage                = lazy(() => import('../shared/FeedPage'));
-const ArticleDetailPage       = lazy(() => import('../shared/ArticleDetailPage'));
-const CareerRoadmapPage       = lazy(() => import('../shared/CareerRoadmapPage'));
-const SuggestionBoxPage       = lazy(() => import('../shared/SuggestionBoxPage'));
-const ProfilePage             = lazy(() => import('../shared/ProfilePage'));
-const NotificationsInboxPage  = lazy(() => import('../shared/NotificationsInboxPage'));
+const CollegeReportsPage = lazy(() => import('./CollegeReportsPage'));
+const DepartmentsPage = lazy(() => import('./DepartmentsPage'));
+const PrincipalAlertsPage = lazy(() => import('./PrincipalAlertsPage'));
+const PrincipalAuditPage = lazy(() => import('./PrincipalAuditPage'));
+const FeedPage = lazy(() => import('../shared/FeedPage'));
+const ArticleDetailPage = lazy(() => import('../shared/ArticleDetailPage'));
+const CareerRoadmapPage = lazy(() => import('../shared/CareerRoadmapPage'));
+const SuggestionBoxPage = lazy(() => import('../shared/SuggestionBoxPage'));
+const ProfilePage = lazy(() => import('../shared/ProfilePage'));
+const NotificationsInboxPage = lazy(() => import('../shared/NotificationsInboxPage'));
 const PrincipalClassPulsePage = lazy(() => import('./PrincipalClassPulsePage'));
 
 function RouteFallback() {
   return (
     <div className="flex items-center justify-center py-20">
-      <div style={{ borderColor: '#e2e8f0', borderTopColor: 'var(--color-secondary)',
-                    width: 32, height: 32, borderWidth: 4,
-                    borderRadius: '9999px', borderStyle: 'solid' }}
-           className="animate-spin" />
+      <div
+        style={{
+          borderColor: '#e2e8f0',
+          borderTopColor: 'var(--color-secondary)',
+          width: 32,
+          height: 32,
+          borderWidth: 4,
+          borderRadius: '9999px',
+          borderStyle: 'solid',
+        }}
+        className="animate-spin"
+      />
     </div>
   );
 }
@@ -106,38 +125,40 @@ function DeptCard({ dept }) {
           <p>Students</p>
         </div>
         <div>
-          <p className={`font-semibold ${dept.defaulter_count > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+          <p
+            className={`font-semibold ${dept.defaulter_count > 0 ? 'text-red-500' : 'text-emerald-600'}`}
+          >
             {dept.defaulter_count}
           </p>
           <p>Defaulters</p>
         </div>
       </div>
 
-      {dept.hod_name && (
-        <p className="text-xs text-slate-400 truncate">HOD: {dept.hod_name}</p>
-      )}
+      {dept.hod_name && <p className="text-xs text-slate-400 truncate">HOD: {dept.hod_name}</p>}
     </div>
   );
 }
 
 // ── Overview page ─────────────────────────────────────────────────────
 function PrincipalOverview() {
-  const [data,    setData]    = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/principal/stats')
+    api
+      .get('/principal/stats')
       .then((r) => setData(r.data))
       .catch(() => setError('Failed to load dashboard data.'))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-8 text-slate-400 text-sm animate-pulse">Loading overview…</div>;
-  if (error)   return <div className="p-8 text-red-500 text-sm">{error}</div>;
+  if (loading)
+    return <div className="p-8 text-slate-400 text-sm animate-pulse">Loading overview…</div>;
+  if (error) return <div className="p-8 text-red-500 text-sm">{error}</div>;
 
   const distData = [
-    { name: 'Safe (≥75%)',    value: data.distribution.safe     },
+    { name: 'Safe (≥75%)', value: data.distribution.safe },
     { name: 'At Risk (60–75%)', value: data.distribution.at_risk },
     { name: 'Detained (<60%)', value: data.distribution.detained },
   ];
@@ -146,23 +167,37 @@ function PrincipalOverview() {
     <div className="space-y-6">
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        <StatCard icon="🏛️" label="Departments"      value={data.total_departments} />
-        <StatCard icon="👩‍🏫" label="Teachers"         value={data.total_teachers} />
-        <StatCard icon="🎓" label="Students"          value={data.total_students} />
-        <StatCard icon="✅" label="Overall Attendance" value={`${data.overall_attendance_pct}%`}
-                  sub="Ended sessions" />
-        <StatCard icon="⚠️" label="Critical Defaulters" value={data.critical_defaulters}
-                  danger={data.critical_defaulters > 0} sub={`< ${75}% overall`} />
+        <StatCard icon="🏛️" label="Departments" value={data.total_departments} />
+        <StatCard icon="👩‍🏫" label="Teachers" value={data.total_teachers} />
+        <StatCard icon="🎓" label="Students" value={data.total_students} />
+        <StatCard
+          icon="✅"
+          label="Overall Attendance"
+          value={`${data.overall_attendance_pct}%`}
+          sub="Ended sessions"
+        />
+        <StatCard
+          icon="⚠️"
+          label="Critical Defaulters"
+          value={data.critical_defaulters}
+          danger={data.critical_defaulters > 0}
+          sub={`< ${75}% overall`}
+        />
       </div>
 
       {/* ── Charts row ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Bar chart: dept comparison */}
         <div className="card p-4 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Department Attendance Comparison</h3>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">
+            Department Attendance Comparison
+          </h3>
           {data.departments.length ? (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={data.departments} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+              <BarChart
+                data={data.departments}
+                margin={{ top: 0, right: 10, left: -20, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="code" tick={{ fontSize: 11 }} />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
@@ -174,7 +209,13 @@ function PrincipalOverview() {
                   {data.departments.map((dept, i) => (
                     <Cell
                       key={i}
-                      fill={dept.avg_attendance_pct >= 75 ? '#10b981' : dept.avg_attendance_pct >= 60 ? '#f59e0b' : '#ef4444'}
+                      fill={
+                        dept.avg_attendance_pct >= 75
+                          ? '#10b981'
+                          : dept.avg_attendance_pct >= 60
+                            ? '#f59e0b'
+                            : '#ef4444'
+                      }
                     />
                   ))}
                 </Bar>
@@ -192,8 +233,14 @@ function PrincipalOverview() {
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
-                  data={distData} cx="50%" cy="50%" innerRadius={50} outerRadius={80}
-                  dataKey="value" nameKey="name" paddingAngle={3}
+                  data={distData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  dataKey="value"
+                  nameKey="name"
+                  paddingAngle={3}
                 >
                   {distData.map((_, i) => (
                     <Cell key={i} fill={DISTRIBUTION_COLORS[i]} />
@@ -214,18 +261,27 @@ function PrincipalOverview() {
         <h3 className="text-sm font-semibold text-slate-700 mb-3">30-Day Attendance Trend</h3>
         {data.attendance_trend.length ? (
           <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={data.attendance_trend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <LineChart
+              data={data.attendance_trend}
+              margin={{ top: 5, right: 10, left: -20, bottom: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="date" tick={{ fontSize: 10 }}
-                     tickFormatter={(d) => d.slice(5)} />
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d) => d.slice(5)} />
               <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
               <Tooltip
                 formatter={(v) => [`${v}%`, 'Attendance']}
                 contentStyle={{ fontSize: 12 }}
                 labelFormatter={(d) => `Date: ${d}`}
               />
-              <Line type="monotone" dataKey="pct" stroke="#f57c00" strokeWidth={2}
-                    dot={{ r: 2 }} activeDot={{ r: 4 }} name="Attendance %" />
+              <Line
+                type="monotone"
+                dataKey="pct"
+                stroke="#f57c00"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+                activeDot={{ r: 4 }}
+                name="Attendance %"
+              />
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -268,7 +324,9 @@ function PrincipalOverview() {
                   <td className="py-1.5 pr-3 max-w-xs truncate">{a.message}</td>
                   <td className="py-1.5 pr-3 capitalize">{a.channel}</td>
                   <td className="py-1.5">
-                    <span className={`badge ${a.status === 'sent' ? 'badge-success' : 'badge-danger'}`}>
+                    <span
+                      className={`badge ${a.status === 'sent' ? 'badge-success' : 'badge-danger'}`}
+                    >
                       {a.status}
                     </span>
                   </td>
@@ -293,19 +351,19 @@ export default function PrincipalDashboard() {
     <DashboardLayout>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="dashboard"   element={<PrincipalOverview />} />
+          <Route path="dashboard" element={<PrincipalOverview />} />
           <Route path="departments" element={<DepartmentsPage />} />
-          <Route path="reports"     element={<CollegeReportsPage />} />
-          <Route path="alerts"      element={<PrincipalAlertsPage />} />
-          <Route path="audit"       element={<PrincipalAuditPage />} />
-          <Route path="feed"        element={<FeedPage />} />
+          <Route path="reports" element={<CollegeReportsPage />} />
+          <Route path="alerts" element={<PrincipalAlertsPage />} />
+          <Route path="audit" element={<PrincipalAuditPage />} />
+          <Route path="feed" element={<FeedPage />} />
           <Route path="feed/:articleId" element={<ArticleDetailPage />} />
-          <Route path="career"           element={<CareerRoadmapPage />} />
-          <Route path="suggestions"      element={<SuggestionBoxPage />} />
-          <Route path="profile"          element={<ProfilePage />} />
-          <Route path="inbox"            element={<NotificationsInboxPage />} />
-          <Route path="classpulse"       element={<PrincipalClassPulsePage />} />
-          <Route path="*"           element={<Navigate to="dashboard" replace />} />
+          <Route path="career" element={<CareerRoadmapPage />} />
+          <Route path="suggestions" element={<SuggestionBoxPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="inbox" element={<NotificationsInboxPage />} />
+          <Route path="classpulse" element={<PrincipalClassPulsePage />} />
+          <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Routes>
       </Suspense>
     </DashboardLayout>

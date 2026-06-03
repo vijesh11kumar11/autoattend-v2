@@ -23,16 +23,17 @@ from typing import Optional
 import httpx
 
 from config import settings
+from utils.claude_ai import call_claude_sync
 
 logger = logging.getLogger(__name__)
 
 AI_TIMEOUT_SEC = 30
 PDF_TEXT_CHAR_LIMIT = 8000
 
-
 # ═══════════════════════════════════════════════════════════════════════
 # Low-level provider calls (sync — wrapped in asyncio.to_thread for async)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _call_gemini_sync(prompt: str, system: Optional[str] = None) -> Optional[str]:
     api_key = settings.GEMINI_API_KEY
@@ -40,6 +41,7 @@ def _call_gemini_sync(prompt: str, system: Optional[str] = None) -> Optional[str
         return None
     try:
         from google import genai
+
         client = genai.Client(api_key=api_key)
         contents = prompt if not system else f"{system}\n\n{prompt}"
         response = client.models.generate_content(
@@ -56,18 +58,21 @@ def _call_gemini_sync(prompt: str, system: Optional[str] = None) -> Optional[str
         return None
 
 
-def _call_groq_sync(prompt: str, system: str = "You are an expert academic assistant. Return only valid JSON.") -> Optional[str]:
+def _call_groq_sync(
+    prompt: str, system: str = "You are an expert academic assistant. Return only valid JSON."
+) -> Optional[str]:
     api_key = settings.GROQ_API_KEY
     if not api_key:
         return None
     try:
         from groq import Groq
+
         client = Groq(api_key=api_key)
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user",   "content": prompt},
+                {"role": "user", "content": prompt},
             ],
             temperature=0.5,
             max_tokens=2048,
@@ -100,7 +105,18 @@ def _parse_json(text: str) -> Optional[dict | list]:
 
 
 async def _ai_json(prompt: str, system: Optional[str] = None) -> Optional[dict | list]:
-    """Try Gemini → fallback Groq. Returns parsed JSON or None."""
+    """Try Claude → Gemini → Groq. Returns parsed JSON or None."""
+    raw = await asyncio.to_thread(
+        call_claude_sync,
+        prompt,
+        system or "You are an expert academic assistant. Return only valid JSON.",
+    )
+    parsed = _parse_json(raw) if raw else None
+    if parsed is not None:
+        logger.info("✅ ClassPulse AI: Claude returned valid JSON")
+        return parsed
+
+    logger.info("⚡ ClassPulse AI: Claude failed, falling back to Gemini")
     raw = await asyncio.to_thread(_call_gemini_sync, prompt, system)
     parsed = _parse_json(raw) if raw else None
     if parsed is not None:
@@ -109,7 +125,8 @@ async def _ai_json(prompt: str, system: Optional[str] = None) -> Optional[dict |
 
     logger.info("⚡ ClassPulse AI: Gemini failed, falling back to Groq")
     raw = await asyncio.to_thread(
-        _call_groq_sync, prompt,
+        _call_groq_sync,
+        prompt,
         system or "You are an expert academic assistant. Return only valid JSON.",
     )
     parsed = _parse_json(raw) if raw else None
@@ -191,13 +208,15 @@ Return ONLY valid JSON matching this schema (no markdown fences):
         rt = int(result.get("estimated_read_time_min", 10))
         out["estimated_read_time_min"] = max(1, min(120, rt))
     except (TypeError, ValueError):
-        pass
+        # AI returned a non-numeric read-time; keep the schema default of 10.
+        logger.debug("Non-numeric estimated_read_time_min from AI; using default")
     return out
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 2. Generate quiz
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _normalise_quiz(raw) -> list[dict]:
     """Validate and clean a quiz response. Returns up to 3 valid MCQs or []."""
@@ -231,16 +250,20 @@ def _normalise_quiz(raw) -> list[dict]:
             continue
         if not q:
             continue
-        cleaned.append({
-            "question": q[:500],
-            "options": {k: opts[k][:300] for k in ("A", "B", "C", "D")},
-            "correct_answer": ans,
-            "explanation": expl[:500],
-        })
+        cleaned.append(
+            {
+                "question": q[:500],
+                "options": {k: opts[k][:300] for k in ("A", "B", "C", "D")},
+                "correct_answer": ans,
+                "explanation": expl[:500],
+            }
+        )
     return cleaned
 
 
-async def generate_capsule_quiz(file_text: str, subject_name: str, difficulty: str = "intermediate") -> list[dict]:
+async def generate_capsule_quiz(
+    file_text: str, subject_name: str, difficulty: str = "intermediate"
+) -> list[dict]:
     """
     Returns a list of EXACTLY 3 MCQs grounded in the actual content.
     Returns [] if AI fails entirely (caller should leave ai_quiz_json=None).
@@ -279,7 +302,10 @@ Return ONLY a valid JSON array (no markdown fences) with this shape:
 {snippet}
 === END ==="""
 
-    result = await _ai_json(prompt, system="You are an expert instructor. Return only a valid JSON array of 3 MCQ items.")
+    result = await _ai_json(
+        prompt,
+        system="You are an expert instructor. Return only a valid JSON array of 3 MCQ items.",
+    )
     quiz = _normalise_quiz(result)
     if len(quiz) < 3:
         logger.warning("📝 ClassPulse quiz: only %d valid items generated", len(quiz))
@@ -290,7 +316,10 @@ Return ONLY a valid JSON array (no markdown fences) with this shape:
 # 3. Auto-answer a Class Wall doubt
 # ═══════════════════════════════════════════════════════════════════════
 
-async def auto_answer_doubt(question: str, subject_name: str, capsule_summary: str | None = None) -> dict:
+
+async def auto_answer_doubt(
+    question: str, subject_name: str, capsule_summary: str | None = None
+) -> dict:
     """
     Returns:
       {answer: str, confidence: float (0-1), needs_teacher: bool, related_topics: [str]}
@@ -328,7 +357,9 @@ Important rules:
 Return ONLY valid JSON (no markdown fences):
 {schema}"""
 
-    result = await _ai_json(prompt, system="You are a precise academic tutor. Return only valid JSON.")
+    result = await _ai_json(
+        prompt, system="You are a precise academic tutor. Return only valid JSON."
+    )
     if not isinstance(result, dict):
         return {"answer": "", "confidence": 0.0, "needs_teacher": True, "related_topics": []}
 
@@ -353,6 +384,7 @@ Return ONLY valid JSON (no markdown fences):
 # ═══════════════════════════════════════════════════════════════════════
 # 4. PDF text extraction
 # ═══════════════════════════════════════════════════════════════════════
+
 
 async def extract_text_from_pdf_url(file_url: str) -> str:
     """

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Optional
 
 from fastapi import WebSocket
 

@@ -22,13 +22,12 @@ Teacher Tutor Dashboard:
 
 import io
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func as sqlfunc
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -74,29 +73,30 @@ def _attendance_label(pct: float) -> str:
 # Pydantic schemas
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class AssignRequest(BaseModel):
-    tutor_id:      int
-    student_ids:   List[int]
+    tutor_id: int
+    student_ids: list[int]
     academic_year: str = Field(..., min_length=4, max_length=20)
-    note:          Optional[str] = None
-    force:         bool = False
+    note: Optional[str] = None
+    force: bool = False
 
 
 class AssignByRollRange(BaseModel):
-    tutor_id:      int
-    roll_start:    str
-    roll_end:      str
+    tutor_id: int
+    roll_start: str
+    roll_end: str
     academic_year: str = Field(..., min_length=4, max_length=20)
-    note:          Optional[str] = None
-    force:         bool = False
+    note: Optional[str] = None
+    force: bool = False
 
 
 class AssignBySection(BaseModel):
-    tutor_id:       int
-    section_id:     int
-    academic_year:  str = Field(..., min_length=4, max_length=20)
-    skip_existing:  bool = True
-    note:           Optional[str] = None
+    tutor_id: int
+    section_id: int
+    academic_year: str = Field(..., min_length=4, max_length=20)
+    skip_existing: bool = True
+    note: Optional[str] = None
 
 
 class DeactivateAllRequest(BaseModel):
@@ -104,20 +104,21 @@ class DeactivateAllRequest(BaseModel):
 
 
 class NotifyWardRequest(BaseModel):
-    student_ids:  List[int]
-    message:      str = Field("", max_length=1600)
-    channels:     List[str] = ["push"]  # push, whatsapp, sms
+    student_ids: list[int]
+    message: str = Field("", max_length=1600)
+    channels: list[str] = ["push"]  # push, whatsapp, sms
     use_template: bool = False  # auto-generate per-student attendance report
 
 
 class UpdateContactRequest(BaseModel):
-    phone:        Optional[str] = None
+    phone: Optional[str] = None
     parent_phone: Optional[str] = None
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Helper: compute per-student attendance
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _student_attendance_summary(student_id: int, db: Session) -> dict:
     """Return overall + per-subject attendance for a student."""
@@ -165,13 +166,15 @@ def _student_attendance_summary(student_id: int, db: Session) -> dict:
     per_subject = []
     for s in subject_map.values():
         pct = round((s["present"] / s["total"] * 100) if s["total"] > 0 else 0.0, 1)
-        per_subject.append({
-            "subject_name": s["subject_name"],
-            "subject_code": s["subject_code"],
-            "present": s["present"],
-            "total": s["total"],
-            "pct": pct,
-        })
+        per_subject.append(
+            {
+                "subject_name": s["subject_name"],
+                "subject_code": s["subject_code"],
+                "present": s["present"],
+                "total": s["total"],
+                "pct": pct,
+            }
+        )
 
     return {
         "overall_pct": overall_pct,
@@ -185,21 +188,28 @@ def _student_attendance_summary(student_id: int, db: Session) -> dict:
 # POST /api/tutor/assign — manual bulk assign
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/assign")
 def assign_students(
-    body:         AssignRequest,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: AssignRequest,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     # Validate tutor is a teacher in the same college
-    tutor = db.query(User).filter(
-        User.id == body.tutor_id,
-        User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
-        User.college_id == current_user["college_id"],
-        User.is_active == True,
-    ).first()
+    tutor = (
+        db.query(User)
+        .filter(
+            User.id == body.tutor_id,
+            User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
+            User.college_id == current_user["college_id"],
+            User.is_active.is_(True),
+        )
+        .first()
+    )
     if not tutor:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tutor not found or not a teacher in your college.")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Tutor not found or not a teacher in your college."
+        )
 
     assigned = 0
     conflicts = []
@@ -216,37 +226,47 @@ def assign_students(
             .filter(
                 TutorAssignment.student_id == sid,
                 TutorAssignment.academic_year == body.academic_year,
-                TutorAssignment.is_active == True,
+                TutorAssignment.is_active.is_(True),
             )
             .first()
         )
         if existing:
             if not body.force:
                 ex_tutor = db.query(User).filter(User.id == existing.tutor_id).first()
-                conflicts.append({
-                    "student_id": sid,
-                    "student_name": student.name,
-                    "existing_tutor": ex_tutor.name if ex_tutor else "Unknown",
-                    "existing_tutor_id": existing.tutor_id,
-                })
+                conflicts.append(
+                    {
+                        "student_id": sid,
+                        "student_name": student.name,
+                        "existing_tutor": ex_tutor.name if ex_tutor else "Unknown",
+                        "existing_tutor_id": existing.tutor_id,
+                    }
+                )
                 continue
             # Force reassign — delete old row to satisfy unique constraint
             db.delete(existing)
             db.flush()
 
-        db.add(TutorAssignment(
-            tutor_id=body.tutor_id,
-            student_id=sid,
-            academic_year=body.academic_year,
-            assigned_by=current_user["id"],
-            note=body.note,
-        ))
+        db.add(
+            TutorAssignment(
+                tutor_id=body.tutor_id,
+                student_id=sid,
+                academic_year=body.academic_year,
+                assigned_by=current_user["id"],
+                note=body.note,
+            )
+        )
         assigned += 1
 
     db.commit()
 
-    logger.info("🎓 TUTOR ASSIGN │ tutor_id=%d │ assigned=%d │ conflicts=%d │ not_found=%d │ by user_id=%d",
-                body.tutor_id, assigned, len(conflicts), len(not_found), current_user["id"])
+    logger.info(
+        "🎓 TUTOR ASSIGN │ tutor_id=%d │ assigned=%d │ conflicts=%d │ not_found=%d │ by user_id=%d",
+        body.tutor_id,
+        assigned,
+        len(conflicts),
+        len(not_found),
+        current_user["id"],
+    )
 
     return {
         "assigned": assigned,
@@ -260,27 +280,34 @@ def assign_students(
 # POST /api/tutor/assign-by-roll-range
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/assign-by-roll-range")
 def assign_by_roll_range(
-    body:         AssignByRollRange,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: AssignByRollRange,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
-    tutor = db.query(User).filter(
-        User.id == body.tutor_id,
-        User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
-        User.college_id == current_user["college_id"],
-        User.is_active == True,
-    ).first()
+    tutor = (
+        db.query(User)
+        .filter(
+            User.id == body.tutor_id,
+            User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
+            User.college_id == current_user["college_id"],
+            User.is_active.is_(True),
+        )
+        .first()
+    )
     if not tutor:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tutor not found or not a teacher in your college.")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Tutor not found or not a teacher in your college."
+        )
 
     # Find students whose roll_number is between roll_start and roll_end (inclusive, lexicographic)
     students = (
         db.query(User)
         .filter(
             User.role == UserRole.student,
-            User.is_active == True,
+            User.is_active.is_(True),
             User.roll_number.isnot(None),
             User.roll_number >= body.roll_start.strip(),
             User.roll_number <= body.roll_end.strip(),
@@ -291,8 +318,10 @@ def assign_by_roll_range(
     )
 
     if not students:
-        raise HTTPException(status.HTTP_404_NOT_FOUND,
-                            f"No students found between {body.roll_start} and {body.roll_end}.")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"No students found between {body.roll_start} and {body.roll_end}.",
+        )
 
     # Delegate to the assign logic
     student_ids = [s.id for s in students]
@@ -310,22 +339,27 @@ def assign_by_roll_range(
 # POST /api/tutor/assign-by-section
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/assign-by-section")
 def assign_by_section(
-    body:         AssignBySection,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: AssignBySection,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     section = db.query(Section).filter(Section.id == body.section_id).first()
     if not section:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found.")
 
-    tutor = db.query(User).filter(
-        User.id == body.tutor_id,
-        User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
-        User.college_id == current_user["college_id"],
-        User.is_active == True,
-    ).first()
+    tutor = (
+        db.query(User)
+        .filter(
+            User.id == body.tutor_id,
+            User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
+            User.college_id == current_user["college_id"],
+            User.is_active.is_(True),
+        )
+        .first()
+    )
     if not tutor:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tutor not found.")
 
@@ -334,7 +368,7 @@ def assign_by_section(
         .filter(
             User.section_id == body.section_id,
             User.role == UserRole.student,
-            User.is_active == True,
+            User.is_active.is_(True),
         )
         .all()
     )
@@ -348,7 +382,7 @@ def assign_by_section(
             .filter(
                 TutorAssignment.student_id == student.id,
                 TutorAssignment.academic_year == body.academic_year,
-                TutorAssignment.is_active == True,
+                TutorAssignment.is_active.is_(True),
             )
             .first()
         )
@@ -360,19 +394,26 @@ def assign_by_section(
             db.delete(existing)
             db.flush()
 
-        db.add(TutorAssignment(
-            tutor_id=body.tutor_id,
-            student_id=student.id,
-            academic_year=body.academic_year,
-            assigned_by=current_user["id"],
-            note=body.note,
-        ))
+        db.add(
+            TutorAssignment(
+                tutor_id=body.tutor_id,
+                student_id=student.id,
+                academic_year=body.academic_year,
+                assigned_by=current_user["id"],
+                note=body.note,
+            )
+        )
         assigned += 1
 
     db.commit()
 
-    logger.info("🎓 TUTOR ASSIGN-BY-SECTION │ section=%s │ tutor=%s │ assigned=%d │ skipped=%d",
-                section.name, tutor.name, assigned, skipped)
+    logger.info(
+        "🎓 TUTOR ASSIGN-BY-SECTION │ section=%s │ tutor=%s │ assigned=%d │ skipped=%d",
+        section.name,
+        tutor.name,
+        assigned,
+        skipped,
+    )
 
     return {
         "assigned": assigned,
@@ -386,11 +427,12 @@ def assign_by_section(
 # POST /api/tutor/import-excel
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/import-excel")
 def import_excel(
-    file:         UploadFile = File(...),
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    file: UploadFile = File(...),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     """
     Excel columns: roll_number, tutor_email, academic_year
@@ -436,15 +478,21 @@ def import_excel(
             failed_rows.append({"row": row_num, "reason": "Missing data"})
             continue
 
-        student = db.query(User).filter(User.roll_number == roll, User.role == UserRole.student).first()
+        student = (
+            db.query(User).filter(User.roll_number == roll, User.role == UserRole.student).first()
+        )
         if not student:
             failed_rows.append({"row": row_num, "reason": f"Student '{roll}' not found"})
             continue
 
-        tutor = db.query(User).filter(
-            User.email == email,
-            User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
-        ).first()
+        tutor = (
+            db.query(User)
+            .filter(
+                User.email == email,
+                User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
+            )
+            .first()
+        )
         if not tutor:
             failed_rows.append({"row": row_num, "reason": f"Tutor '{email}' not found"})
             continue
@@ -454,7 +502,7 @@ def import_excel(
             .filter(
                 TutorAssignment.student_id == student.id,
                 TutorAssignment.academic_year == year,
-                TutorAssignment.is_active == True,
+                TutorAssignment.is_active.is_(True),
             )
             .first()
         )
@@ -462,19 +510,26 @@ def import_excel(
             skipped += 1
             continue
 
-        db.add(TutorAssignment(
-            tutor_id=tutor.id,
-            student_id=student.id,
-            academic_year=year,
-            assigned_by=current_user["id"],
-        ))
+        db.add(
+            TutorAssignment(
+                tutor_id=tutor.id,
+                student_id=student.id,
+                academic_year=year,
+                assigned_by=current_user["id"],
+            )
+        )
         success += 1
 
     db.commit()
     wb.close()
 
-    logger.info("🎓 TUTOR IMPORT-EXCEL │ success=%d │ skipped=%d │ failed=%d │ by user_id=%d",
-                success, skipped, len(failed_rows), current_user["id"])
+    logger.info(
+        "🎓 TUTOR IMPORT-EXCEL │ success=%d │ skipped=%d │ failed=%d │ by user_id=%d",
+        success,
+        skipped,
+        len(failed_rows),
+        current_user["id"],
+    )
 
     return {
         "total": len(rows) - 1,
@@ -488,11 +543,12 @@ def import_excel(
 # POST /api/tutor/export-assignments-excel
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/export-assignments-excel")
 def export_assignments_excel(
     academic_year: str,
-    current_user:  dict    = Depends(hod_or_above),
-    db:            Session = Depends(get_db),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     import openpyxl
 
@@ -500,7 +556,7 @@ def export_assignments_excel(
         db.query(TutorAssignment)
         .filter(
             TutorAssignment.academic_year == academic_year,
-            TutorAssignment.is_active == True,
+            TutorAssignment.is_active.is_(True),
         )
         .order_by(TutorAssignment.tutor_id)
         .all()
@@ -509,10 +565,17 @@ def export_assignments_excel(
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Tutor Assignments"
-    ws.append([
-        "Tutor Name", "Tutor Email", "Student Roll No", "Student Name",
-        "Section", "Academic Year", "Assigned Date",
-    ])
+    ws.append(
+        [
+            "Tutor Name",
+            "Tutor Email",
+            "Student Roll No",
+            "Student Name",
+            "Section",
+            "Academic Year",
+            "Assigned Date",
+        ]
+    )
 
     for a in assignments:
         tutor = db.query(User).filter(User.id == a.tutor_id).first()
@@ -522,28 +585,36 @@ def export_assignments_excel(
             sec = db.query(Section).filter(Section.id == student.section_id).first()
             section_name = sec.name if sec else ""
 
-        ws.append([
-            tutor.name if tutor else "",
-            tutor.email if tutor else "",
-            student.roll_number if student else "",
-            student.name if student else "",
-            section_name,
-            a.academic_year,
-            a.assigned_at.strftime("%Y-%m-%d %H:%M") if a.assigned_at else "",
-        ])
+        ws.append(
+            [
+                tutor.name if tutor else "",
+                tutor.email if tutor else "",
+                student.roll_number if student else "",
+                student.name if student else "",
+                section_name,
+                a.academic_year,
+                a.assigned_at.strftime("%Y-%m-%d %H:%M") if a.assigned_at else "",
+            ]
+        )
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     wb.close()
 
-    logger.info("🎓 TUTOR EXPORT │ year=%s │ rows=%d │ by user_id=%d",
-                academic_year, len(assignments), current_user["id"])
+    logger.info(
+        "🎓 TUTOR EXPORT │ year=%s │ rows=%d │ by user_id=%d",
+        academic_year,
+        len(assignments),
+        current_user["id"],
+    )
 
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename=tutor_assignments_{academic_year}.xlsx"},
+        headers={
+            "Content-Disposition": f"attachment; filename=tutor_assignments_{academic_year}.xlsx"
+        },
     )
 
 
@@ -551,29 +622,33 @@ def export_assignments_excel(
 # DELETE /api/tutor/remove/{assignment_id}
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.delete("/remove/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_assignment(
     assignment_id: int,
-    current_user:  dict    = Depends(hod_or_above),
-    db:            Session = Depends(get_db),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     a = db.query(TutorAssignment).filter(TutorAssignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignment not found.")
     db.delete(a)
     db.commit()
-    logger.info("🎓 TUTOR REMOVE │ assignment_id=%d │ by user_id=%d", assignment_id, current_user["id"])
+    logger.info(
+        "🎓 TUTOR REMOVE │ assignment_id=%d │ by user_id=%d", assignment_id, current_user["id"]
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # POST /api/tutor/deactivate-all
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/deactivate-all")
 def deactivate_all(
-    body:         DeactivateAllRequest,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: DeactivateAllRequest,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     # Scope to college: only deactivate assignments whose tutor belongs to the same college
     college_id = current_user["college_id"]
@@ -582,7 +657,7 @@ def deactivate_all(
         .join(User, TutorAssignment.tutor_id == User.id)
         .filter(
             TutorAssignment.academic_year == body.academic_year,
-            TutorAssignment.is_active == True,
+            TutorAssignment.is_active.is_(True),
             User.college_id == college_id,
         )
         .all()
@@ -596,8 +671,13 @@ def deactivate_all(
             .update({"is_active": False}, synchronize_session="fetch")
         )
     db.commit()
-    logger.info("🎓 TUTOR DEACTIVATE-ALL │ year=%s │ college_id=%s │ count=%d │ by user_id=%d",
-                body.academic_year, college_id, count, current_user["id"])
+    logger.info(
+        "🎓 TUTOR DEACTIVATE-ALL │ year=%s │ college_id=%s │ count=%d │ by user_id=%d",
+        body.academic_year,
+        college_id,
+        count,
+        current_user["id"],
+    )
     return {"deactivated": count, "academic_year": body.academic_year}
 
 
@@ -605,15 +685,16 @@ def deactivate_all(
 # GET /api/tutor/assignments — list with filters
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/assignments")
 def list_assignments(
-    tutor_id:      Optional[int] = None,
+    tutor_id: Optional[int] = None,
     academic_year: Optional[str] = None,
-    section_id:    Optional[int] = None,
-    current_user:  dict    = Depends(hod_or_above),
-    db:            Session = Depends(get_db),
+    section_id: Optional[int] = None,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
-    q = db.query(TutorAssignment).filter(TutorAssignment.is_active == True)
+    q = db.query(TutorAssignment).filter(TutorAssignment.is_active.is_(True))
 
     if tutor_id is not None:
         q = q.filter(TutorAssignment.tutor_id == tutor_id)
@@ -637,19 +718,21 @@ def list_assignments(
         if section_id is not None and student_section_id != section_id:
             continue
 
-        result.append({
-            "id": a.id,
-            "tutor_id": a.tutor_id,
-            "tutor_name": tutor.name if tutor else "",
-            "tutor_email": tutor.email if tutor else "",
-            "student_id": a.student_id,
-            "student_name": student.name if student else "",
-            "student_roll": student.roll_number if student else "",
-            "section_name": section_name,
-            "academic_year": a.academic_year,
-            "note": a.note,
-            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
-        })
+        result.append(
+            {
+                "id": a.id,
+                "tutor_id": a.tutor_id,
+                "tutor_name": tutor.name if tutor else "",
+                "tutor_email": tutor.email if tutor else "",
+                "student_id": a.student_id,
+                "student_name": student.name if student else "",
+                "student_roll": student.roll_number if student else "",
+                "section_name": section_name,
+                "academic_year": a.academic_year,
+                "note": a.note,
+                "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            }
+        )
 
     return result
 
@@ -658,17 +741,18 @@ def list_assignments(
 # GET /api/tutor/unassigned-students
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/unassigned-students")
 def unassigned_students(
     academic_year: str,
-    section_id:    Optional[int] = None,
-    current_user:  dict    = Depends(hod_or_above),
-    db:            Session = Depends(get_db),
+    section_id: Optional[int] = None,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     # All active students in college
     q = db.query(User).filter(
         User.role == UserRole.student,
-        User.is_active == True,
+        User.is_active.is_(True),
         User.college_id == current_user["college_id"],
     )
     if section_id is not None:
@@ -677,15 +761,15 @@ def unassigned_students(
     students = q.order_by(User.roll_number).all()
 
     # IDs of students who already have an active tutor for this year
-    assigned_ids = set(
-        row[0] for row in
-        db.query(TutorAssignment.student_id)
+    assigned_ids = {
+        row[0]
+        for row in db.query(TutorAssignment.student_id)
         .filter(
             TutorAssignment.academic_year == academic_year,
-            TutorAssignment.is_active == True,
+            TutorAssignment.is_active.is_(True),
         )
         .all()
-    )
+    }
 
     result = []
     for s in students:
@@ -694,14 +778,16 @@ def unassigned_students(
             if s.section_id:
                 sec = db.query(Section).filter(Section.id == s.section_id).first()
                 sec_name = sec.name if sec else ""
-            result.append({
-                "id": s.id,
-                "name": s.name,
-                "roll_number": s.roll_number,
-                "email": s.email,
-                "semester": s.semester,
-                "section_name": sec_name,
-            })
+            result.append(
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "roll_number": s.roll_number,
+                    "email": s.email,
+                    "semester": s.semester,
+                    "section_name": sec_name,
+                }
+            )
 
     return result
 
@@ -710,11 +796,12 @@ def unassigned_students(
 # GET /api/tutor/my-ward-students — teacher dashboard
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/my-ward-students")
 def my_ward_students(
     academic_year: Optional[str] = None,
-    current_user:  dict    = Depends(teacher_or_above),
-    db:            Session = Depends(get_db),
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     year = academic_year or _current_academic_year()
 
@@ -723,7 +810,7 @@ def my_ward_students(
         .filter(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active == True,
+            TutorAssignment.is_active.is_(True),
         )
         .all()
     )
@@ -741,26 +828,32 @@ def my_ward_students(
             sec_name = sec.name if sec else ""
 
         pct = att["overall_pct"]
-        result.append({
-            "student_id": student.id,
-            "name": student.name,
-            "roll_number": student.roll_number,
-            "email": student.email,
-            "phone": student.phone or "",
-            "parent_phone": student.parent_phone or "",
-            "section_name": sec_name,
-            "semester": student.semester,
-            "academic_year": year,
-            "overall_attendance_pct": pct,
-            "per_subject": att["per_subject"],
-            "attendance_label": _attendance_label(pct),
-            "needs_attention": pct < _THRESHOLD,
-            "total_sessions": att["total_sessions"],
-            "present_sessions": att["present_sessions"],
-        })
+        result.append(
+            {
+                "student_id": student.id,
+                "name": student.name,
+                "roll_number": student.roll_number,
+                "email": student.email,
+                "phone": student.phone or "",
+                "parent_phone": student.parent_phone or "",
+                "section_name": sec_name,
+                "semester": student.semester,
+                "academic_year": year,
+                "overall_attendance_pct": pct,
+                "per_subject": att["per_subject"],
+                "attendance_label": _attendance_label(pct),
+                "needs_attention": pct < _THRESHOLD,
+                "total_sessions": att["total_sessions"],
+                "present_sessions": att["present_sessions"],
+            }
+        )
 
-    logger.info("🎓 TUTOR MY-WARDS │ tutor_id=%d │ year=%s │ count=%d",
-                current_user["id"], year, len(result))
+    logger.info(
+        "🎓 TUTOR MY-WARDS │ tutor_id=%d │ year=%s │ count=%d",
+        current_user["id"],
+        year,
+        len(result),
+    )
 
     return result
 
@@ -769,12 +862,13 @@ def my_ward_students(
 # GET /api/tutor/ward-student/{student_id}/full-report
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/ward-student/{student_id}/full-report")
 def ward_student_full_report(
-    student_id:    int,
+    student_id: int,
     academic_year: Optional[str] = None,
-    current_user:  dict    = Depends(teacher_or_above),
-    db:            Session = Depends(get_db),
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     year = academic_year or _current_academic_year()
 
@@ -785,12 +879,14 @@ def ward_student_full_report(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.student_id == student_id,
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active == True,
+            TutorAssignment.is_active.is_(True),
         )
         .first()
     )
     if not assignment:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not assigned as tutor to this student.")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You are not assigned as tutor to this student."
+        )
 
     student = db.query(User).filter(User.id == student_id).first()
     if not student:
@@ -799,7 +895,7 @@ def ward_student_full_report(
     att = _student_attendance_summary(student_id, db)
 
     # Session-by-session history (last 30 days)
-    thirty_days_ago = datetime.now(tz=timezone.utc) - timedelta(days=30)
+    thirty_days_ago = datetime.now(tz=UTC) - timedelta(days=30)
     recent_records = (
         db.query(AttendanceRecord)
         .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
@@ -815,14 +911,16 @@ def ward_student_full_report(
     for rec in recent_records:
         sess = rec.session
         subj = db.query(Subject).filter(Subject.id == sess.subject_id).first()
-        session_history.append({
-            "date": sess.date.isoformat(),
-            "subject_name": subj.name if subj else "",
-            "status": rec.status.value,
-            "marked_at": rec.marked_at.isoformat() if rec.marked_at else None,
-            "face_verified": rec.face_verified,
-            "gps_verified": rec.gps_verified,
-        })
+        session_history.append(
+            {
+                "date": sess.date.isoformat(),
+                "subject_name": subj.name if subj else "",
+                "status": rec.status.value,
+                "marked_at": rec.marked_at.isoformat() if rec.marked_at else None,
+                "face_verified": rec.face_verified,
+                "gps_verified": rec.gps_verified,
+            }
+        )
 
     sec_name = ""
     if student.section_id:
@@ -849,11 +947,12 @@ def ward_student_full_report(
 # GET /api/tutor/my-defaulters
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/my-defaulters")
 def my_defaulters(
     academic_year: Optional[str] = None,
-    current_user:  dict    = Depends(teacher_or_above),
-    db:            Session = Depends(get_db),
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     all_wards = my_ward_students(academic_year, current_user, db)
     defaulters = [w for w in all_wards if w["needs_attention"]]
@@ -867,12 +966,13 @@ def my_defaulters(
 # PATCH /api/tutor/ward/{student_id}/contacts — edit ward student phones
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.patch("/ward/{student_id}/contacts")
 def update_ward_contacts(
-    student_id:   int,
-    body:         UpdateContactRequest,
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    student_id: int,
+    body: UpdateContactRequest,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     year = _current_academic_year()
 
@@ -883,13 +983,14 @@ def update_ward_contacts(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.student_id == student_id,
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active == True,
+            TutorAssignment.is_active.is_(True),
         )
         .first()
     )
     if not assignment:
-        raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "You are not assigned as tutor to this student.")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You are not assigned as tutor to this student."
+        )
 
     student = db.query(User).filter(User.id == student_id).first()
     if not student:
@@ -903,8 +1004,13 @@ def update_ward_contacts(
     db.commit()
     db.refresh(student)
 
-    logger.info("🎓 TUTOR CONTACTS │ tutor_id=%d │ student_id=%d │ phone=%s │ parent_phone=%s",
-                current_user["id"], student_id, student.phone, student.parent_phone)
+    logger.info(
+        "🎓 TUTOR CONTACTS │ tutor_id=%d │ student_id=%d │ phone=%s │ parent_phone=%s",
+        current_user["id"],
+        student_id,
+        student.phone,
+        student.parent_phone,
+    )
 
     return {
         "student_id": student.id,
@@ -917,60 +1023,67 @@ def update_ward_contacts(
 # POST /api/tutor/notify-ward — send notifications
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _build_attendance_template(student: User, att: dict, tutor_name: str) -> str:
     """Build a templated attendance report message for a student."""
     lines = [
-        f"Dear Parent/Guardian,",
-        f"",
-        f"Attendance report for your ward:",
+        "Dear Parent/Guardian,",
+        "",
+        "Attendance report for your ward:",
         f"Name: {student.name}",
         f"Roll No: {student.roll_number or '—'}",
-        f"",
-        f"📊 Per-Subject Breakdown:",
+        "",
+        "📊 Per-Subject Breakdown:",
     ]
     for s in att["per_subject"]:
-        lines.append(f"  • {s['subject_name']} ({s['subject_code']}): {s['present']}/{s['total']} — {s['pct']}%")
+        lines.append(
+            f"  • {s['subject_name']} ({s['subject_code']}): {s['present']}/{s['total']} — {s['pct']}%"
+        )
 
-    lines.append(f"")
-    lines.append(f"Overall: {att['present_sessions']}/{att['total_sessions']} sessions — {att['overall_pct']}%")
+    lines.append("")
+    lines.append(
+        f"Overall: {att['present_sessions']}/{att['total_sessions']} sessions — {att['overall_pct']}%"
+    )
 
     if att["overall_pct"] < _THRESHOLD:
-        lines.append(f"")
-        lines.append(f"⚠️ Attendance is below the required {_THRESHOLD}% threshold. Immediate attention is needed.")
+        lines.append("")
+        lines.append(
+            f"⚠️ Attendance is below the required {_THRESHOLD}% threshold. Immediate attention is needed."
+        )
 
-    lines.append(f"")
+    lines.append("")
     lines.append(f"— {tutor_name}, Tutor")
     return "\n".join(lines)
 
 
 @router.post("/notify-ward")
 def notify_ward(
-    body:         NotifyWardRequest,
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    body: NotifyWardRequest,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     year = _current_academic_year()
 
     # Validate all students are wards of this tutor
-    ward_ids = set(
-        row[0] for row in
-        db.query(TutorAssignment.student_id)
+    ward_ids = {
+        row[0]
+        for row in db.query(TutorAssignment.student_id)
         .filter(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active == True,
+            TutorAssignment.is_active.is_(True),
         )
         .all()
-    )
+    }
 
     invalid = [sid for sid in body.student_ids if sid not in ward_ids]
     if invalid:
-        raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            f"Students {invalid} are not your wards.")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Students {invalid} are not your wards.")
 
     if not body.use_template and not body.message.strip():
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            "Message is required when not using template.")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "Message is required when not using template."
+        )
 
     sent_count = 0
     failed_count = 0
@@ -1001,23 +1114,25 @@ def notify_ward(
 
             elif channel == "whatsapp":
                 # Send to BOTH student phone and parent phone
-                phones = set()
+                phones = []
                 if student.phone:
-                    phones.add(student.phone.strip())
-                if student.parent_phone:
-                    phones.add(student.parent_phone.strip())
+                    phones.append((student.phone.strip(), student.name))
+                if student.parent_phone and student.parent_phone.strip() != (student.phone or "").strip():
+                    phones.append((student.parent_phone.strip(), f"Parent of {student.name}"))
 
-                for phone in phones:
-                    wa = send_whatsapp_message(phone, msg)
+                for phone, rname in phones:
+                    wa = send_whatsapp_message(phone, msg, recipient_name=rname)
                     wa_ok = wa.get("ok", False)
-                    db.add(AlertsLog(
-                        student_id=sid,
-                        alert_type="tutor_notification",
-                        message=msg,
-                        status=AlertStatus.sent if wa_ok else AlertStatus.failed,
-                        channel=AlertChannel.whatsapp,
-                        external_id=wa.get("sid"),
-                    ))
+                    db.add(
+                        AlertsLog(
+                            student_id=sid,
+                            alert_type="tutor_notification",
+                            message=msg,
+                            status=AlertStatus.sent if wa_ok else AlertStatus.failed,
+                            channel=AlertChannel.whatsapp,
+                            external_id=wa.get("sid"),
+                        )
+                    )
                     if wa_ok:
                         sent_count += 1
                     else:
@@ -1035,13 +1150,15 @@ def notify_ward(
                 for phone in phones:
                     sms_result = send_sms(phone, msg)
                     sms_ok = sms_result.get("ok", False)
-                    db.add(AlertsLog(
-                        student_id=sid,
-                        alert_type="tutor_notification",
-                        message=msg[:500],
-                        status=AlertStatus.sent if sms_ok else AlertStatus.failed,
-                        channel=AlertChannel.sms,
-                    ))
+                    db.add(
+                        AlertsLog(
+                            student_id=sid,
+                            alert_type="tutor_notification",
+                            message=msg[:500],
+                            status=AlertStatus.sent if sms_ok else AlertStatus.failed,
+                            channel=AlertChannel.sms,
+                        )
+                    )
                     if sms_ok:
                         sent_count += 1
                     else:
@@ -1049,19 +1166,21 @@ def notify_ward(
                 continue  # already logged per-phone above
 
             alert_channel = {
-                "push": AlertChannel.email,   # no push enum, use email as proxy
+                "push": AlertChannel.email,  # no push enum, use email as proxy
                 "whatsapp": AlertChannel.whatsapp,
                 "sms": AlertChannel.sms,
             }.get(channel, AlertChannel.email)
 
-            db.add(AlertsLog(
-                student_id=sid,
-                alert_type="tutor_notification",
-                message=msg,
-                status=AlertStatus.sent if ok else AlertStatus.failed,
-                channel=alert_channel,
-                external_id=external_id,
-            ))
+            db.add(
+                AlertsLog(
+                    student_id=sid,
+                    alert_type="tutor_notification",
+                    message=msg,
+                    status=AlertStatus.sent if ok else AlertStatus.failed,
+                    channel=alert_channel,
+                    external_id=external_id,
+                )
+            )
 
             if ok:
                 sent_count += 1
@@ -1070,8 +1189,13 @@ def notify_ward(
 
     db.commit()
 
-    logger.info("🎓 TUTOR NOTIFY │ tutor_id=%d │ students=%d │ sent=%d │ failed=%d",
-                current_user["id"], len(body.student_ids), sent_count, failed_count)
+    logger.info(
+        "🎓 TUTOR NOTIFY │ tutor_id=%d │ students=%d │ sent=%d │ failed=%d",
+        current_user["id"],
+        len(body.student_ids),
+        sent_count,
+        failed_count,
+    )
 
     return {
         "sent": sent_count,
@@ -1084,9 +1208,10 @@ def notify_ward(
 # Utility
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _current_academic_year() -> str:
     """Return the current academic year string, e.g. '2025-26'."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     y = now.year
     # Academic year starts in June/July typically
     if now.month < 6:

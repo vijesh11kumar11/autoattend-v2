@@ -1,6 +1,5 @@
-from pydantic_settings import BaseSettings
 from pydantic import field_validator
-from typing import Optional
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -11,7 +10,9 @@ class Settings(BaseSettings):
 
     # ── JWT ───────────────────────────────────────────────────────────
     SECRET_KEY: str
-    ALGORITHM: str = "HS256"  # default symmetric; set RS256/ES256/EdDSA + key paths to enable asymmetric
+    ALGORITHM: str = (
+        "HS256"  # default symmetric; set RS256/ES256/EdDSA + key paths to enable asymmetric
+    )
     # Asymmetric JWT (opt-in). When set + ALGORITHM is RS256/ES256/EdDSA,
     # encode uses the private PEM and decode uses the public PEM.
     JWT_PRIVATE_KEY_PATH: str = ""
@@ -41,6 +42,20 @@ class Settings(BaseSettings):
     MSG91_EMAIL_TEMPLATE_ID: str = "autoattend_email_otp"
     MSG91_EMAIL_FROM: str
     MSG91_EMAIL_DOMAIN: str = ""
+    # Transactional template emails (non-OTP). Empty = feature disabled
+    # (sender becomes a logged no-op; never blocks the calling flow).
+    MSG91_WELCOME_TEMPLATE_ID: str = ""
+    MSG91_NOTIFICATION_TEMPLATE_ID: str = ""
+
+    # ── WhatsApp parent/tutor alerts (MSG91 primary, Twilio fallback) ─
+    # Outbound alerts try MSG91 first when its WhatsApp integrated number +
+    # approved template are configured; otherwise they fall back to Twilio
+    # when Twilio creds are present. If neither is configured the send is a
+    # logged no-op (never raises) so callers keep working unchanged.
+    MSG91_WHATSAPP_INTEGRATED_NUMBER: str = ""
+    MSG91_WHATSAPP_TEMPLATE_NAME: str = ""
+    MSG91_WHATSAPP_NAMESPACE: str = ""
+    MSG91_WHATSAPP_LANG_CODE: str = "en_US"
 
     # ── Fast2SMS (Quick route SMS for notifications) ─────────────
     # REQUIRED in production. Empty string keeps SMS disabled but startup
@@ -55,9 +70,19 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
-    # ── Twilio WhatsApp (for parent alerts) ───────────────────────────
-    TWILIO_ACCOUNT_SID: str
-    TWILIO_AUTH_TOKEN: str
+    # ── Claude (Anthropic) — PRIMARY AI provider ──────────────────────
+    # Used first by every AI feature (ClassPulse, ClassPulse Live, Career,
+    # Suggestions); Gemini/Groq/DeepSeek remain automatic fallbacks. Empty
+    # key = Claude skipped, behaviour falls back to the previous providers.
+    # Haiku-only by design (cost-optimised — never Opus/Sonnet).
+    CLAUDE_API_KEY: str = ""
+    CLAUDE_MODEL_SMART: str = "claude-haiku-4-5-20251001"
+    CLAUDE_MODEL_FAST: str = "claude-haiku-4-5-20251001"
+    # ── Twilio WhatsApp (fallback for parent alerts — optional) ───────
+    # Optional: empty/placeholder means "not configured" and the WhatsApp
+    # helper skips Twilio. MSG91 is the primary provider.
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
     TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
 
     # ── App settings ──────────────────────────────────────────────────
@@ -65,6 +90,13 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:3000"
     COLLEGE_NAME: str = "Your College Name"
+    # Additional browser origins allowed by CORS, beyond FRONTEND_URL.
+    # Comma-separated (e.g. multi-tenant college domains):
+    #   CORS_ALLOW_ORIGINS=https://a.example.edu,https://b.example.edu
+    # Empty by default — production allows only FRONTEND_URL (plus the Vite
+    # dev origins when DEBUG=True). Use the cors_allow_origins property to
+    # read the parsed list.
+    CORS_ALLOW_ORIGINS: str = ""
     # ── Production hardening ──────────────────────────────
     # Expose /api/docs, /api/redoc, /api/openapi.json. Independent of
     # DEBUG so an operator can disable them in dev too. Defaults to the
@@ -87,8 +119,8 @@ class Settings(BaseSettings):
     # In production: COOKIE_SECURE=True, COOKIE_SAMESITE=strict.
     # For cross-site (vercel frontend + render backend): COOKIE_SAMESITE=none + COOKIE_SECURE=True.
     # For local dev over plain http: COOKIE_SECURE=False, COOKIE_SAMESITE=lax.
-    COOKIE_SECURE:   bool = True
-    COOKIE_SAMESITE: str  = "strict"
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "strict"
 
     # ── TOTP secret encryption (Fernet symmetric key) ──────────────────
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -103,8 +135,8 @@ class Settings(BaseSettings):
     # Defaults match the previous hardcoded values in database.py.
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
-    DB_POOL_RECYCLE_SECONDS: int = 1800   # recycle stale conns hourly-ish
-    DB_POOL_TIMEOUT_SECONDS: int = 30     # wait for free conn before failing
+    DB_POOL_RECYCLE_SECONDS: int = 1800  # recycle stale conns hourly-ish
+    DB_POOL_TIMEOUT_SECONDS: int = 30  # wait for free conn before failing
 
     # ── Logging ──────────────────────────────────────────────────────
     # 'text' (default human-readable pipe-separated lines) or 'json'
@@ -148,9 +180,9 @@ class Settings(BaseSettings):
     APP_ENV: str = "production"
     APP_VERSION: str = "2.0.0"
 
-    # ── OpenTelemetry (DISABLED — placeholder for future enablement) ──
-    # TODO: Enable OpenTelemetry when needed
-    # To re-enable: uncomment OTel init block in main.py, set this var
+    # ── OpenTelemetry (DISABLED — opt-in observability) ──
+    # OPTIONAL (opt-in): OpenTelemetry tracing is intentionally disabled.
+    # To enable: uncomment the OTel init block in main.py, set this var
     # in your .env, and install opentelemetry-sdk opentelemetry-exporter-otlp
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
 
@@ -168,6 +200,13 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_S3_BUCKET_NAME: str = ""
     AWS_REGION: str = "ap-south-1"
+
+    # ── Multi-tenancy  (issues #99, #100, #101, #104) ─────────────────
+    # When True, every ORM SELECT is auto-filtered by the caller's
+    # college_id (resolved via the JWT). Leave False until all routes
+    # have been audited & every existing row is back-filled with a
+    # college_id — otherwise tenant-less rows become invisible.
+    ENFORCE_TENANT_ISOLATION: bool = False
 
     class Config:
         env_file = ".env"
@@ -233,6 +272,16 @@ class Settings(BaseSettings):
         if v not in ("strict", "lax", "none"):
             raise ValueError("COOKIE_SAMESITE must be one of: strict, lax, none")
         return v
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        """Parsed, de-duplicated CORS origins from the comma-separated env var."""
+        seen: dict[str, None] = {}
+        for raw in self.CORS_ALLOW_ORIGINS.split(","):
+            origin = raw.strip().rstrip("/")
+            if origin:
+                seen.setdefault(origin, None)
+        return list(seen)
 
 
 settings = Settings()

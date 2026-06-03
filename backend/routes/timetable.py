@@ -22,15 +22,14 @@ Student Endpoint:
 import io
 import logging
 import secrets
-from datetime import date, datetime, timezone
-from typing import List, Optional
+from datetime import UTC, date, datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from config import settings
 from database import (
     AttendanceRecord,
     AttendanceSession,
@@ -47,7 +46,7 @@ from database import (
     UserRole,
     get_db,
 )
-from utils.auth_utils import any_authenticated, hod_or_above, student_only, teacher_or_above
+from utils.auth_utils import any_authenticated, hod_or_above, teacher_or_above
 from utils.bluetooth_utils import generate_bluetooth_token
 from utils.notification_utils import send_push_to_many
 
@@ -63,34 +62,35 @@ DAY_NAMES = {d: d.capitalize() for d in DAY_ORDER}
 # Pydantic schemas
 # ══════════════════════════════════════════════════════════════════════
 
+
 class TimetableEntryCreate(BaseModel):
-    subject_id:    int
-    teacher_id:    int
-    day_of_week:   str = Field(..., description="monday..saturday")
-    start_time:    str = Field(..., pattern=r"^\d{2}:\d{2}$")
-    end_time:      str = Field(..., pattern=r"^\d{2}:\d{2}$")
-    room:          Optional[str] = None
-    section_id:    Optional[int] = None
+    subject_id: int
+    teacher_id: int
+    day_of_week: str = Field(..., description="monday..saturday")
+    start_time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    end_time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    room: Optional[str] = None
+    section_id: Optional[int] = None
     period_number: Optional[int] = None
-    is_lab:        bool = False
-    color_tag:     Optional[str] = None
+    is_lab: bool = False
+    color_tag: Optional[str] = None
 
 
 class TimetableEntryUpdate(BaseModel):
-    subject_id:    Optional[int] = None
-    teacher_id:    Optional[int] = None
-    day_of_week:   Optional[str] = None
-    start_time:    Optional[str] = None
-    end_time:      Optional[str] = None
-    room:          Optional[str] = None
-    section_id:    Optional[int] = None
+    subject_id: Optional[int] = None
+    teacher_id: Optional[int] = None
+    day_of_week: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    room: Optional[str] = None
+    section_id: Optional[int] = None
     period_number: Optional[int] = None
-    is_lab:        Optional[bool] = None
-    color_tag:     Optional[str] = None
+    is_lab: Optional[bool] = None
+    color_tag: Optional[str] = None
 
 
 class StartFromTimetableRequest(BaseModel):
-    teacher_latitude:  float = Field(..., ge=-90, le=90)
+    teacher_latitude: float = Field(..., ge=-90, le=90)
     teacher_longitude: float = Field(..., ge=-180, le=180)
 
 
@@ -98,16 +98,24 @@ class StartFromTimetableRequest(BaseModel):
 # Helpers
 # ══════════════════════════════════════════════════════════════════════
 
+
 def _validate_day(day: str) -> DayOfWeek:
     try:
         return DayOfWeek(day.lower().strip())
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            f"Invalid day_of_week '{day}'. Use monday..saturday.")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"Invalid day_of_week '{day}'. Use monday..saturday."
+        )
 
 
-def _check_teacher_clash(db: Session, teacher_id: int, day: DayOfWeek,
-                         start: str, end: str, exclude_id: Optional[int] = None):
+def _check_teacher_clash(
+    db: Session,
+    teacher_id: int,
+    day: DayOfWeek,
+    start: str,
+    end: str,
+    exclude_id: Optional[int] = None,
+):
     q = db.query(Timetable).filter(
         Timetable.teacher_id == teacher_id,
         Timetable.day_of_week == day,
@@ -126,8 +134,14 @@ def _check_teacher_clash(db: Session, teacher_id: int, day: DayOfWeek,
         )
 
 
-def _check_section_clash(db: Session, section_id: int, day: DayOfWeek,
-                          start: str, end: str, exclude_id: Optional[int] = None):
+def _check_section_clash(
+    db: Session,
+    section_id: int,
+    day: DayOfWeek,
+    start: str,
+    end: str,
+    exclude_id: Optional[int] = None,
+):
     q = db.query(Timetable).filter(
         Timetable.section_id == section_id,
         Timetable.day_of_week == day,
@@ -148,7 +162,7 @@ def _check_section_clash(db: Session, section_id: int, day: DayOfWeek,
 
 def _today_day() -> DayOfWeek:
     """Return the DayOfWeek enum for today."""
-    day_name = datetime.now(tz=timezone.utc).strftime("%A").lower()
+    day_name = datetime.now(tz=UTC).strftime("%A").lower()
     try:
         return DayOfWeek(day_name)
     except ValueError:
@@ -159,13 +173,10 @@ def _today_day() -> DayOfWeek:
 def _session_status_for_entry(entry: Timetable, db: Session) -> dict:
     """Check if there's an attendance session for this timetable entry today."""
     today = date.today()
-    sess = (
-        db.query(AttendanceSession)
-        .filter(
-            AttendanceSession.subject_id == entry.subject_id,
-            AttendanceSession.teacher_id == entry.teacher_id,
-            AttendanceSession.date == today,
-        )
+    sess = db.query(AttendanceSession).filter(
+        AttendanceSession.subject_id == entry.subject_id,
+        AttendanceSession.teacher_id == entry.teacher_id,
+        AttendanceSession.date == today,
     )
     if entry.section_id:
         sess = sess.filter(AttendanceSession.section_id == entry.section_id)
@@ -180,7 +191,11 @@ def _session_status_for_entry(entry: Timetable, db: Session) -> dict:
 
 
 def _serialize_entry(entry: Timetable, db: Session, include_session: bool = False) -> dict:
-    subj = db.query(Subject).filter(Subject.id == entry.subject_id).first() if entry.subject_id else None
+    subj = (
+        db.query(Subject).filter(Subject.id == entry.subject_id).first()
+        if entry.subject_id
+        else None
+    )
     teacher = db.query(User).filter(User.id == entry.teacher_id).first()
     sec_name = ""
     if entry.section_id:
@@ -188,22 +203,22 @@ def _serialize_entry(entry: Timetable, db: Session, include_session: bool = Fals
         sec_name = sec.name if sec else ""
 
     result = {
-        "timetable_id":  entry.id,
-        "subject_id":    entry.subject_id,
-        "subject_name":  subj.name if subj else ("TWM" if entry.is_twm else ""),
-        "subject_code":  subj.code if subj else ("TWM" if entry.is_twm else ""),
-        "teacher_id":    entry.teacher_id,
-        "teacher_name":  teacher.name if teacher else "",
-        "day_of_week":   entry.day_of_week.value,
-        "start_time":    entry.start_time,
-        "end_time":      entry.end_time,
-        "room":          entry.room or "",
-        "section_id":    entry.section_id,
-        "section_name":  sec_name,
+        "timetable_id": entry.id,
+        "subject_id": entry.subject_id,
+        "subject_name": subj.name if subj else ("TWM" if entry.is_twm else ""),
+        "subject_code": subj.code if subj else ("TWM" if entry.is_twm else ""),
+        "teacher_id": entry.teacher_id,
+        "teacher_name": teacher.name if teacher else "",
+        "day_of_week": entry.day_of_week.value,
+        "start_time": entry.start_time,
+        "end_time": entry.end_time,
+        "room": entry.room or "",
+        "section_id": entry.section_id,
+        "section_name": sec_name,
         "period_number": entry.period_number,
-        "is_lab":        entry.is_lab,
-        "is_twm":        entry.is_twm or False,
-        "color_tag":     entry.color_tag,
+        "is_lab": entry.is_lab,
+        "is_twm": entry.is_twm or False,
+        "color_tag": entry.color_tag,
     }
     if include_session:
         result.update(_session_status_for_entry(entry, db))
@@ -214,21 +229,26 @@ def _serialize_entry(entry: Timetable, db: Session, include_session: bool = Fals
 # POST /api/timetable/entry — create
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/entry", status_code=status.HTTP_201_CREATED)
 def create_entry(
-    body:         TimetableEntryCreate,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    body: TimetableEntryCreate,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     day = _validate_day(body.day_of_week)
 
     # Validate teacher belongs to same college
-    teacher = db.query(User).filter(
-        User.id == body.teacher_id,
-        User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
-        User.college_id == current_user["college_id"],
-        User.is_active == True,
-    ).first()
+    teacher = (
+        db.query(User)
+        .filter(
+            User.id == body.teacher_id,
+            User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
+            User.college_id == current_user["college_id"],
+            User.is_active.is_(True),
+        )
+        .first()
+    )
     if not teacher:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Teacher not found in your college.")
 
@@ -258,9 +278,16 @@ def create_entry(
     db.commit()
     db.refresh(entry)
 
-    logger.info("📅 TIMETABLE CREATE │ id=%d │ %s %s–%s │ subj=%s │ teacher=%s │ by user_id=%d",
-                entry.id, day.value, body.start_time, body.end_time,
-                subj.name, teacher.name, current_user["id"])
+    logger.info(
+        "📅 TIMETABLE CREATE │ id=%d │ %s %s–%s │ subj=%s │ teacher=%s │ by user_id=%d",
+        entry.id,
+        day.value,
+        body.start_time,
+        body.end_time,
+        subj.name,
+        teacher.name,
+        current_user["id"],
+    )
 
     return _serialize_entry(entry, db)
 
@@ -269,12 +296,13 @@ def create_entry(
 # PUT /api/timetable/entry/{entry_id} — update
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.put("/entry/{entry_id}")
 def update_entry(
-    entry_id:     int,
-    body:         TimetableEntryUpdate,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    entry_id: int,
+    body: TimetableEntryUpdate,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     entry = db.query(Timetable).filter(Timetable.id == entry_id).first()
     if not entry:
@@ -288,10 +316,14 @@ def update_entry(
         entry.subject_id = body.subject_id
 
     if body.teacher_id is not None:
-        teacher = db.query(User).filter(
-            User.id == body.teacher_id,
-            User.college_id == current_user["college_id"],
-        ).first()
+        teacher = (
+            db.query(User)
+            .filter(
+                User.id == body.teacher_id,
+                User.college_id == current_user["college_id"],
+            )
+            .first()
+        )
         if not teacher:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Teacher not found.")
         entry.teacher_id = body.teacher_id
@@ -314,11 +346,23 @@ def update_entry(
         entry.color_tag = body.color_tag
 
     # Clash checks with updated values
-    _check_teacher_clash(db, entry.teacher_id, entry.day_of_week,
-                         entry.start_time, entry.end_time, exclude_id=entry.id)
+    _check_teacher_clash(
+        db,
+        entry.teacher_id,
+        entry.day_of_week,
+        entry.start_time,
+        entry.end_time,
+        exclude_id=entry.id,
+    )
     if entry.section_id:
-        _check_section_clash(db, entry.section_id, entry.day_of_week,
-                             entry.start_time, entry.end_time, exclude_id=entry.id)
+        _check_section_clash(
+            db,
+            entry.section_id,
+            entry.day_of_week,
+            entry.start_time,
+            entry.end_time,
+            exclude_id=entry.id,
+        )
 
     db.commit()
     db.refresh(entry)
@@ -331,11 +375,12 @@ def update_entry(
 # DELETE /api/timetable/entry/{entry_id}
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.delete("/entry/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_entry(
-    entry_id:     int,
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    entry_id: int,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     entry = db.query(Timetable).filter(Timetable.id == entry_id).first()
     if not entry:
@@ -349,12 +394,13 @@ def delete_entry(
 # GET /api/timetable/department — full department grid for a day
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/department")
 def department_timetable(
     department_id: Optional[int] = None,
-    day_of_week:   Optional[str] = None,
-    current_user:  dict    = Depends(hod_or_above),
-    db:            Session = Depends(get_db),
+    day_of_week: Optional[str] = None,
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     dept_id = department_id or current_user.get("department_id")
     if not dept_id:
@@ -364,7 +410,9 @@ def department_timetable(
     if not course_ids:
         return {"entries": []}
 
-    subject_ids = [r[0] for r in db.query(Subject.id).filter(Subject.course_id.in_(course_ids)).all()]
+    subject_ids = [
+        r[0] for r in db.query(Subject.id).filter(Subject.course_id.in_(course_ids)).all()
+    ]
     if not subject_ids:
         return {"entries": []}
 
@@ -386,10 +434,7 @@ def department_timetable(
         return {"day": DAY_NAMES.get(d, d), "entries": by_day.get(d, [])}
 
     return {
-        "timetable": [
-            {"day": DAY_NAMES[d], "entries": by_day[d]}
-            for d in DAY_ORDER if by_day[d]
-        ]
+        "timetable": [{"day": DAY_NAMES[d], "entries": by_day[d]} for d in DAY_ORDER if by_day[d]]
     }
 
 
@@ -397,11 +442,12 @@ def department_timetable(
 # POST /api/timetable/bulk-upload-excel
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/bulk-upload-excel")
 def bulk_upload_excel(
-    file:         UploadFile = File(...),
-    current_user: dict    = Depends(hod_or_above),
-    db:           Session = Depends(get_db),
+    file: UploadFile = File(...),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Please upload an Excel file (.xlsx).")
@@ -434,19 +480,20 @@ def bulk_upload_excel(
     failed_rows = []
 
     for row_num, row in enumerate(rows[1:], start=2):
-        def cell(name):
+
+        def cell(name, row=row):
             idx = col.get(name)
             if idx is None or idx >= len(row) or row[idx] is None:
                 return None
             return str(row[idx]).strip()
 
         teacher_email = cell("teacher_email")
-        subject_code  = cell("subject_code")
-        day_str       = cell("day_of_week")
-        start         = cell("start_time")
-        end           = cell("end_time")
-        room          = cell("room")
-        section_name  = cell("section_name")
+        subject_code = cell("subject_code")
+        day_str = cell("day_of_week")
+        start = cell("start_time")
+        end = cell("end_time")
+        room = cell("room")
+        section_name = cell("section_name")
 
         if not all([teacher_email, subject_code, day_str, start, end]):
             failed_rows.append({"row": row_num, "reason": "Missing required data"})
@@ -460,11 +507,15 @@ def bulk_upload_excel(
             continue
 
         # Find teacher
-        teacher = db.query(User).filter(
-            User.email == teacher_email,
-            User.college_id == college_id,
-            User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
-        ).first()
+        teacher = (
+            db.query(User)
+            .filter(
+                User.email == teacher_email,
+                User.college_id == college_id,
+                User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
+            )
+            .first()
+        )
         if not teacher:
             failed_rows.append({"row": row_num, "reason": f"Teacher '{teacher_email}' not found"})
             continue
@@ -483,42 +534,58 @@ def bulk_upload_excel(
                 sec_id = sec.id
 
         # Check teacher clash
-        clash = db.query(Timetable).filter(
-            Timetable.teacher_id == teacher.id,
-            Timetable.day_of_week == day,
-            Timetable.start_time < end,
-            Timetable.end_time > start,
-        ).first()
+        clash = (
+            db.query(Timetable)
+            .filter(
+                Timetable.teacher_id == teacher.id,
+                Timetable.day_of_week == day,
+                Timetable.start_time < end,
+                Timetable.end_time > start,
+            )
+            .first()
+        )
         if clash:
-            failed_rows.append({"row": row_num, "reason": f"Teacher clash on {day.value} {start}–{end}"})
+            failed_rows.append(
+                {"row": row_num, "reason": f"Teacher clash on {day.value} {start}–{end}"}
+            )
             continue
 
         # Check exact duplicate
-        dup = db.query(Timetable).filter(
-            Timetable.subject_id == subj.id,
-            Timetable.day_of_week == day,
-            Timetable.start_time == start,
-        ).first()
+        dup = (
+            db.query(Timetable)
+            .filter(
+                Timetable.subject_id == subj.id,
+                Timetable.day_of_week == day,
+                Timetable.start_time == start,
+            )
+            .first()
+        )
         if dup:
             failed_rows.append({"row": row_num, "reason": "Duplicate entry"})
             continue
 
-        db.add(Timetable(
-            subject_id=subj.id,
-            teacher_id=teacher.id,
-            day_of_week=day,
-            start_time=start,
-            end_time=end,
-            room=room,
-            section_id=sec_id,
-        ))
+        db.add(
+            Timetable(
+                subject_id=subj.id,
+                teacher_id=teacher.id,
+                day_of_week=day,
+                start_time=start,
+                end_time=end,
+                room=room,
+                section_id=sec_id,
+            )
+        )
         created += 1
 
     db.commit()
     wb.close()
 
-    logger.info("📅 TIMETABLE BULK-UPLOAD │ created=%d │ failed=%d │ by user_id=%d",
-                created, len(failed_rows), current_user["id"])
+    logger.info(
+        "📅 TIMETABLE BULK-UPLOAD │ created=%d │ failed=%d │ by user_id=%d",
+        created,
+        len(failed_rows),
+        current_user["id"],
+    )
 
     return {"created": created, "failed_rows": failed_rows}
 
@@ -527,11 +594,12 @@ def bulk_upload_excel(
 # GET /api/timetable/export-excel
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/export-excel")
 def export_excel(
     department_id: Optional[int] = None,
-    current_user:  dict    = Depends(hod_or_above),
-    db:            Session = Depends(get_db),
+    current_user: dict = Depends(hod_or_above),
+    db: Session = Depends(get_db),
 ):
     import openpyxl
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -543,14 +611,22 @@ def export_excel(
     dept = db.query(Department).filter(Department.id == dept_id).first()
 
     course_ids = [r[0] for r in db.query(Course.id).filter(Course.department_id == dept_id).all()]
-    subject_ids = [r[0] for r in db.query(Subject.id).filter(Subject.course_id.in_(course_ids)).all()] if course_ids else []
+    subject_ids = (
+        [r[0] for r in db.query(Subject.id).filter(Subject.course_id.in_(course_ids)).all()]
+        if course_ids
+        else []
+    )
 
     entries = (
-        db.query(Timetable)
-        .filter(Timetable.subject_id.in_(subject_ids))
-        .order_by(Timetable.day_of_week, Timetable.start_time)
-        .all()
-    ) if subject_ids else []
+        (
+            db.query(Timetable)
+            .filter(Timetable.subject_id.in_(subject_ids))
+            .order_by(Timetable.day_of_week, Timetable.start_time)
+            .all()
+        )
+        if subject_ids
+        else []
+    )
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -560,8 +636,18 @@ def export_excel(
     header_fill = PatternFill(start_color="1a237e", end_color="1a237e", fill_type="solid")
     header_font = Font(bold=True, color="ffffff", size=11)
 
-    headers = ["Day", "Period", "Start Time", "End Time", "Subject", "Code",
-               "Teacher", "Section", "Room", "Lab"]
+    headers = [
+        "Day",
+        "Period",
+        "Start Time",
+        "End Time",
+        "Subject",
+        "Code",
+        "Teacher",
+        "Section",
+        "Room",
+        "Lab",
+    ]
     for c, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=c, value=h)
         cell.fill = header_fill
@@ -598,8 +684,12 @@ def export_excel(
     wb.close()
 
     dept_name = dept.name if dept else "department"
-    logger.info("📅 TIMETABLE EXPORT │ dept=%s │ entries=%d │ by user_id=%d",
-                dept_name, len(entries), current_user["id"])
+    logger.info(
+        "📅 TIMETABLE EXPORT │ dept=%s │ entries=%d │ by user_id=%d",
+        dept_name,
+        len(entries),
+        current_user["id"],
+    )
 
     return StreamingResponse(
         buf,
@@ -612,10 +702,11 @@ def export_excel(
 # GET /api/timetable/my-today — teacher's schedule today
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/my-today")
 def my_today(
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     today = _today_day()
     if today is None:
@@ -638,10 +729,11 @@ def my_today(
 # GET /api/timetable/my-week — full week schedule
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/my-week")
 def my_week(
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     entries = (
         db.query(Timetable)
@@ -656,26 +748,24 @@ def my_week(
         if key in by_day:
             by_day[key].append(_serialize_entry(e, db, include_session=True))
 
-    return {
-        d: by_day[d]
-        for d in DAY_ORDER
-    }
+    return {d: by_day[d] for d in DAY_ORDER}
 
 
 # ══════════════════════════════════════════════════════════════════════
 # GET /api/timetable/my-current-class — class happening right now
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/my-current-class")
 def my_current_class(
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     today = _today_day()
     if today is None:
         return None  # Sunday
 
-    now_str = datetime.now(tz=timezone.utc).strftime("%H:%M")
+    now_str = datetime.now(tz=UTC).strftime("%H:%M")
 
     entry = (
         db.query(Timetable)
@@ -705,20 +795,22 @@ def my_current_class(
 # POST /api/timetable/start-from-timetable/{timetable_id}
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.post("/start-from-timetable/{timetable_id}")
 def start_from_timetable(
     timetable_id: int,
-    body:         StartFromTimetableRequest,
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    body: StartFromTimetableRequest,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     entry = db.query(Timetable).filter(Timetable.id == timetable_id).first()
     if not entry:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Timetable entry not found.")
 
     if entry.teacher_id != current_user["id"]:
-        raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "This timetable entry does not belong to you.")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This timetable entry does not belong to you."
+        )
 
     subject = db.query(Subject).filter(Subject.id == entry.subject_id).first()
     if not subject:
@@ -747,7 +839,7 @@ def start_from_timetable(
     # Generate secrets
     qr_secret = secrets.token_hex(32)
     bt_token = generate_bluetooth_token()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     session = AttendanceSession(
         subject_id=entry.subject_id,
@@ -769,7 +861,7 @@ def start_from_timetable(
         User.course_id == subject.course_id,
         User.semester == subject.semester,
         User.role == UserRole.student,
-        User.is_active == True,
+        User.is_active.is_(True),
     ]
     if entry.section_id:
         student_filters.append(User.section_id == entry.section_id)
@@ -777,21 +869,29 @@ def start_from_timetable(
     students = db.query(User).filter(*student_filters).all()
 
     for student in students:
-        db.add(AttendanceRecord(
-            session_id=session.id,
-            student_id=student.id,
-            status=AttendanceStatus.absent,
-            marked_by=MarkedBy.auto_absent,
-            face_verified=False,
-            gps_verified=False,
-            bluetooth_verified=False,
-        ))
+        db.add(
+            AttendanceRecord(
+                session_id=session.id,
+                student_id=student.id,
+                status=AttendanceStatus.absent,
+                marked_by=MarkedBy.auto_absent,
+                face_verified=False,
+                gps_verified=False,
+                bluetooth_verified=False,
+            )
+        )
 
     session.total_students = len(students)
     db.commit()
 
-    logger.info("📅 TIMETABLE START │ timetable_id=%d │ session_id=%d │ subj=%s │ %d students │ teacher_id=%d",
-                timetable_id, session.id, subject.name, len(students), current_user["id"])
+    logger.info(
+        "📅 TIMETABLE START │ timetable_id=%d │ session_id=%d │ subj=%s │ %d students │ teacher_id=%d",
+        timetable_id,
+        session.id,
+        subject.name,
+        len(students),
+        current_user["id"],
+    )
 
     # Push notifications
     teacher_user = db.query(User).filter(User.id == current_user["id"]).first()
@@ -807,14 +907,14 @@ def start_from_timetable(
         )
 
     return {
-        "session_id":      session.id,
-        "subject_name":    subject.name,
-        "subject_code":    subject.code,
-        "bluetooth_token":  bt_token,
-        "qr_secret_hint":  qr_secret[:8],
-        "total_students":  len(students),
-        "started_at":      now.isoformat(),
-        "timetable_id":    timetable_id,
+        "session_id": session.id,
+        "subject_name": subject.name,
+        "subject_code": subject.code,
+        "bluetooth_token": bt_token,
+        "qr_secret_hint": qr_secret[:8],
+        "total_students": len(students),
+        "started_at": now.isoformat(),
+        "timetable_id": timetable_id,
     }
 
 
@@ -822,10 +922,11 @@ def start_from_timetable(
 # GET /api/timetable/my-section-timetable — student's section timetable
 # ══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/my-section-timetable")
 def my_section_timetable(
-    current_user: dict    = Depends(any_authenticated),
-    db:           Session = Depends(get_db),
+    current_user: dict = Depends(any_authenticated),
+    db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.id == current_user["id"]).first()
     if not user or not user.section_id:
@@ -845,8 +946,5 @@ def my_section_timetable(
             by_day[key].append(_serialize_entry(e, db))
 
     return {
-        "timetable": [
-            {"day": DAY_NAMES[d], "entries": by_day[d]}
-            for d in DAY_ORDER if by_day[d]
-        ]
+        "timetable": [{"day": DAY_NAMES[d], "entries": by_day[d]} for d in DAY_ORDER if by_day[d]]
     }

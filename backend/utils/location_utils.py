@@ -19,8 +19,8 @@ Anti-spoofing:
 """
 
 import logging
-from datetime import datetime, timezone
-from math import asin, atan2, cos, radians, sin, sqrt
+from datetime import UTC, datetime
+from math import atan2, cos, radians, sin, sqrt
 
 from config import settings
 
@@ -37,9 +37,12 @@ _MAX_PLAUSIBLE_SPEED_MPS = 30.0
 # 1. Haversine distance
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def calculate_distance(
-    lat1: float, lon1: float,
-    lat2: float, lon2: float,
+    lat1: float,
+    lon1: float,
+    lat2: float,
+    lon2: float,
 ) -> float:
     """
     Haversine great-circle distance between two GPS coordinates.
@@ -53,9 +56,9 @@ def calculate_distance(
     """
     R = 6_371_000  # Earth's mean radius in metres
 
-    phi1   = radians(lat1)
-    phi2   = radians(lat2)
-    dphi   = radians(lat2 - lat1)
+    phi1 = radians(lat1)
+    phi2 = radians(lat2)
+    dphi = radians(lat2 - lat1)
     dlambda = radians(lon2 - lon1)
 
     a = sin(dphi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(dlambda / 2) ** 2
@@ -66,17 +69,18 @@ def calculate_distance(
 # 2. GPS proximity verification
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def verify_gps_proximity(
-    student_lat:              float,
-    student_lon:              float,
-    student_accuracy:         float,
-    teacher_lat:              float,
-    teacher_lon:              float,
-    max_distance:             float | None = None,
-    mock_location_detected:   bool         = False,
-    previous_lat:             float | None = None,
-    previous_lon:             float | None = None,
-    previous_recorded_at:     datetime | None = None,
+    student_lat: float,
+    student_lon: float,
+    student_accuracy: float,
+    teacher_lat: float,
+    teacher_lon: float,
+    max_distance: float | None = None,
+    mock_location_detected: bool = False,
+    previous_lat: float | None = None,
+    previous_lon: float | None = None,
+    previous_recorded_at: datetime | None = None,
 ) -> dict:
     """
     Verify that a student is within the allowed radius of the teacher.
@@ -109,20 +113,27 @@ def verify_gps_proximity(
     if max_distance is None:
         max_distance = settings.GPS_RADIUS_METERS
 
-    logger.info("🌐 GPS VERIFY │ student=(%.6f, %.6f) accuracy=%.1f m │ teacher=(%.6f, %.6f) │ max_distance=%.0f m",
-                student_lat, student_lon, student_accuracy,
-                teacher_lat, teacher_lon, max_distance)
+    logger.info(
+        "🌐 GPS VERIFY │ student=(%.6f, %.6f) accuracy=%.1f m │ teacher=(%.6f, %.6f) │ max_distance=%.0f m",
+        student_lat,
+        student_lon,
+        student_accuracy,
+        teacher_lat,
+        teacher_lon,
+        max_distance,
+    )
 
     # ── 0) Hard-reject if client reported a mock-location provider ──────
     if mock_location_detected:
         logger.warning(
             "GPS rejected — mock_location_detected=True │ student=(%.6f, %.6f)",
-            student_lat, student_lon,
+            student_lat,
+            student_lon,
         )
         return {
-            "verified":           False,
-            "distance_meters":    None,
-            "accuracy_meters":    student_accuracy,
+            "verified": False,
+            "distance_meters": None,
+            "accuracy_meters": student_accuracy,
             "flagged_suspicious": True,
             "reason": (
                 "Mock location detected on this device. "
@@ -134,10 +145,11 @@ def verify_gps_proximity(
     if student_accuracy > settings.GPS_ACCURACY_THRESHOLD_METERS:
         logger.info(
             "GPS rejected — accuracy=%.1f m exceeds threshold=%.1f m",
-            student_accuracy, settings.GPS_ACCURACY_THRESHOLD_METERS,
+            student_accuracy,
+            settings.GPS_ACCURACY_THRESHOLD_METERS,
         )
         return {
-            "verified":       False,
+            "verified": False,
             "distance_meters": None,
             "accuracy_meters": student_accuracy,
             "reason": (
@@ -151,13 +163,15 @@ def verify_gps_proximity(
         logger.warning(
             "GPS rejected — reported accuracy=%.2f m (< %.1f m) — "
             "likely mock location — student_lat=%.6f lon=%.6f",
-            student_accuracy, _SUSPICIOUS_ACCURACY_THRESHOLD,
-            student_lat, student_lon,
+            student_accuracy,
+            _SUSPICIOUS_ACCURACY_THRESHOLD,
+            student_lat,
+            student_lon,
         )
         return {
-            "verified":           False,
-            "distance_meters":    None,
-            "accuracy_meters":    student_accuracy,
+            "verified": False,
+            "distance_meters": None,
+            "accuracy_meters": student_accuracy,
             "flagged_suspicious": True,
             "reason": (
                 "Suspicious GPS reading (accuracy too perfect). "
@@ -166,26 +180,31 @@ def verify_gps_proximity(
         }
 
     # ── a2) Velocity / teleport check vs previous snapshot ─────────────
-    if (previous_lat is not None and previous_lon is not None
-            and previous_recorded_at is not None):
+    if previous_lat is not None and previous_lon is not None and previous_recorded_at is not None:
         prev_dist = calculate_distance(
-            previous_lat, previous_lon, student_lat, student_lon,
+            previous_lat,
+            previous_lon,
+            student_lat,
+            student_lon,
         )
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         prev_ts = previous_recorded_at
         if prev_ts.tzinfo is None:
-            prev_ts = prev_ts.replace(tzinfo=timezone.utc)
+            prev_ts = prev_ts.replace(tzinfo=UTC)
         dt = max(1.0, (now - prev_ts).total_seconds())
         speed = prev_dist / dt
         if speed > _MAX_PLAUSIBLE_SPEED_MPS:
             logger.warning(
                 "GPS rejected — impossible movement │ distance=%.1f m in %.1f s → %.1f m/s (>%.0f)",
-                prev_dist, dt, speed, _MAX_PLAUSIBLE_SPEED_MPS,
+                prev_dist,
+                dt,
+                speed,
+                _MAX_PLAUSIBLE_SPEED_MPS,
             )
             return {
-                "verified":           False,
-                "distance_meters":    None,
-                "accuracy_meters":    student_accuracy,
+                "verified": False,
+                "distance_meters": None,
+                "accuracy_meters": student_accuracy,
                 "flagged_suspicious": True,
                 "reason": (
                     f"Impossible movement detected ({speed:.0f} m/s). "
@@ -197,18 +216,22 @@ def verify_gps_proximity(
 
     # ── b) Distance check ─────────────────────────────────────────────
     distance = calculate_distance(
-        student_lat, student_lon,
-        teacher_lat, teacher_lon,
+        student_lat,
+        student_lon,
+        teacher_lat,
+        teacher_lon,
     )
 
     if distance > max_distance:
         logger.info(
-            "GPS rejected — distance=%.1f m exceeds max=%.1f m", distance, max_distance,
+            "GPS rejected — distance=%.1f m exceeds max=%.1f m",
+            distance,
+            max_distance,
         )
         return {
-            "verified":         False,
-            "distance_meters":  round(distance, 1),
-            "accuracy_meters":  student_accuracy,
+            "verified": False,
+            "distance_meters": round(distance, 1),
+            "accuracy_meters": student_accuracy,
             "flagged_suspicious": flagged,
             "reason": (
                 f"You are {distance:.0f} m away from the classroom. "
@@ -218,12 +241,14 @@ def verify_gps_proximity(
 
     logger.info(
         "GPS verified — distance=%.1f m accuracy=%.1f m flagged=%s",
-        distance, student_accuracy, flagged,
+        distance,
+        student_accuracy,
+        flagged,
     )
     return {
-        "verified":           True,
-        "distance_meters":    round(distance, 1),
-        "accuracy_meters":    student_accuracy,
+        "verified": True,
+        "distance_meters": round(distance, 1),
+        "accuracy_meters": student_accuracy,
         "flagged_suspicious": flagged,
     }
 
@@ -232,8 +257,9 @@ def verify_gps_proximity(
 # 3. Bluetooth proximity verification (HMAC, rotating per 30-second window)
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def verify_bluetooth_proximity(
-    bluetooth_token:        str,
+    bluetooth_token: str,
     student_detected_token: str,
 ) -> dict:
     """
@@ -256,9 +282,11 @@ def verify_bluetooth_proximity(
     from utils.bluetooth_utils import verify_bluetooth_token  # type: ignore
 
     if not bluetooth_token or not student_detected_token:
-        logger.warning("📶 BLE check failed — seed=%s │ student_detected=%s",
-                       "present" if bluetooth_token else "EMPTY",
-                       "present" if student_detected_token else "EMPTY")
+        logger.warning(
+            "📶 BLE check failed — seed=%s │ student_detected=%s",
+            "present" if bluetooth_token else "EMPTY",
+            "present" if student_detected_token else "EMPTY",
+        )
         return {
             "verified": False,
             "reason": (
@@ -271,8 +299,11 @@ def verify_bluetooth_proximity(
         logger.info("📶 BLE verified — HMAC window matched ✓")
         return {"verified": True}
 
-    logger.warning("📶 BLE MISMATCH — seed=%s… │ student_detected=%s…",
-                   bluetooth_token[:8], student_detected_token[:8])
+    logger.warning(
+        "📶 BLE MISMATCH — seed=%s… │ student_detected=%s…",
+        bluetooth_token[:8],
+        student_detected_token[:8],
+    )
     return {
         "verified": False,
         "reason": (

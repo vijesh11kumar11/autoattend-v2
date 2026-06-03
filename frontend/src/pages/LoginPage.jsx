@@ -21,16 +21,30 @@ import { useAuth } from '../context/AuthContext';
 // ── SVG: Graduation Cap logo ──────────────────────────────────────────
 function GraduationCapIcon({ className = '' }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none"
-         xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
       <path d="M32 8 L60 22 L32 36 L4 22 Z" fill="white" fillOpacity="0.95" />
-      <path d="M16 28 L16 44 C16 44 22 52 32 52 C42 52 48 44 48 44 L48 28"
-            stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M16 28 L16 44 C16 44 22 52 32 52 C42 52 48 44 48 44 L48 28"
+        stroke="white"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <circle cx="56" cy="22" r="3" fill="white" fillOpacity="0.7" />
-      <line x1="56" y1="22" x2="56" y2="36"
-            stroke="white" strokeWidth="3" strokeLinecap="round" />
-      <path d="M52 36 Q56 40 60 36" stroke="white" strokeWidth="2.5"
-            strokeLinecap="round" fill="none" />
+      <line x1="56" y1="22" x2="56" y2="36" stroke="white" strokeWidth="3" strokeLinecap="round" />
+      <path
+        d="M52 36 Q56 40 60 36"
+        stroke="white"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        fill="none"
+      />
     </svg>
   );
 }
@@ -38,8 +52,10 @@ function GraduationCapIcon({ className = '' }) {
 // ── Feature pill ──────────────────────────────────────────────────────
 function FeaturePill({ icon, label }) {
   return (
-    <div className="flex items-center gap-2 bg-white/10 border border-white/20
-                    rounded-full px-3 py-1.5 text-white/90 text-xs font-medium">
+    <div
+      className="flex items-center gap-2 bg-white/10 border border-white/20
+                    rounded-full px-3 py-1.5 text-white/90 text-xs font-medium"
+    >
       <span className="text-base leading-none">{icon}</span>
       {label}
     </div>
@@ -50,18 +66,29 @@ function FeaturePill({ icon, label }) {
 function EyeIcon({ open }) {
   return open ? (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M2.458 12C3.732 7.943 7.523 5 12 5
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M2.458 12C3.732 7.943 7.523 5 12 5
                c4.478 0 8.268 2.943 9.542 7
                -1.274 4.057-5.064 7-9.542 7
-               -4.477 0-8.268-2.943-9.542-7z" />
+               -4.477 0-8.268-2.943-9.542-7z"
+      />
     </svg>
   ) : (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M13.875 18.825A10.05 10.05 0 0112 19
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M13.875 18.825A10.05 10.05 0 0112 19
                c-4.478 0-8.268-2.943-9.543-7
                a9.97 9.97 0 011.563-3.029
                m5.858.908a3 3 0 114.243 4.243
@@ -72,7 +99,8 @@ function EyeIcon({ open }) {
                m0 0A9.953 9.953 0 0112 5
                c4.478 0 8.268 2.943 9.543 7
                a10.025 10.025 0 01-4.132 5.411
-               m0 0L21 21" />
+               m0 0L21 21"
+      />
     </svg>
   );
 }
@@ -104,7 +132,10 @@ function TOTPInput({ value, onChange }) {
 
   function handlePaste(e) {
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-    if (pasted.length === 6) { onChange(pasted); inputs.current[5]?.focus(); }
+    if (pasted.length === 6) {
+      onChange(pasted);
+      inputs.current[5]?.focus();
+    }
     e.preventDefault();
   }
 
@@ -113,7 +144,9 @@ function TOTPInput({ value, onChange }) {
       {Array.from({ length: 6 }, (_, i) => (
         <input
           key={i}
-          ref={(el) => { inputs.current[i] = el; }}
+          ref={(el) => {
+            inputs.current[i] = el;
+          }}
           type="text"
           inputMode="numeric"
           maxLength={1}
@@ -136,7 +169,7 @@ function TOTPInput({ value, onChange }) {
 const COLLEGE_NAME = import.meta.env.VITE_COLLEGE_NAME || 'AutoAttend AI College';
 
 export default function LoginPage() {
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
 
   // Redirect if already logged in
@@ -147,16 +180,24 @@ export default function LoginPage() {
   // Form state
   const [identifier, setIdentifier] = useState(() => {
     // Restore the last-used identifier when 'remember me' was checked.
-    try { return localStorage.getItem('aa_remember_id') || ''; } catch { return ''; }
+    try {
+      return localStorage.getItem('aa_remember_id') || '';
+    } catch {
+      return '';
+    }
   });
-  const [password,   setPassword]   = useState('');
-  const [showPwd,    setShowPwd]     = useState(false);
-  const [remember,   setRemember]    = useState(() => {
-    try { return Boolean(localStorage.getItem('aa_remember_id')); } catch { return false; }
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [remember, setRemember] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem('aa_remember_id'));
+    } catch {
+      return false;
+    }
   });
-  const [loading,    setLoading]     = useState(false);
-  const [error,      setError]       = useState('');
-  const [notice,     setNotice]      = useState(() => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState(() => {
     // Pick up reason set by axios interceptor on forced redirect (#60).
     try {
       const reason = sessionStorage.getItem('aa_login_reason');
@@ -164,16 +205,18 @@ export default function LoginPage() {
       if (reason === 'session_expired') {
         return 'Your session expired. Please sign in again.';
       }
-    } catch { /* private mode */ }
+    } catch {
+      /* private mode */
+    }
     return '';
   });
 
   // TOTP modal state
-  const [showTotp,      setShowTotp]     = useState(false);
-  const [totpToken,     setTotpToken]    = useState('');   // totp_session_token
-  const [totpCode,      setTotpCode]     = useState('');
-  const [totpLoading,   setTotpLoading]  = useState(false);
-  const [totpError,     setTotpError]    = useState('');
+  const [showTotp, setShowTotp] = useState(false);
+  const [totpToken, setTotpToken] = useState(''); // totp_session_token
+  const [totpCode, setTotpCode] = useState('');
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [totpError, setTotpError] = useState('');
 
   // ── Step 1: Login ───────────────────────────────────────────────────
   async function handleLogin(e) {
@@ -195,8 +238,10 @@ export default function LoginPage() {
       // it pre-fills next visit on this device.
       try {
         if (remember) localStorage.setItem('aa_remember_id', identifier.trim());
-        else          localStorage.removeItem('aa_remember_id');
-      } catch { /* private mode — ignore */ }
+        else localStorage.removeItem('aa_remember_id');
+      } catch {
+        /* private mode — ignore */
+      }
 
       if (data.requires_totp) {
         // Store the totp_session_token for step 2
@@ -214,17 +259,17 @@ export default function LoginPage() {
       }
     } catch (err) {
       const detail = (err.response?.data?.detail || '').toString();
-      const d      = detail.toLowerCase();
+      const d = detail.toLowerCase();
       // Be tolerant of backend wording drift (#63): match by substring,
       // not exact equality, so a copy-edit on the backend doesn't break UX.
       setError(
         d.includes('invalid credential') || d.includes('wrong password') || d.includes('incorrect')
           ? 'Wrong identifier or password.'
           : d.includes('inactive') || d.includes('disabled')
-          ? 'Your account is inactive. Contact the administrator.'
-          : d.includes('device') && (d.includes('not registered') || d.includes('mismatch'))
-          ? 'This device is not registered. Log in from your registered device.'
-          : detail || 'Login failed. Please try again.',
+            ? 'Your account is inactive. Contact the administrator.'
+            : d.includes('device') && (d.includes('not registered') || d.includes('mismatch'))
+              ? 'This device is not registered. Log in from your registered device.'
+              : detail || 'Login failed. Please try again.'
       );
     } finally {
       setLoading(false);
@@ -254,8 +299,8 @@ export default function LoginPage() {
         detail === 'Invalid TOTP code'
           ? 'Incorrect code. Check your authenticator app and try again.'
           : detail === 'TOTP locked'
-          ? 'Too many wrong attempts. Please wait before trying again.'
-          : detail || 'Verification failed.',
+            ? 'Too many wrong attempts. Please wait before trying again.'
+            : detail || 'Verification failed.'
       );
       setTotpCode('');
     } finally {
@@ -266,9 +311,9 @@ export default function LoginPage() {
   function redirectByRole(role) {
     const map = {
       principal: '/principal/dashboard',
-      hod:       '/hod/dashboard',
-      teacher:   '/teacher/dashboard',
-      student:   '/student/dashboard',
+      hod: '/hod/dashboard',
+      teacher: '/teacher/dashboard',
+      student: '/student/dashboard',
     };
     navigate(map[role] ?? '/', { replace: true });
   }
@@ -276,7 +321,6 @@ export default function LoginPage() {
   // ── Render ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex">
-
       {/* ── LEFT PANEL ── */}
       <div
         className="hidden lg:flex lg:w-[45%] flex-col justify-between p-10"
@@ -293,11 +337,12 @@ export default function LoginPage() {
           <div className="space-y-3">
             <h1 className="text-4xl font-extrabold text-white leading-tight">
               Smart Attendance
-              <br />for Smart Colleges
+              <br />
+              for Smart Colleges
             </h1>
             <p className="text-white/70 text-base leading-relaxed max-w-xs">
-              Multi-factor attendance powered by AI — face recognition,
-              QR codes, GPS, and Bluetooth working together.
+              Multi-factor attendance powered by AI — face recognition, QR codes, GPS, and Bluetooth
+              working together.
             </p>
           </div>
 
@@ -317,11 +362,12 @@ export default function LoginPage() {
       {/* ── RIGHT PANEL ── */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white">
         <div className="w-full max-w-sm space-y-8 fade-in">
-
           {/* Mobile logo */}
           <div className="flex items-center gap-2 lg:hidden">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-                 style={{ background: '#1a237e' }}>
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: '#1a237e' }}
+            >
               <GraduationCapIcon className="w-5 h-5" />
             </div>
             <span className="font-bold text-slate-800">AutoAttend AI</span>
@@ -334,8 +380,11 @@ export default function LoginPage() {
 
           {/* Session-expired / forced-redirect notice (#60) */}
           {notice && !error && (
-            <div role="status" className="bg-amber-50 border border-amber-200 text-amber-800
-                                          rounded-lg px-4 py-3 text-sm flex items-start gap-2">
+            <div
+              role="status"
+              className="bg-amber-50 border border-amber-200 text-amber-800
+                                          rounded-lg px-4 py-3 text-sm flex items-start gap-2"
+            >
               <span className="text-base leading-none mt-0.5">🔒</span>
               <span className="flex-1">{notice}</span>
               <button
@@ -351,8 +400,11 @@ export default function LoginPage() {
 
           {/* Error banner */}
           {error && (
-            <div role="alert" className="bg-red-50 border border-red-200 text-red-700
-                                         rounded-lg px-4 py-3 text-sm flex items-start gap-2">
+            <div
+              role="alert"
+              className="bg-red-50 border border-red-200 text-red-700
+                                         rounded-lg px-4 py-3 text-sm flex items-start gap-2"
+            >
               <span className="text-base leading-none mt-0.5">⚠️</span>
               {error}
             </div>
@@ -378,7 +430,9 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="label">Password</label>
+              <label htmlFor="password" className="label">
+                Password
+              </label>
               <div className="relative">
                 <input
                   id="password"
@@ -429,7 +483,13 @@ export default function LoginPage() {
               className="btn-primary w-full"
               style={{ background: '#1a237e' }}
             >
-              {loading ? <><div className="spinner" /> Signing in…</> : 'Sign in'}
+              {loading ? (
+                <>
+                  <div className="spinner" /> Signing in…
+                </>
+              ) : (
+                'Sign in'
+              )}
             </button>
           </form>
         </div>
@@ -439,12 +499,22 @@ export default function LoginPage() {
       {showTotp && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) { setShowTotp(false); setTotpCode(''); setTotpError(''); } }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowTotp(false);
+              setTotpCode('');
+              setTotpError('');
+            }
+          }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 space-y-6 fade-in">
             <div className="text-center space-y-2">
-              <div className="w-14 h-14 bg-secondary/10 rounded-full flex items-center
-                              justify-center mx-auto text-3xl">🔐</div>
+              <div
+                className="w-14 h-14 bg-secondary/10 rounded-full flex items-center
+                              justify-center mx-auto text-3xl"
+              >
+                🔐
+              </div>
               <h3 className="text-xl font-bold text-slate-800">Two-Factor Authentication</h3>
               <p className="text-slate-500 text-sm">
                 Enter the 6-digit code from your authenticator app.
@@ -452,8 +522,11 @@ export default function LoginPage() {
             </div>
 
             {totpError && (
-              <div role="alert" className="bg-red-50 border border-red-200 text-red-700
-                                           rounded-lg px-4 py-3 text-sm text-center">
+              <div
+                role="alert"
+                className="bg-red-50 border border-red-200 text-red-700
+                                           rounded-lg px-4 py-3 text-sm text-center"
+              >
                 {totpError}
               </div>
             )}
@@ -467,9 +540,13 @@ export default function LoginPage() {
                 className="btn-primary w-full"
                 style={{ background: '#1a237e' }}
               >
-                {totpLoading
-                  ? <><div className="spinner" /> Verifying…</>
-                  : 'Verify'}
+                {totpLoading ? (
+                  <>
+                    <div className="spinner" /> Verifying…
+                  </>
+                ) : (
+                  'Verify'
+                )}
               </button>
             </form>
 
@@ -477,7 +554,11 @@ export default function LoginPage() {
               type="button"
               className="w-full text-center text-sm text-slate-400 hover:text-slate-600
                          transition-colors"
-              onClick={() => { setShowTotp(false); setTotpCode(''); setTotpError(''); }}
+              onClick={() => {
+                setShowTotp(false);
+                setTotpCode('');
+                setTotpError('');
+              }}
             >
               ← Back to login
             </button>
@@ -487,4 +568,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

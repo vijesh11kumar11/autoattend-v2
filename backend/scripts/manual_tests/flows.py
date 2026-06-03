@@ -2,33 +2,51 @@
 AutoAttend v2 — Simulate all 5 test flows via API and direct DB.
 This script acts as an integration test that exercises the backend APIs.
 
-Run:  python test_flows.py
+Run:  python scripts/manual_tests/flows.py
 """
 
-import sys, os, requests, json
-sys.path.insert(0, os.path.dirname(__file__))
+import os
+import sys
 
-from datetime import datetime, date, time, timezone, timedelta
-from database import SessionLocal, Base, engine
-from database import (
-    User, Subject, Section, AttendanceSession, AttendanceRecord,
-    TutorAssignment, UserRole, SessionStatus, AttendanceStatus, MarkedBy,
-)
+import requests
+
+# Add the backend/ root (three levels up: manual_tests/ -> scripts/ -> backend/)
+# to the import path so `from database import ...` resolves.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # Suppress SQLAlchemy SQL echo
 import logging
+from datetime import UTC, date, datetime, timedelta
+
+from database import (
+    AttendanceRecord,
+    AttendanceSession,
+    AttendanceStatus,
+    MarkedBy,
+    Section,
+    SessionLocal,
+    Subject,
+    User,
+    UserRole,
+)
+
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 BASE = "http://localhost:8000/api"
 
 db = SessionLocal()
 
+
 # ── Helper: login and get JWT ────────────────────────────────────
 def login(email, password="password123"):
-    r = requests.post(f"{BASE}/auth/login", json={
-        "identifier": email,
-        "password": password,
-    }, headers={"X-Device-Id": "test-device-001"})
+    r = requests.post(
+        f"{BASE}/auth/login",
+        json={
+            "identifier": email,
+            "password": password,
+        },
+        headers={"X-Device-Id": "test-device-001"},
+    )
     if r.status_code != 200:
         print(f"❌ Login failed for {email}: {r.status_code} {r.text[:200]}")
         return None
@@ -46,7 +64,7 @@ def auth(token):
 
 
 # ── Lookups ──────────────────────────────────────────────────────
-priya   = db.query(User).filter_by(email="priya.teacher@svec.edu.in").first()
+priya = db.query(User).filter_by(email="priya.teacher@svec.edu.in").first()
 section = db.query(Section).filter_by(semester=6, name="A").first()
 ds_subj = db.query(Subject).filter_by(code="CS301").first()
 
@@ -73,13 +91,17 @@ print("✅ Teacher logged in")
 
 # Start session via API
 today = date.today().isoformat()
-r = requests.post(f"{BASE}/attendance/start-session", json={
-    "subject_id": ds_subj.id,
-    "section_id": section.id,
-    "date": today,
-    "teacher_latitude": 13.6288,
-    "teacher_longitude": 79.4192,
-}, headers=auth(teacher_token))
+r = requests.post(
+    f"{BASE}/attendance/start-session",
+    json={
+        "subject_id": ds_subj.id,
+        "section_id": section.id,
+        "date": today,
+        "teacher_latitude": 13.6288,
+        "teacher_longitude": 79.4192,
+    },
+    headers=auth(teacher_token),
+)
 
 if r.status_code != 200:
     print(f"❌ Start session failed: {r.status_code} {r.text}")
@@ -95,15 +117,11 @@ print(f"✅ Session started: id={session_id}, total_students={total}")
 # we'll directly update attendance records in DB (simulating what the endpoint does)
 present_students = students[:15]  # CS001-CS015 present
 for s in present_students:
-    record = (
-        db.query(AttendanceRecord)
-        .filter_by(session_id=session_id, student_id=s.id)
-        .first()
-    )
+    record = db.query(AttendanceRecord).filter_by(session_id=session_id, student_id=s.id).first()
     if record:
         record.status = AttendanceStatus.present
         record.marked_by = MarkedBy.qr_scan
-        record.marked_at = datetime.now(tz=timezone.utc)
+        record.marked_at = datetime.now(tz=UTC)
 
 db.commit()
 print(f"✅ Marked {len(present_students)} students present (CS001-CS015)")
@@ -117,8 +135,10 @@ if r.status_code != 200:
     print(f"❌ End session failed: {r.status_code} {r.text}")
 else:
     end_data = r.json()
-    print(f"✅ Session ended: present={end_data['present']}, absent={end_data['absent']}, "
-          f"percentage={end_data['percentage']}%")
+    print(
+        f"✅ Session ended: present={end_data['present']}, absent={end_data['absent']}, "
+        f"percentage={end_data['percentage']}%"
+    )
 
 # Check via history API
 r = requests.get(f"{BASE}/faculty/my-sessions", headers=auth(teacher_token))
@@ -126,7 +146,9 @@ if r.status_code == 200:
     sessions = r.json()
     print(f"✅ History shows {len(sessions)} session(s)")
     for sess in sessions:
-        print(f"   {sess['subject_code']} | {sess['date']} | present={sess['present_count']}/{sess['total_students']}")
+        print(
+            f"   {sess['subject_code']} | {sess['date']} | present={sess['present_count']}/{sess['total_students']}"
+        )
 
 # ══════════════════════════════════════════════════════════════════
 # FLOW 2: Ward Students
@@ -135,8 +157,9 @@ print("\n" + "=" * 60)
 print("FLOW 2: Ward Students")
 print("=" * 60)
 
-r = requests.get(f"{BASE}/twm/dashboard", params={"academic_year": "2025-26"},
-                 headers=auth(teacher_token))
+r = requests.get(
+    f"{BASE}/twm/dashboard", params={"academic_year": "2025-26"}, headers=auth(teacher_token)
+)
 if r.status_code == 200:
     dash = r.json()
     ward = dash.get("ward_students", [])
@@ -165,13 +188,17 @@ if student_token:
 
     # Apply personal leave (medical requires document)
     leave_from = (date.today() + timedelta(days=1)).isoformat()
-    leave_to   = (date.today() + timedelta(days=3)).isoformat()
-    r = requests.post(f"{BASE}/leave/apply", json={
-        "leave_type": "personal",
-        "from_date": leave_from,
-        "to_date": leave_to,
-        "reason": "Family function — need to travel home for 3 days. Will submit all pending assignments on return.",
-    }, headers=auth(student_token))
+    leave_to = (date.today() + timedelta(days=3)).isoformat()
+    r = requests.post(
+        f"{BASE}/leave/apply",
+        json={
+            "leave_type": "personal",
+            "from_date": leave_from,
+            "to_date": leave_to,
+            "reason": "Family function — need to travel home for 3 days. Will submit all pending assignments on return.",
+        },
+        headers=auth(student_token),
+    )
 
     if r.status_code == 200:
         leave_data = r.json()
@@ -191,11 +218,15 @@ if student_token:
 
     # Teacher approves
     if leave_id:
-        r = requests.post(f"{BASE}/leave/{leave_id}/approve", json={
-            "note": "Approved. Get well soon. Submit medical certificate when you return.",
-        }, headers=auth(teacher_token))
+        r = requests.post(
+            f"{BASE}/leave/{leave_id}/approve",
+            json={
+                "note": "Approved. Get well soon. Submit medical certificate when you return.",
+            },
+            headers=auth(teacher_token),
+        )
         if r.status_code == 200:
-            print(f"✅ Leave approved by teacher")
+            print("✅ Leave approved by teacher")
         else:
             print(f"❌ Approve failed: {r.status_code} {r.text[:200]}")
 
@@ -214,11 +245,15 @@ print("\n" + "=" * 60)
 print("FLOW 4: TWM Meeting")
 print("=" * 60)
 
-r = requests.post(f"{BASE}/twm/start", json={
-    "date": today,
-    "academic_year": "2025-26",
-    "notes": "Mid-semester review: discussing attendance status and academic performance of ward students.",
-}, headers=auth(teacher_token))
+r = requests.post(
+    f"{BASE}/twm/start",
+    json={
+        "date": today,
+        "academic_year": "2025-26",
+        "notes": "Mid-semester review: discussing attendance status and academic performance of ward students.",
+    },
+    headers=auth(teacher_token),
+)
 
 if r.status_code == 200:
     twm_data = r.json()
@@ -231,11 +266,13 @@ if r.status_code == 200:
     records = []
     for i, ws in enumerate(ward_students):
         status = "present" if i < 15 else "absent"
-        records.append({
-            "student_id": ws["student_id"],
-            "status": status,
-            "note": "Present in TWM" if status == "present" else "",
-        })
+        records.append(
+            {
+                "student_id": ws["student_id"],
+                "status": status,
+                "note": "Present in TWM" if status == "present" else "",
+            }
+        )
 
     r2 = requests.post(
         f"{BASE}/twm/{twm_session_id}/mark-bulk",
@@ -243,7 +280,7 @@ if r.status_code == 200:
         headers=auth(teacher_token),
     )
     if r2.status_code == 200:
-        print(f"✅ Bulk marked: 15 present, 5 absent")
+        print("✅ Bulk marked: 15 present, 5 absent")
     else:
         print(f"❌ Bulk mark failed: {r2.status_code} {r2.text[:200]}")
 
@@ -256,15 +293,19 @@ if r.status_code == 200:
         print(f"❌ TWM end failed: {r3.status_code} {r3.text[:200]}")
 
     # Check ward report
-    r4 = requests.get(f"{BASE}/twm/ward-combined-report",
-                      params={"academic_year": "2025-26"},
-                      headers=auth(teacher_token))
+    r4 = requests.get(
+        f"{BASE}/twm/ward-combined-report",
+        params={"academic_year": "2025-26"},
+        headers=auth(teacher_token),
+    )
     if r4.status_code == 200:
         report = r4.json()
         print(f"✅ Ward combined report: {len(report)} students")
         for wr in report[:5]:
-            print(f"   {wr.get('roll_number','?')}: overall={wr.get('overall_pct',0)}%, "
-                  f"status={wr.get('attendance_status','?')}")
+            print(
+                f"   {wr.get('roll_number','?')}: overall={wr.get('overall_pct',0)}%, "
+                f"status={wr.get('attendance_status','?')}"
+            )
     else:
         print(f"⚠️  Ward report: {r4.status_code}")
 else:
@@ -291,19 +332,25 @@ if student5_token:
     r = requests.get(f"{BASE}/student/portal/dashboard", headers=auth(student5_token))
     if r.status_code == 200:
         dash = r.json()
-        print(f"✅ Student dashboard loaded")
+        print("✅ Student dashboard loaded")
         recent = dash.get("recent_records", [])
         for rec in recent:
-            print(f"   {rec.get('subject_name','?')} | {rec.get('date','?')} | "
-                  f"status={rec.get('status','?')} | can_dispute={rec.get('can_dispute',False)}")
+            print(
+                f"   {rec.get('subject_name','?')} | {rec.get('date','?')} | "
+                f"status={rec.get('status','?')} | can_dispute={rec.get('can_dispute',False)}"
+            )
 
     # File dispute
-    r = requests.post(f"{BASE}/student/portal/dispute-attendance", json={
-        "session_id": session_id,
-        "reason": "My phone battery died during the class so I could not scan the QR code. "
-                  "I was physically present in the classroom. My classmates can verify.",
-        "proof_note": "Seat number 15, can be verified by classmates CS018 and CS019.",
-    }, headers=auth(student5_token))
+    r = requests.post(
+        f"{BASE}/student/portal/dispute-attendance",
+        json={
+            "session_id": session_id,
+            "reason": "My phone battery died during the class so I could not scan the QR code. "
+            "I was physically present in the classroom. My classmates can verify.",
+            "proof_note": "Seat number 15, can be verified by classmates CS018 and CS019.",
+        },
+        headers=auth(student5_token),
+    )
 
     if r.status_code in (200, 201):
         dispute_data = r.json()
@@ -319,19 +366,25 @@ if student5_token:
         disputes = r.json()
         print(f"✅ Teacher sees {len(disputes)} pending dispute(s)")
         for d in disputes:
-            print(f"   Dispute #{d.get('id','?')}: {d.get('student_name','?')} | "
-                  f"{d.get('reason','')[:60]}...")
+            print(
+                f"   Dispute #{d.get('id','?')}: {d.get('student_name','?')} | "
+                f"{d.get('reason','')[:60]}..."
+            )
     else:
         print(f"⚠️  Pending disputes: {r.status_code} {r.text[:200]}")
 
     # Teacher approves dispute
     if dispute_id:
-        r = requests.post(f"{BASE}/teacher/disputes/{dispute_id}/resolve", json={
-            "action": "approve",
-            "note": "Verified with other students. Marking present.",
-        }, headers=auth(teacher_token))
+        r = requests.post(
+            f"{BASE}/teacher/disputes/{dispute_id}/resolve",
+            json={
+                "action": "approve",
+                "note": "Verified with other students. Marking present.",
+            },
+            headers=auth(teacher_token),
+        )
         if r.status_code == 200:
-            print(f"✅ Dispute approved → student marked present")
+            print("✅ Dispute approved → student marked present")
         else:
             print(f"❌ Resolve failed: {r.status_code} {r.text[:200]}")
 
@@ -353,11 +406,13 @@ print("=" * 60)
 r = requests.get(f"{BASE}/faculty/my-dashboard", headers=auth(teacher_token))
 if r.status_code == 200:
     dash = r.json()
-    print(f"✅ Teacher dashboard:")
+    print("✅ Teacher dashboard:")
     subjects = dash.get("subjects", [])
     for s in subjects:
-        print(f"   {s.get('name','?')} ({s.get('code','?')}): "
-              f"sessions={s.get('total_sessions',0)}, avg_pct={s.get('avg_attendance',0)}%")
+        print(
+            f"   {s.get('name','?')} ({s.get('code','?')}): "
+            f"sessions={s.get('total_sessions',0)}, avg_pct={s.get('avg_attendance',0)}%"
+        )
     print(f"   Total sessions: {dash.get('total_sessions', 0)}")
 else:
     print(f"⚠️  Dashboard: {r.status_code}")
@@ -368,8 +423,14 @@ if r.status_code == 200:
     sessions = r.json()
     print(f"✅ My sessions: {len(sessions)}")
     for sess in sessions:
-        pct = round(sess['present_count'] / sess['total_students'] * 100) if sess['total_students'] else 0
-        print(f"   {sess['subject_code']} | {sess['date']} | {sess['present_count']}/{sess['total_students']} ({pct}%)")
+        pct = (
+            round(sess["present_count"] / sess["total_students"] * 100)
+            if sess["total_students"]
+            else 0
+        )
+        print(
+            f"   {sess['subject_code']} | {sess['date']} | {sess['present_count']}/{sess['total_students']} ({pct}%)"
+        )
 
 print("\n🎉 All flows completed! Refresh the browser to test the UI.")
 

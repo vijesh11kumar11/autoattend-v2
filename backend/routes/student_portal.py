@@ -13,12 +13,13 @@ POST /api/teacher/disputes/{dispute_id}/resolve  teacher+   resolve a dispute
 
 import logging
 import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import case, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -31,17 +32,15 @@ from database import (
     LeaveRequest,
     LeaveRequestStatus,
     MarkedBy,
-    Section,
     SessionStatus,
     Subject,
     Timetable,
     TutorAssignment,
     User,
-    UserRole,
     get_db,
 )
-from utils.auth_utils import require_recent_auth, student_only, teacher_or_above
 from utils.audit_helpers import audit_admin_action
+from utils.auth_utils import require_recent_auth, student_only, teacher_or_above
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +51,9 @@ router = APIRouter(prefix="/api", tags=["Student Portal"])
 
 _THRESHOLD = settings.ATTENDANCE_THRESHOLD  # 75.0
 
+
 def _current_academic_year() -> str:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     y = now.year
     return f"{y - 1}-{str(y)[-2:]}" if now.month < 6 else f"{y}-{str(y + 1)[-2:]}"
 
@@ -75,6 +75,7 @@ def _today_day_name() -> str:
 # ═══════════════════════════════════════════════════════════════════════
 # GET /api/student/portal/dashboard
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/student/portal/dashboard")
 def student_dashboard(
@@ -100,32 +101,42 @@ def student_dashboard(
     low_attendance_subjects = []
     for subj in subjects:
         session_ids = [
-            s.id for s in db.query(AttendanceSession.id).filter(
+            s.id
+            for s in db.query(AttendanceSession.id)
+            .filter(
                 AttendanceSession.subject_id == subj.id,
                 AttendanceSession.status == SessionStatus.ended,
-            ).all()
+            )
+            .all()
         ]
         total_sessions = len(session_ids)
         if not session_ids:
-            attendance_summary.append({
-                "subject_id": subj.id,
-                "subject_name": subj.name,
-                "subject_code": subj.code,
-                "total_sessions": 0,
-                "present": 0,
-                "absent": 0,
-                "percentage": 0,
-                "status_label": "safe",
-                "can_afford_to_miss": 0,
-                "sessions_needed": 0,
-            })
+            attendance_summary.append(
+                {
+                    "subject_id": subj.id,
+                    "subject_name": subj.name,
+                    "subject_code": subj.code,
+                    "total_sessions": 0,
+                    "present": 0,
+                    "absent": 0,
+                    "percentage": 0,
+                    "status_label": "safe",
+                    "can_afford_to_miss": 0,
+                    "sessions_needed": 0,
+                }
+            )
             continue
 
-        present = db.query(func.count(AttendanceRecord.id)).filter(
-            AttendanceRecord.session_id.in_(session_ids),
-            AttendanceRecord.student_id == sid,
-            AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]),
-        ).scalar() or 0
+        present = (
+            db.query(func.count(AttendanceRecord.id))
+            .filter(
+                AttendanceRecord.session_id.in_(session_ids),
+                AttendanceRecord.student_id == sid,
+                AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]),
+            )
+            .scalar()
+            or 0
+        )
         absent = total_sessions - present
         pct = round(present / total_sessions * 100, 1) if total_sessions else 0
 
@@ -167,18 +178,20 @@ def student_dashboard(
             .all()
         )
         for tt, subj in entries:
-            today_timetable.append({
-                "timetable_id": tt.id,
-                "subject_name": subj.name if subj else "TWM",
-                "subject_code": subj.code if subj else "TWM",
-                "start_time": str(tt.start_time)[:5] if tt.start_time else None,
-                "end_time": str(tt.end_time)[:5] if tt.end_time else None,
-                "room": tt.room,
-                "is_lab": tt.is_lab,
-                "is_twm": tt.is_twm,
-                "color_tag": tt.color_tag,
-                "period_number": tt.period_number,
-            })
+            today_timetable.append(
+                {
+                    "timetable_id": tt.id,
+                    "subject_name": subj.name if subj else "TWM",
+                    "subject_code": subj.code if subj else "TWM",
+                    "start_time": str(tt.start_time)[:5] if tt.start_time else None,
+                    "end_time": str(tt.end_time)[:5] if tt.end_time else None,
+                    "room": tt.room,
+                    "is_lab": tt.is_lab,
+                    "is_twm": tt.is_twm,
+                    "color_tag": tt.color_tag,
+                    "period_number": tt.period_number,
+                }
+            )
 
     # ── Recent records (last 5) ──
     recent_records = (
@@ -190,34 +203,46 @@ def student_dashboard(
         .limit(5)
         .all()
     )
-    recent_list = [{
-        "record_id": rec.id,
-        "session_id": sess.id,
-        "date": str(sess.date),
-        "subject_name": subj.name,
-        "subject_code": subj.code,
-        "status": rec.status.value,
-        "marked_by": rec.marked_by.value if rec.marked_by else None,
-        "can_dispute": (
-            rec.status == AttendanceStatus.absent
-            and sess.date >= date.today() - timedelta(days=7)
-        ),
-    } for rec, sess, subj in recent_records]
+    recent_list = [
+        {
+            "record_id": rec.id,
+            "session_id": sess.id,
+            "date": str(sess.date),
+            "subject_name": subj.name,
+            "subject_code": subj.code,
+            "status": rec.status.value,
+            "marked_by": rec.marked_by.value if rec.marked_by else None,
+            "can_dispute": (
+                rec.status == AttendanceStatus.absent
+                and sess.date >= date.today() - timedelta(days=7)
+            ),
+        }
+        for rec, sess, subj in recent_records
+    ]
 
     # ── Pending leave requests ──
-    pending_leaves = db.query(func.count(LeaveRequest.id)).filter(
-        LeaveRequest.student_id == sid,
-        LeaveRequest.status == LeaveRequestStatus.pending,
-    ).scalar() or 0
+    pending_leaves = (
+        db.query(func.count(LeaveRequest.id))
+        .filter(
+            LeaveRequest.student_id == sid,
+            LeaveRequest.status == LeaveRequestStatus.pending,
+        )
+        .scalar()
+        or 0
+    )
 
     # ── Tutor info ──
     year = _current_academic_year()
     tutor_info = None
-    assignment = db.query(TutorAssignment).filter(
-        TutorAssignment.student_id == sid,
-        TutorAssignment.academic_year == year,
-        TutorAssignment.is_active.is_(True),
-    ).first()
+    assignment = (
+        db.query(TutorAssignment)
+        .filter(
+            TutorAssignment.student_id == sid,
+            TutorAssignment.academic_year == year,
+            TutorAssignment.is_active.is_(True),
+        )
+        .first()
+    )
     if assignment:
         tutor = db.query(User).filter(User.id == assignment.tutor_id).first()
         if tutor:
@@ -255,6 +280,7 @@ def student_dashboard(
 # GET /api/student/portal/attendance-forecast
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/student/portal/attendance-forecast")
 def student_forecast(
     current_user: dict = Depends(student_only),
@@ -265,28 +291,40 @@ def student_forecast(
     if not student:
         raise HTTPException(404, "Student not found.")
 
-    subjects = db.query(Subject).filter(
-        Subject.course_id == student.course_id,
-        Subject.semester == student.semester,
-    ).all()
+    subjects = (
+        db.query(Subject)
+        .filter(
+            Subject.course_id == student.course_id,
+            Subject.semester == student.semester,
+        )
+        .all()
+    )
 
     forecasts = []
     for subj in subjects:
         session_ids = [
-            s.id for s in db.query(AttendanceSession.id).filter(
+            s.id
+            for s in db.query(AttendanceSession.id)
+            .filter(
                 AttendanceSession.subject_id == subj.id,
                 AttendanceSession.status == SessionStatus.ended,
-            ).all()
+            )
+            .all()
         ]
         total = len(session_ids)
         if not session_ids:
             continue
 
-        present = db.query(func.count(AttendanceRecord.id)).filter(
-            AttendanceRecord.session_id.in_(session_ids),
-            AttendanceRecord.student_id == sid,
-            AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]),
-        ).scalar() or 0
+        present = (
+            db.query(func.count(AttendanceRecord.id))
+            .filter(
+                AttendanceRecord.session_id.in_(session_ids),
+                AttendanceRecord.student_id == sid,
+                AttendanceRecord.status.in_([AttendanceStatus.present, AttendanceStatus.late]),
+            )
+            .scalar()
+            or 0
+        )
 
         pct = round(present / total * 100, 1) if total else 0
         total_lectures = subj.total_lectures if subj.total_lectures else 40
@@ -296,20 +334,22 @@ def student_forecast(
         can_afford = max(0, sessions_remaining - sessions_needed)
         on_track = sessions_needed <= sessions_remaining
 
-        forecasts.append({
-            "subject_id": subj.id,
-            "subject_name": subj.name,
-            "subject_code": subj.code,
-            "attended": present,
-            "total_so_far": total,
-            "current_pct": pct,
-            "total_lectures": total_lectures,
-            "sessions_remaining": sessions_remaining,
-            "sessions_needed": sessions_needed,
-            "can_afford_to_miss": can_afford,
-            "on_track": on_track,
-            "status_label": _attendance_status_label(pct),
-        })
+        forecasts.append(
+            {
+                "subject_id": subj.id,
+                "subject_name": subj.name,
+                "subject_code": subj.code,
+                "attended": present,
+                "total_so_far": total,
+                "current_pct": pct,
+                "total_lectures": total_lectures,
+                "sessions_remaining": sessions_remaining,
+                "sessions_needed": sessions_needed,
+                "can_afford_to_miss": can_afford,
+                "on_track": on_track,
+                "status_label": _attendance_status_label(pct),
+            }
+        )
 
     return {
         "student_id": sid,
@@ -322,6 +362,7 @@ def student_forecast(
 # GET /api/student/portal/my-tutor
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/student/portal/my-tutor")
 def my_tutor(
     current_user: dict = Depends(student_only),
@@ -329,11 +370,15 @@ def my_tutor(
 ):
     sid = current_user["id"]
     year = _current_academic_year()
-    assignment = db.query(TutorAssignment).filter(
-        TutorAssignment.student_id == sid,
-        TutorAssignment.academic_year == year,
-        TutorAssignment.is_active.is_(True),
-    ).first()
+    assignment = (
+        db.query(TutorAssignment)
+        .filter(
+            TutorAssignment.student_id == sid,
+            TutorAssignment.academic_year == year,
+            TutorAssignment.is_active.is_(True),
+        )
+        .first()
+    )
     if not assignment:
         return {"tutor": None}
 
@@ -355,6 +400,7 @@ def my_tutor(
 # GET /api/student/portal/my-timetable
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/student/portal/my-timetable")
 def my_timetable(
     current_user: dict = Depends(student_only),
@@ -375,20 +421,22 @@ def my_timetable(
 
     timetable = []
     for tt, subj in entries:
-        timetable.append({
-            "timetable_id": tt.id,
-            "day": tt.day_of_week.value if tt.day_of_week else None,
-            "subject_name": subj.name if subj else "TWM",
-            "subject_code": subj.code if subj else "TWM",
-            "start_time": str(tt.start_time)[:5] if tt.start_time else None,
-            "end_time": str(tt.end_time)[:5] if tt.end_time else None,
-            "room": tt.room,
-            "is_lab": tt.is_lab,
-            "is_twm": tt.is_twm,
-            "color_tag": tt.color_tag,
-            "period_number": tt.period_number,
-            "teacher_name": None,
-        })
+        timetable.append(
+            {
+                "timetable_id": tt.id,
+                "day": tt.day_of_week.value if tt.day_of_week else None,
+                "subject_name": subj.name if subj else "TWM",
+                "subject_code": subj.code if subj else "TWM",
+                "start_time": str(tt.start_time)[:5] if tt.start_time else None,
+                "end_time": str(tt.end_time)[:5] if tt.end_time else None,
+                "room": tt.room,
+                "is_lab": tt.is_lab,
+                "is_twm": tt.is_twm,
+                "color_tag": tt.color_tag,
+                "period_number": tt.period_number,
+                "teacher_name": None,
+            }
+        )
         # Fetch teacher name
         if tt.teacher_id:
             teacher = db.query(User.name).filter(User.id == tt.teacher_id).first()
@@ -401,6 +449,7 @@ def my_timetable(
 # ═══════════════════════════════════════════════════════════════════════
 # POST /api/student/portal/dispute-attendance
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class DisputeRequest(BaseModel):
     session_id: int
@@ -417,31 +466,47 @@ def dispute_attendance(
     sid = current_user["id"]
 
     # Verify session exists
-    session = db.query(AttendanceSession).filter(
-        AttendanceSession.id == body.session_id
-    ).first()
+    session = db.query(AttendanceSession).filter(AttendanceSession.id == body.session_id).first()
     if not session:
         raise HTTPException(404, "Session not found.")
 
-    # Must be within 7 days
+    # Must be within the 7-day dispute window.
+    # Policy SERVER WINS (issues #88/#121): an offline dispute that syncs after
+    # the window has closed is rejected with 409 + a machine-readable
+    # "window_expired" marker so the client drops the queued item and asks the
+    # user to resubmit. The human-readable message is preserved for online UX.
     if session.date < date.today() - timedelta(days=7):
-        raise HTTPException(400, "Cannot dispute attendance older than 7 days.")
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": "window_expired",
+                "message": "Cannot dispute attendance older than 7 days.",
+            },
+        )
 
     # Student must have an absent record for this session
-    record = db.query(AttendanceRecord).filter(
-        AttendanceRecord.session_id == body.session_id,
-        AttendanceRecord.student_id == sid,
-        AttendanceRecord.status == AttendanceStatus.absent,
-    ).first()
+    record = (
+        db.query(AttendanceRecord)
+        .filter(
+            AttendanceRecord.session_id == body.session_id,
+            AttendanceRecord.student_id == sid,
+            AttendanceRecord.status == AttendanceStatus.absent,
+        )
+        .first()
+    )
     if not record:
         raise HTTPException(400, "You can only dispute sessions where you are marked absent.")
 
     # Check no duplicate pending dispute
-    existing = db.query(AttendanceDispute).filter(
-        AttendanceDispute.student_id == sid,
-        AttendanceDispute.session_id == body.session_id,
-        AttendanceDispute.status == DisputeStatus.pending,
-    ).first()
+    existing = (
+        db.query(AttendanceDispute)
+        .filter(
+            AttendanceDispute.student_id == sid,
+            AttendanceDispute.session_id == body.session_id,
+            AttendanceDispute.status == DisputeStatus.pending,
+        )
+        .first()
+    )
     if existing:
         raise HTTPException(400, "You already have a pending dispute for this session.")
 
@@ -458,6 +523,7 @@ def dispute_attendance(
     # Notify teacher
     try:
         from utils.notification_utils import send_push_to_many
+
         student = db.query(User).filter(User.id == sid).first()
         send_push_to_many(
             [session.teacher_id],
@@ -480,6 +546,7 @@ def dispute_attendance(
 # GET /api/student/portal/my-disputes
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/student/portal/my-disputes")
 def my_disputes(
     current_user: dict = Depends(student_only),
@@ -495,24 +562,28 @@ def my_disputes(
         .all()
     )
 
-    return [{
-        "dispute_id": d.id,
-        "session_id": d.session_id,
-        "date": str(sess.date),
-        "subject_name": subj.name,
-        "subject_code": subj.code,
-        "reason": d.reason,
-        "proof_note": d.proof_note,
-        "status": d.status.value,
-        "resolution_note": d.resolution_note,
-        "resolved_at": str(d.resolved_at) if d.resolved_at else None,
-        "created_at": str(d.created_at) if d.created_at else None,
-    } for d, sess, subj in disputes]
+    return [
+        {
+            "dispute_id": d.id,
+            "session_id": d.session_id,
+            "date": str(sess.date),
+            "subject_name": subj.name,
+            "subject_code": subj.code,
+            "reason": d.reason,
+            "proof_note": d.proof_note,
+            "status": d.status.value,
+            "resolution_note": d.resolution_note,
+            "resolved_at": str(d.resolved_at) if d.resolved_at else None,
+            "created_at": str(d.created_at) if d.created_at else None,
+        }
+        for d, sess, subj in disputes
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # GET /api/teacher/disputes/pending — Teacher sees pending disputes
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/teacher/disputes/pending")
 def teacher_pending_disputes(
@@ -533,24 +604,28 @@ def teacher_pending_disputes(
         .all()
     )
 
-    return [{
-        "dispute_id": d.id,
-        "session_id": d.session_id,
-        "date": str(sess.date),
-        "subject_name": subj.name,
-        "subject_code": subj.code,
-        "student_id": u.id,
-        "student_name": u.name,
-        "roll_number": u.roll_number,
-        "reason": d.reason,
-        "proof_note": d.proof_note,
-        "created_at": str(d.created_at) if d.created_at else None,
-    } for d, sess, subj, u in disputes]
+    return [
+        {
+            "dispute_id": d.id,
+            "session_id": d.session_id,
+            "date": str(sess.date),
+            "subject_name": subj.name,
+            "subject_code": subj.code,
+            "student_id": u.id,
+            "student_name": u.name,
+            "roll_number": u.roll_number,
+            "reason": d.reason,
+            "proof_note": d.proof_note,
+            "created_at": str(d.created_at) if d.created_at else None,
+        }
+        for d, sess, subj, u in disputes
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # POST /api/teacher/disputes/{dispute_id}/resolve
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class ResolveDisputeRequest(BaseModel):
     action: str = Field(..., pattern="^(approve|reject)$")
@@ -583,14 +658,18 @@ def resolve_dispute(
 
     if body.action == "approve":
         # Update attendance record to present via manual override
-        record = db.query(AttendanceRecord).filter(
-            AttendanceRecord.session_id == dispute.session_id,
-            AttendanceRecord.student_id == dispute.student_id,
-        ).first()
+        record = (
+            db.query(AttendanceRecord)
+            .filter(
+                AttendanceRecord.session_id == dispute.session_id,
+                AttendanceRecord.student_id == dispute.student_id,
+            )
+            .first()
+        )
         if record:
             record.status = AttendanceStatus.present
             record.marked_by = MarkedBy.manual
-            record.marked_at = datetime.now(tz=timezone.utc)
+            record.marked_at = datetime.now(tz=UTC)
 
         # Recalculate session present_count
         new_present = (
@@ -610,7 +689,7 @@ def resolve_dispute(
         dispute.resolution_note = body.note or "Rejected by teacher."
 
     dispute.resolved_by = tid
-    dispute.resolved_at = datetime.now(tz=timezone.utc)
+    dispute.resolved_at = datetime.now(tz=UTC)
 
     db.commit()
 
@@ -621,15 +700,18 @@ def resolve_dispute(
         db=db,
         target_id=dispute.id,
         before={"status": "pending"},
-        after={"status": dispute.status.value,
-               "student_id": dispute.student_id,
-               "session_id": dispute.session_id,
-               "note": (body.note or "")[:200]},
+        after={
+            "status": dispute.status.value,
+            "student_id": dispute.student_id,
+            "session_id": dispute.session_id,
+            "note": (body.note or "")[:200],
+        },
     )
 
     # Notify student
     try:
         from utils.notification_utils import send_push_to_many
+
         action_label = "approved" if body.action == "approve" else "rejected"
         send_push_to_many(
             [dispute.student_id],

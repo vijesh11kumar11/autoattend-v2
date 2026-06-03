@@ -9,8 +9,7 @@ import hashlib
 import logging
 import re
 import time
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import requests as http_requests
 from bs4 import BeautifulSoup
@@ -45,27 +44,27 @@ def _is_cache_fresh(key: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════
 
 _NEWS_QUERIES = {
-    "jobs":       "tech jobs India engineering hiring 2026",
-    "education":  "scholarship India students university admission",
-    "ai":         "artificial intelligence machine learning India students",
+    "jobs": "tech jobs India engineering hiring 2026",
+    "education": "scholarship India students university admission",
+    "ai": "artificial intelligence machine learning India students",
     "technology": "technology engineering computer science India",
-    "future":     "startups innovation research India future",
+    "future": "startups innovation research India future",
 }
 
 _DEVTO_TAGS = {
-    "jobs":       "career",
-    "education":  "education",
-    "ai":         "ai",
+    "jobs": "career",
+    "education": "education",
+    "ai": "ai",
     "technology": "webdev",
-    "future":     "beginners",
+    "future": "beginners",
 }
 
 _CATEGORY_COLORS = {
-    "jobs":       "blue",
-    "education":  "green",
-    "ai":         "purple",
+    "jobs": "blue",
+    "education": "green",
+    "ai": "purple",
     "technology": "orange",
-    "future":     "pink",
+    "future": "pink",
 }
 
 
@@ -73,12 +72,13 @@ _CATEGORY_COLORS = {
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _time_ago(iso_str: str | None) -> str:
     if not iso_str:
         return "recently"
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         diff = now - dt
         secs = int(diff.total_seconds())
         if secs < 60:
@@ -118,7 +118,7 @@ def _scrape_full_article(url: str) -> str | None:
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
         resp = http_requests.get(url, headers=headers, timeout=12, allow_redirects=True)
         if resp.status_code != 200:
@@ -127,14 +127,30 @@ def _scrape_full_article(url: str) -> str | None:
         soup = BeautifulSoup(resp.text, "lxml")
 
         # Remove unwanted elements
-        for tag in soup.find_all(["script", "style", "nav", "footer", "header",
-                                   "aside", "form", "iframe", "noscript",
-                                   "figure", "figcaption", "button", "svg"]):
+        for tag in soup.find_all(
+            [
+                "script",
+                "style",
+                "nav",
+                "footer",
+                "header",
+                "aside",
+                "form",
+                "iframe",
+                "noscript",
+                "figure",
+                "figcaption",
+                "button",
+                "svg",
+            ]
+        ):
             tag.decompose()
         # Remove ads / social / related sections
-        for tag in soup.find_all(class_=re.compile(
-                r"share|social|comment|related|sidebar|advert|promo|newsletter|popup",
-                re.I)):
+        for tag in soup.find_all(
+            class_=re.compile(
+                r"share|social|comment|related|sidebar|advert|promo|newsletter|popup", re.I
+            )
+        ):
             tag.decompose()
 
         # Try to find the main article body
@@ -151,8 +167,9 @@ def _scrape_full_article(url: str) -> str | None:
         seen_texts: set[str] = set()  # deduplicate
         in_list = False
 
-        for el in article_el.find_all(["h1", "h2", "h3", "h4", "p", "blockquote",
-                                        "ul", "ol", "li", "strong", "b"]):
+        for el in article_el.find_all(
+            ["h1", "h2", "h3", "h4", "p", "blockquote", "ul", "ol", "li", "strong", "b"]
+        ):
             text = el.get_text(strip=True)
             if not text or len(text) < 20 or text in seen_texts:
                 continue
@@ -176,7 +193,11 @@ def _scrape_full_article(url: str) -> str | None:
             elif el.name == "li":
                 blocks.append(f"- {text}")
                 in_list = True
-            elif el.name in ("strong", "b") and el.parent and el.parent.name not in ("p", "li", "blockquote"):
+            elif (
+                el.name in ("strong", "b")
+                and el.parent
+                and el.parent.name not in ("p", "li", "blockquote")
+            ):
                 in_list = False
                 blocks.append(f"\n**{text}**\n")
             elif is_stat:
@@ -199,7 +220,10 @@ def _scrape_full_article(url: str) -> str | None:
         # Cap at ~5000 words
         words = full_text.split()
         if len(words) > 5000:
-            full_text = " ".join(words[:5000]) + "\n\n---\n\n*Article trimmed — read full version at source.*"
+            full_text = (
+                " ".join(words[:5000])
+                + "\n\n---\n\n*Article trimmed — read full version at source.*"
+            )
 
         return full_text
     except Exception as exc:
@@ -210,6 +234,7 @@ def _scrape_full_article(url: str) -> str | None:
 # ═══════════════════════════════════════════════════════════════════════
 # Fetchers
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _fetch_newsapi(query: str, category: str, page_size: int = 10) -> list[dict]:
     api_key = getattr(settings, "NEWS_API_KEY", "")
@@ -309,9 +334,11 @@ def _fetch_category(cat: str) -> list[dict]:
     ni, di = 0, 0
     while ni < len(news) or di < len(devto):
         if ni < len(news):
-            merged.append(news[ni]); ni += 1
+            merged.append(news[ni])
+            ni += 1
         if di < len(devto):
-            merged.append(devto[di]); di += 1
+            merged.append(devto[di])
+            di += 1
     return merged
 
 
@@ -333,6 +360,7 @@ def _fetch_all() -> list[dict]:
 # GET /api/feed
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("")
 def get_feed(
     category: str = "all",
@@ -353,9 +381,11 @@ def get_feed(
             ni, di = 0, 0
             while ni < len(news) or di < len(devto):
                 if ni < len(news):
-                    merged.append(news[ni]); ni += 1
+                    merged.append(news[ni])
+                    ni += 1
                 if di < len(devto):
-                    merged.append(devto[di]); di += 1
+                    merged.append(devto[di])
+                    di += 1
             _cache[cache_key] = {"data": merged, "ts": time.time()}
             logger.info("🔍 FEED SEARCH │ q=%s │ results=%d", search, len(merged))
         data = _cache[cache_key]["data"]
@@ -410,6 +440,7 @@ def get_feed(
 # ═══════════════════════════════════════════════════════════════════════
 # GET /api/feed/article/{article_id}
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/article/{article_id}")
 def get_article(

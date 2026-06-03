@@ -29,8 +29,8 @@ function decodeJWTPayload(token) {
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(null);
-  const [token,   setToken]   = useState(null);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // ── Restore token on app launch ───────────────────────────────────
@@ -58,7 +58,9 @@ export function AuthProvider({ children }) {
 
   // ── logout ────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
-    try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch {}
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+    } catch {}
     setToken(null);
     setUser(null);
     resetExpiryAlert();
@@ -83,11 +85,9 @@ export function AuthProvider({ children }) {
         if (!stored) return;
         const payload = decodeJWTPayload(stored);
         if (!payload || typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()) {
-          Alert.alert(
-            'Session Expired',
-            'Your session has expired. Please log in again.',
-            [{ text: 'OK' }],
-          );
+          Alert.alert('Session Expired', 'Your session has expired. Please log in again.', [
+            { text: 'OK' },
+          ]);
           await logout();
         }
       } catch (err) {
@@ -115,10 +115,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   // ── hasRole ───────────────────────────────────────────────────────
-  const hasRole = useCallback((minRole) => {
-    if (!user) return false;
-    return (ROLE_ORDER[user.role] ?? -1) >= (ROLE_ORDER[minRole] ?? 99);
-  }, [user]);
+  const hasRole = useCallback(
+    (minRole) => {
+      if (!user) return false;
+      return (ROLE_ORDER[user.role] ?? -1) >= (ROLE_ORDER[minRole] ?? 99);
+    },
+    [user]
+  );
 
   return (
     <AuthContext.Provider

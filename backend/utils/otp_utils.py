@@ -9,11 +9,14 @@ MSG91 is used ONLY for:
 Dual-channel: same OTP sent to both SMS and Email.
 BOTH channels must be independently verified (verify_dual_otp).
 OTP is stored as Argon2id hash — never plain text.
+
+SMS OTP: Fast2SMS primary, MSG91 fallback.
+Email OTP: MSG91 email (custom HTML body).
 """
 
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import requests
 from argon2 import PasswordHasher
@@ -22,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import OTPChannel, OTPLog, OTPPurpose, User
+from utils.sms import send_sms
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +37,14 @@ _ph = PasswordHasher()
 _PURPOSE_DB_MAP: dict[str, OTPPurpose] = {
     "password_change": OTPPurpose.password_reset,
     "forgot_password": OTPPurpose.password_reset,
-    "device_change":   OTPPurpose.device_change,
+    "device_change": OTPPurpose.device_change,
 }
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # Phone normalisation (internal)
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _normalize_mobile(phone: str) -> str:
     """Normalize to MSG91 format: 91XXXXXXXXXX (no + prefix)."""
@@ -57,6 +62,7 @@ def _normalize_mobile(phone: str) -> str:
 # 1. OTP Generation
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def generate_otp() -> str:
     """
     Cryptographically secure 6-digit OTP.
@@ -70,30 +76,60 @@ def generate_otp() -> str:
 # 2. SMS Sender
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def send_sms_otp(phone: str, otp: str) -> bool:
     """
-    Send OTP via MSG91 SMS OTP API.
-    Returns True on success, False on any failure (never raises).
-    Never logs the actual OTP value.
+    Send OTP via SMS. Fast2SMS is the primary provider; MSG91 is the fallback.
+
+    Order:
+      1. Fast2SMS Quick Route (plain-text transactional message).
+      2. If Fast2SMS fails/unconfigured → MSG91 OTP API (template hash).
+
+    Returns True on success from either provider, False if both fail.
+    Never raises. Never logs the actual OTP value.
     """
+    # ── Primary: Fast2SMS ────────────────────────────────────────────
+    message = (
+        f"Your AutoAttend AI OTP is {otp}. "
+        "Valid for 10 minutes. Do NOT share this code with anyone."
+    )
+    try:
+        result = send_sms(phone, message)
+        if result.get("ok"):
+            return True
+        logger.warning(
+            "Fast2SMS OTP failed for phone ending %s (%s) — trying MSG91 fallback",
+            phone[-4:],
+            result.get("error"),
+        )
+    except Exception as exc:
+        logger.error(
+            "Fast2SMS OTP exception for phone ending %s: %s — trying MSG91 fallback",
+            phone[-4:],
+            exc,
+        )
+
+    # ── Fallback: MSG91 OTP API ──────────────────────────────────────
     url = "https://control.msg91.com/api/v5/otp"
     headers = {
-        "authkey":      settings.MSG91_AUTH_KEY,
+        "authkey": settings.MSG91_AUTH_KEY,
         "Content-Type": "application/json",
     }
     payload = {
         "template_id": settings.MSG91_OTP_TEMPLATE_ID,
-        "mobile":      f"91{phone}",
-        "otp":         otp,
+        "mobile": f"91{phone}",
+        "otp": otp,
     }
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
         success = resp.status_code == 200
         if not success:
-            logger.warning("SMS OTP failed for phone ending %s: %s", phone[-4:], resp.text)
+            logger.warning(
+                "MSG91 OTP fallback failed for phone ending %s: %s", phone[-4:], resp.text
+            )
         return success
     except Exception as exc:
-        logger.error("SMS OTP exception for phone ending %s: %s", phone[-4:], exc)
+        logger.error("MSG91 OTP fallback exception for phone ending %s: %s", phone[-4:], exc)
         return False
 
 
@@ -104,38 +140,76 @@ def send_sms_otp(phone: str, otp: str) -> bool:
 _SUBJECT_MAP: dict[str, str] = {
     "password_change": "Password Change OTP - AutoAttend AI",
     "forgot_password": "Password Reset OTP - AutoAttend AI",
-    "device_change":   "Device Change OTP - AutoAttend AI",
+    "device_change": "Device Change OTP - AutoAttend AI",
 }
 
 
 def send_email_otp(email: str, otp: str, name: str, purpose: str) -> bool:
     """
-    Send OTP via MSG91 Email API with a custom HTML body.
-    Returns True on success, False on any failure (never raises).
+    Send OTP via email.
+
+    Primary: MSG91 approved template `traceln_otp` (variables
+    {{student_name}}, {{otp}}). Fallback: custom HTML body (build_otp_email_html)
+    if the template send fails or no template id is configured.
+
+    Returns True on success from either path, False otherwise. Never raises.
     Never logs the actual OTP value.
     """
     url = "https://control.msg91.com/api/v5/email/send"
     headers = {
-        "authkey":      settings.MSG91_AUTH_KEY,
+        "authkey": settings.MSG91_AUTH_KEY,
         "Content-Type": "application/json",
     }
+
+    # ── Primary: MSG91 approved template ─────────────────────────────
+    if settings.MSG91_EMAIL_TEMPLATE_ID:
+        template_payload = {
+            "recipients": [
+                {
+                    "to": [{"name": name, "email": email}],
+                    "variables": {"student_name": name or "", "otp": otp},
+                }
+            ],
+            "from": {"name": settings.APP_NAME, "email": settings.MSG91_EMAIL_FROM},
+            "domain": settings.MSG91_EMAIL_DOMAIN,
+            "template_id": settings.MSG91_EMAIL_TEMPLATE_ID,
+        }
+        try:
+            resp = requests.post(url, json=template_payload, headers=headers, timeout=10)
+            if resp.status_code in (200, 202):
+                return True
+            logger.warning(
+                "Email OTP template send failed for %s: %s — trying HTML fallback",
+                mask_email(email),
+                resp.text,
+            )
+        except Exception as exc:
+            logger.error(
+                "Email OTP template exception for %s: %s — trying HTML fallback",
+                mask_email(email),
+                exc,
+            )
+
+    # ── Fallback: custom HTML body ───────────────────────────────────
     payload = {
         "to": [{"name": name, "email": email}],
         "from": {
-            "name":  "AutoAttend AI",
+            "name": settings.APP_NAME,
             "email": settings.MSG91_EMAIL_FROM,
         },
         "subject": _SUBJECT_MAP.get(purpose, "AutoAttend AI OTP"),
-        "body":    build_otp_email_html(otp, name, purpose),
+        "body": build_otp_email_html(otp, name, purpose),
     }
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
         success = resp.status_code in (200, 202)
         if not success:
-            logger.warning("Email OTP failed for %s: %s", mask_email(email), resp.text)
+            logger.warning(
+                "Email OTP HTML fallback failed for %s: %s", mask_email(email), resp.text
+            )
         return success
     except Exception as exc:
-        logger.error("Email OTP exception for %s: %s", mask_email(email), exc)
+        logger.error("Email OTP HTML fallback exception for %s: %s", mask_email(email), exc)
         return False
 
 
@@ -146,14 +220,14 @@ def send_email_otp(email: str, otp: str, name: str, purpose: str) -> bool:
 _PURPOSE_MSG: dict[str, str] = {
     "password_change": "You requested to change your AutoAttend password.",
     "forgot_password": "You requested a password reset.",
-    "device_change":   "You requested to change your registered device.",
+    "device_change": "You requested to change your registered device.",
 }
 
 
 def build_otp_email_html(otp: str, name: str, purpose: str) -> str:
     """Return a professional HTML email string with the OTP displayed prominently."""
     purpose_msg = _PURPOSE_MSG.get(purpose, "You requested a verification OTP.")
-    digits      = "  ".join(otp)   # e.g. "0  4  8  3  9  2"
+    digits = "  ".join(otp)  # e.g. "0  4  8  3  9  2"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -237,6 +311,7 @@ def build_otp_email_html(otp: str, name: str, purpose: str) -> str:
 # 5. send_dual_otp — generate, store (Argon2), send both channels
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def send_dual_otp(user_id: int, purpose: str, db: Session) -> dict:
     """
     Generates one OTP, hashes it with Argon2id, stores two OTPLog rows
@@ -246,31 +321,33 @@ def send_dual_otp(user_id: int, purpose: str, db: Session) -> dict:
       {sms_sent, email_sent, phone_masked, email_masked, expires_at}
     """
     user: User = db.query(User).filter(User.id == user_id).first()
-    otp        = generate_otp()
-    otp_hash   = _ph.hash(otp)
-    expires_at = datetime.now(tz=timezone.utc) + timedelta(minutes=10)
+    otp = generate_otp()
+    otp_hash = _ph.hash(otp)
+    expires_at = datetime.now(tz=UTC) + timedelta(minutes=10)
     db_purpose = _PURPOSE_DB_MAP.get(purpose, OTPPurpose.password_reset)
 
     for channel in (OTPChannel.sms, OTPChannel.email):
-        db.add(OTPLog(
-            user_id=user_id,
-            otp_hash=otp_hash,
-            purpose=db_purpose,
-            channel=channel,
-            expires_at=expires_at,
-            used=False,
-        ))
+        db.add(
+            OTPLog(
+                user_id=user_id,
+                otp_hash=otp_hash,
+                purpose=db_purpose,
+                channel=channel,
+                expires_at=expires_at,
+                used=False,
+            )
+        )
     db.commit()
 
-    sms_sent   = send_sms_otp(user.phone or "", otp) if user.phone else False
+    sms_sent = send_sms_otp(user.phone or "", otp) if user.phone else False
     email_sent = send_email_otp(user.email, otp, user.name, purpose)
 
     return {
-        "sms_sent":     sms_sent,
-        "email_sent":   email_sent,
+        "sms_sent": sms_sent,
+        "email_sent": email_sent,
         "phone_masked": mask_phone(user.phone or ""),
         "email_masked": mask_email(user.email),
-        "expires_at":   expires_at,
+        "expires_at": expires_at,
     }
 
 
@@ -278,29 +355,30 @@ def send_dual_otp(user_id: int, purpose: str, db: Session) -> dict:
 # 6. verify_dual_otp — independently verify SMS and Email OTPs
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def verify_dual_otp(
-    user_id:          int,
-    otp_entered_sms:  str,
+    user_id: int,
+    otp_entered_sms: str,
     otp_entered_email: str,
-    purpose:          str,
-    db:               Session,
+    purpose: str,
+    db: Session,
 ) -> bool:
     """
     Verifies SMS and Email OTPs independently against their Argon2id hashes.
     BOTH must pass. On success, marks both records used=True.
     Returns False and logs a warning on any failure — never raises.
     """
-    now        = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     db_purpose = _PURPOSE_DB_MAP.get(purpose, OTPPurpose.password_reset)
 
     sms_record = (
         db.query(OTPLog)
         .filter(
-            OTPLog.user_id    == user_id,
-            OTPLog.purpose    == db_purpose,
-            OTPLog.channel    == OTPChannel.sms,
-            OTPLog.used       == False,        # noqa: E712
-            OTPLog.expires_at >  now,
+            OTPLog.user_id == user_id,
+            OTPLog.purpose == db_purpose,
+            OTPLog.channel == OTPChannel.sms,
+            OTPLog.used == False,  # noqa: E712
+            OTPLog.expires_at > now,
         )
         .order_by(OTPLog.created_at.desc())
         .first()
@@ -309,11 +387,11 @@ def verify_dual_otp(
     email_record = (
         db.query(OTPLog)
         .filter(
-            OTPLog.user_id    == user_id,
-            OTPLog.purpose    == db_purpose,
-            OTPLog.channel    == OTPChannel.email,
-            OTPLog.used       == False,        # noqa: E712
-            OTPLog.expires_at >  now,
+            OTPLog.user_id == user_id,
+            OTPLog.purpose == db_purpose,
+            OTPLog.channel == OTPChannel.email,
+            OTPLog.used == False,  # noqa: E712
+            OTPLog.expires_at > now,
         )
         .order_by(OTPLog.created_at.desc())
         .first()
@@ -322,7 +400,8 @@ def verify_dual_otp(
     if not sms_record or not email_record:
         logger.warning(
             "verify_dual_otp: no valid OTP records found — user_id=%d purpose=%s",
-            user_id, purpose,
+            user_id,
+            purpose,
         )
         return False
 
@@ -331,18 +410,22 @@ def verify_dual_otp(
         _ph.verify(email_record.otp_hash, otp_entered_email)
     except VerifyMismatchError:
         logger.warning(
-            "verify_dual_otp: OTP mismatch — user_id=%d purpose=%s", user_id, purpose,
+            "verify_dual_otp: OTP mismatch — user_id=%d purpose=%s",
+            user_id,
+            purpose,
         )
         return False
     except Exception as exc:
         logger.error(
-            "verify_dual_otp: unexpected error — user_id=%d: %s", user_id, exc,
+            "verify_dual_otp: unexpected error — user_id=%d: %s",
+            user_id,
+            exc,
         )
         return False
 
-    sms_record.used    = True
+    sms_record.used = True
     sms_record.used_at = now
-    email_record.used    = True
+    email_record.used = True
     email_record.used_at = now
     db.commit()
     return True
@@ -351,6 +434,7 @@ def verify_dual_otp(
 # ═══════════════════════════════════════════════════════════════════════
 # 7-8. Masking Helpers
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def mask_phone(phone: str) -> str:
     """'9876543210' → '******3210'  (last 4 digits visible)"""

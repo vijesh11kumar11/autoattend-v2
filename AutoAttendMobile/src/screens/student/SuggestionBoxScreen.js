@@ -5,9 +5,19 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
-  Platform, RefreshControl, SafeAreaView, StyleSheet, Switch,
-  Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
@@ -36,11 +46,19 @@ export default function SuggestionBoxScreen() {
     try {
       const { data } = await client.get('/suggestions/my-submissions');
       setHistory(Array.isArray(data) ? data : (data?.suggestions ?? data?.submissions ?? []));
-    } catch (err) { console.warn('[Suggestions] fetch error:', err?.message); }
+    } catch (err) {
+      console.warn('[Suggestions] fetch error:', err?.message);
+    }
   }, []);
 
-  useEffect(() => { fetchHistory().finally(() => setLoading(false)); }, [fetchHistory]);
-  const onRefresh = useCallback(async () => { setRefreshing(true); await fetchHistory(); setRefreshing(false); }, [fetchHistory]);
+  useEffect(() => {
+    fetchHistory().finally(() => setLoading(false));
+  }, [fetchHistory]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchHistory();
+    setRefreshing(false);
+  }, [fetchHistory]);
 
   const submit = async () => {
     const msg = message.trim();
@@ -53,17 +71,24 @@ export default function SuggestionBoxScreen() {
       await fetchHistory();
     } catch (err) {
       Alert.alert('Error', err?.response?.data?.detail ?? 'Failed to submit.');
-    } finally { setSending(false); }
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <FlatList
           data={history}
           keyExtractor={(item, i) => String(item.id ?? i)}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />
+          }
           ListHeaderComponent={
             <View>
               <Text style={styles.heading}>💡 Suggestion Box</Text>
@@ -75,25 +100,36 @@ export default function SuggestionBoxScreen() {
                   placeholder="Type your suggestion…"
                   placeholderTextColor="#94a3b8"
                   value={message}
-                  onChangeText={t => setMessage(t.slice(0, MAX_LEN))}
+                  onChangeText={(t) => setMessage(t.slice(0, MAX_LEN))}
                   multiline
                   textAlignVertical="top"
                 />
                 <View style={styles.toolbar}>
                   <View style={styles.anonRow}>
                     <Text style={styles.anonLabel}>Anonymous</Text>
-                    <Switch value={anon} onValueChange={setAnon}
-                      trackColor={{ false: '#cbd5e1', true: PRIMARY }} />
+                    <Switch
+                      value={anon}
+                      onValueChange={setAnon}
+                      trackColor={{ false: '#cbd5e1', true: PRIMARY }}
+                    />
                   </View>
-                  <Text style={styles.counter}>{message.length}/{MAX_LEN}</Text>
+                  <Text style={styles.counter}>
+                    {message.length}/{MAX_LEN}
+                  </Text>
                 </View>
                 <TouchableOpacity
                   style={[styles.submitBtn, !message.trim() && styles.disabled]}
                   onPress={submit}
-                  disabled={sending || !message.trim()}>
-                  {sending
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <><Ionicons name="send" size={14} color="#fff" /><Text style={styles.submitTxt}> Submit</Text></>}
+                  disabled={sending || !message.trim()}
+                >
+                  {sending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="send" size={14} color="#fff" />
+                      <Text style={styles.submitTxt}> Submit</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -101,18 +137,22 @@ export default function SuggestionBoxScreen() {
               {loading && <ActivityIndicator size="small" color={PRIMARY} />}
             </View>
           }
-          ListEmptyComponent={!loading && (
-            <View style={styles.empty}>
-              <Ionicons name="bulb-outline" size={40} color="#cbd5e1" />
-              <Text style={styles.emptyTxt}>No submissions yet.</Text>
-            </View>
-          )}
+          ListEmptyComponent={
+            !loading && (
+              <View style={styles.empty}>
+                <Ionicons name="bulb-outline" size={40} color="#cbd5e1" />
+                <Text style={styles.emptyTxt}>No submissions yet.</Text>
+              </View>
+            )
+          }
           renderItem={({ item }) => (
             <View style={styles.histCard}>
               <View style={styles.histTop}>
-                {item.is_anonymous
-                  ? <View style={styles.anonChip}><Text style={styles.anonChipTxt}>ANON</Text></View>
-                  : null}
+                {item.is_anonymous ? (
+                  <View style={styles.anonChip}>
+                    <Text style={styles.anonChipTxt}>ANON</Text>
+                  </View>
+                ) : null}
                 <Text style={styles.histTime}>{timeAgo(item.created_at ?? item.submitted_at)}</Text>
               </View>
               <Text style={styles.histMsg}>{item.message ?? item.content}</Text>
@@ -135,19 +175,65 @@ const styles = StyleSheet.create({
   list: { padding: 16 },
   heading: { fontSize: 22, fontWeight: '700', color: PRIMARY },
   sub: { fontSize: 12, color: '#94a3b8', marginBottom: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
-  textarea: { backgroundColor: '#f1f5f9', borderRadius: 10, padding: 12, fontSize: 14, color: '#1e293b', minHeight: 100, borderWidth: 1, borderColor: '#e2e8f0' },
-  toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  textarea: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: '#1e293b',
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  toolbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
   anonRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   anonLabel: { fontSize: 12, color: '#475569', fontWeight: '600' },
   counter: { fontSize: 11, color: '#94a3b8' },
-  submitBtn: { backgroundColor: PRIMARY, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  submitBtn: {
+    backgroundColor: PRIMARY,
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
   disabled: { opacity: 0.5 },
   submitTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
   section: { fontSize: 15, fontWeight: '700', color: '#1e293b', marginBottom: 10 },
-  histCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
-  histTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  anonChip: { backgroundColor: '#fef3c7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  histCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  histTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  anonChip: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
   anonChipTxt: { fontSize: 9, fontWeight: '800', color: '#b45309' },
   histTime: { fontSize: 10, color: '#94a3b8', marginLeft: 'auto' },
   histMsg: { fontSize: 13, color: '#1e293b' },

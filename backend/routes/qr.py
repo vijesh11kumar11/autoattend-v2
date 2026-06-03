@@ -5,16 +5,16 @@ GET  /api/qr/token/{session_id}     — generate rotating QR (teacher)
 GET  /api/qr/countdown/{session_id} — seconds remaining in current slot
 """
 
+import logging
 import time
 
-import logging
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from database import AttendanceSession, SessionStatus, get_db
 from utils.auth_utils import teacher_or_above
 from utils.crypto_utils import decrypt_field
-from utils.qr_utils import generate_qr_token, get_session_qr_secret
+from utils.qr_utils import generate_qr_token
 
 router = APIRouter(prefix="/api/qr", tags=["QR"])
 logger = logging.getLogger(__name__)
@@ -24,12 +24,13 @@ logger = logging.getLogger(__name__)
 # GET /api/qr/token/{session_id}
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/token/{session_id}")
 def get_qr_token(
-    session_id:   int,
-    response:     Response,
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    session_id: int,
+    response: Response,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     """
     Generate and return a rotating QR token for an active attendance session.
@@ -56,7 +57,7 @@ def get_qr_token(
 
     # College boundary check for HOD/Principal
     if caller_role in {"hod", "principal"}:
-        subject = session.subject   # lazy-loaded relationship
+        subject = session.subject  # lazy-loaded relationship
         if subject.course.department.college_id != current_user["college_id"]:
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
@@ -64,15 +65,19 @@ def get_qr_token(
             )
 
     qr_secret = decrypt_field(session.qr_secret)
-    result    = generate_qr_token(session_id, qr_secret)
+    result = generate_qr_token(session_id, qr_secret)
 
-    logger.info("📷 QR TOKEN generated │ session_id=%d │ by user_id=%d (role=%s)",
-                session_id, current_user["id"], caller_role)
+    logger.info(
+        "📷 QR TOKEN generated │ session_id=%d │ by user_id=%d (role=%s)",
+        session_id,
+        current_user["id"],
+        caller_role,
+    )
 
     # Prevent client / proxy caching — QR must always be fresh
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"]        = "no-cache"
-    response.headers["Expires"]       = "0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
     return result
 
@@ -81,11 +86,12 @@ def get_qr_token(
 # GET /api/qr/countdown/{session_id}
 # ═══════════════════════════════════════════════════════════════════════
 
+
 @router.get("/countdown/{session_id}")
 def get_qr_countdown(
-    session_id:   int,
-    current_user: dict    = Depends(teacher_or_above),
-    db:           Session = Depends(get_db),
+    session_id: int,
+    current_user: dict = Depends(teacher_or_above),
+    db: Session = Depends(get_db),
 ):
     """
     Return seconds remaining in the current QR slot (0–5).
@@ -108,11 +114,11 @@ def get_qr_countdown(
         )
 
     from config import settings
-    expiry       = settings.QR_EXPIRY_SECONDS   # 5
-    now          = time.time()
+
+    expiry = settings.QR_EXPIRY_SECONDS  # 5
+    now = time.time()
     current_slot = int(now) // expiry
-    slot_end     = (current_slot + 1) * expiry
+    slot_end = (current_slot + 1) * expiry
     seconds_remaining = max(0, round(slot_end - now, 2))
 
     return {"seconds_remaining": seconds_remaining}
-

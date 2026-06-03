@@ -24,7 +24,6 @@ from database import (
     CareerRoadmap,
     College,
     Department,
-    SessionLocal,
     SessionStatus,
     Subject,
     TutorAssignment,
@@ -33,6 +32,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import get_current_user
+from utils.claude_ai import call_claude_sync
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ router = APIRouter(prefix="/api/career", tags=["Career"])
 # ═══════════════════════════════════════════════════════════════════════
 # Request / Response schemas
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class GenerateRequest(BaseModel):
     career_goal: str = Field(..., min_length=2, max_length=100)
@@ -58,6 +59,7 @@ class SaveRequest(BaseModel):
 # ═══════════════════════════════════════════════════════════════════════
 # Context builders — fetch role-specific data from DB
 # ═══════════════════════════════════════════════════════════════════════
+
 
 def _student_context(user_id: int, db: Session) -> dict:
     user = db.query(User).filter(User.id == user_id).first()
@@ -76,20 +78,30 @@ def _student_context(user_id: int, db: Session) -> dict:
     total_sessions = 0
     for s in subjects:
         sess_ids = [
-            sid for (sid,) in db.query(AttendanceSession.id)
+            sid
+            for (sid,) in db.query(AttendanceSession.id)
             .filter(
                 AttendanceSession.subject_id == s.id,
                 AttendanceSession.status == SessionStatus.ended,
-            ).all()
+            )
+            .all()
         ]
-        present = db.query(AttendanceRecord).filter(
-            AttendanceRecord.session_id.in_(sess_ids),
-            AttendanceRecord.student_id == user_id,
-            AttendanceRecord.status == AttendanceStatus.present,
-        ).count() if sess_ids else 0
+        present = (
+            db.query(AttendanceRecord)
+            .filter(
+                AttendanceRecord.session_id.in_(sess_ids),
+                AttendanceRecord.student_id == user_id,
+                AttendanceRecord.status == AttendanceStatus.present,
+            )
+            .count()
+            if sess_ids
+            else 0
+        )
         total = len(sess_ids)
         pct = round((present / total) * 100, 1) if total else 0
-        subject_data.append({"name": s.name, "code": s.code, "attendance_pct": pct, "sessions": total})
+        subject_data.append(
+            {"name": s.name, "code": s.code, "attendance_pct": pct, "sessions": total}
+        )
         total_present += present
         total_sessions += total
 
@@ -119,24 +131,40 @@ def _teacher_context(user_id: int, db: Session) -> dict:
     subjects = db.query(Subject).filter(Subject.teacher_id == user_id).all()
     subject_names = [s.name for s in subjects]
 
-    total_sessions = db.query(AttendanceSession).filter(
-        AttendanceSession.teacher_id == user_id,
-        AttendanceSession.status == SessionStatus.ended,
-    ).count()
-
-    # Average attendance across their classes
-    sess_ids = [
-        sid for (sid,) in db.query(AttendanceSession.id)
+    total_sessions = (
+        db.query(AttendanceSession)
         .filter(
             AttendanceSession.teacher_id == user_id,
             AttendanceSession.status == SessionStatus.ended,
-        ).all()
+        )
+        .count()
+    )
+
+    # Average attendance across their classes
+    sess_ids = [
+        sid
+        for (sid,) in db.query(AttendanceSession.id)
+        .filter(
+            AttendanceSession.teacher_id == user_id,
+            AttendanceSession.status == SessionStatus.ended,
+        )
+        .all()
     ]
-    total_records = db.query(AttendanceRecord).filter(AttendanceRecord.session_id.in_(sess_ids)).count() if sess_ids else 0
-    present_records = db.query(AttendanceRecord).filter(
-        AttendanceRecord.session_id.in_(sess_ids),
-        AttendanceRecord.status == AttendanceStatus.present,
-    ).count() if sess_ids else 0
+    total_records = (
+        db.query(AttendanceRecord).filter(AttendanceRecord.session_id.in_(sess_ids)).count()
+        if sess_ids
+        else 0
+    )
+    present_records = (
+        db.query(AttendanceRecord)
+        .filter(
+            AttendanceRecord.session_id.in_(sess_ids),
+            AttendanceRecord.status == AttendanceStatus.present,
+        )
+        .count()
+        if sess_ids
+        else 0
+    )
     avg_attendance = round((present_records / total_records) * 100, 1) if total_records else 0
 
     dept = db.query(Department).filter(Department.id == user.department_id).first()
@@ -156,16 +184,24 @@ def _hod_context(user_id: int, db: Session) -> dict:
         return {}
 
     dept = db.query(Department).filter(Department.id == user.department_id).first()
-    teachers_count = db.query(User).filter(
-        User.department_id == user.department_id,
-        User.role == UserRole.teacher,
-        User.is_active == True,
-    ).count()
-    students_count = db.query(User).filter(
-        User.department_id == user.department_id,
-        User.role == UserRole.student,
-        User.is_active == True,
-    ).count()
+    teachers_count = (
+        db.query(User)
+        .filter(
+            User.department_id == user.department_id,
+            User.role == UserRole.teacher,
+            User.is_active.is_(True),
+        )
+        .count()
+    )
+    students_count = (
+        db.query(User)
+        .filter(
+            User.department_id == user.department_id,
+            User.role == UserRole.student,
+            User.is_active.is_(True),
+        )
+        .count()
+    )
 
     return {
         "name": user.name,
@@ -182,16 +218,24 @@ def _principal_context(user_id: int, db: Session) -> dict:
 
     college = db.query(College).filter(College.id == user.college_id).first()
     total_depts = db.query(Department).filter(Department.college_id == user.college_id).count()
-    total_teachers = db.query(User).filter(
-        User.college_id == user.college_id,
-        User.role == UserRole.teacher,
-        User.is_active == True,
-    ).count()
-    total_students = db.query(User).filter(
-        User.college_id == user.college_id,
-        User.role == UserRole.student,
-        User.is_active == True,
-    ).count()
+    total_teachers = (
+        db.query(User)
+        .filter(
+            User.college_id == user.college_id,
+            User.role == UserRole.teacher,
+            User.is_active.is_(True),
+        )
+        .count()
+    )
+    total_students = (
+        db.query(User)
+        .filter(
+            User.college_id == user.college_id,
+            User.role == UserRole.student,
+            User.is_active.is_(True),
+        )
+        .count()
+    )
 
     return {
         "name": user.name,
@@ -239,7 +283,12 @@ _JSON_SCHEMA = """{
 
 
 def _build_prompt(role: str, ctx: dict, req: GenerateRequest) -> str:
-    role_labels = {"student": "Student", "teacher": "Teacher", "hod": "Head of Department", "principal": "Principal"}
+    role_labels = {
+        "student": "Student",
+        "teacher": "Teacher",
+        "hod": "Head of Department",
+        "principal": "Principal",
+    }
     role_label = role_labels.get(role, role.title())
 
     context_lines = "\n".join(f"  - {k}: {v}" for k, v in ctx.items())
@@ -278,12 +327,24 @@ Return ONLY valid JSON matching this schema (no markdown, no code fences):
 # AI Providers
 # ═══════════════════════════════════════════════════════════════════════
 
+
+def _call_claude(prompt: str) -> dict | None:
+    raw = call_claude_sync(
+        prompt,
+        system="You are a career counsellor. Return only valid JSON.",
+        max_tokens=4096,
+        temperature=0.7,
+    )
+    return _parse_json(raw) if raw else None
+
+
 def _call_gemini(prompt: str) -> dict | None:
     api_key = settings.GEMINI_API_KEY
     if not api_key:
         return None
     try:
         from google import genai
+
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model="gemini-2.0-flash",
@@ -306,11 +367,15 @@ def _call_groq(prompt: str) -> dict | None:
         return None
     try:
         from groq import Groq
+
         client = Groq(api_key=api_key)
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "You are a career counsellor. Return only valid JSON."},
+                {
+                    "role": "system",
+                    "content": "You are a career counsellor. Return only valid JSON.",
+                },
                 {"role": "user", "content": prompt},
             ],
             temperature=0.7,
@@ -339,13 +404,16 @@ def _parse_json(text: str) -> dict | None:
             try:
                 return json.loads(match.group())
             except json.JSONDecodeError:
-                pass
+                # Salvage attempt failed — the AI returned non-JSON content.
+                # Caller handles None by falling back to a default payload.
+                logger.warning("Failed to parse JSON from AI response after salvage attempt")
     return None
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # POST /api/career/generate
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.post("/generate")
 def generate_roadmap(
@@ -371,10 +439,15 @@ def generate_roadmap(
 
     prompt = _build_prompt(role, ctx, body)
 
-    # Try Gemini first, fallback to Groq
+    # Try Claude first, then Gemini, then Groq
     start = time.time()
-    result = _call_gemini(prompt)
-    provider = "Gemini"
+    result = _call_claude(prompt)
+    provider = "Claude"
+
+    if result is None:
+        logger.info("⚡ Claude failed, falling back to Gemini")
+        result = _call_gemini(prompt)
+        provider = "Gemini"
 
     if result is None:
         logger.info("⚡ Gemini failed, falling back to Groq")
@@ -383,7 +456,10 @@ def generate_roadmap(
 
     if result is None:
         # Retry Gemini with stricter prompt
-        strict_prompt = prompt + "\n\nCRITICAL: Return ONLY raw JSON. No explanations, no markdown fences, no text before or after the JSON object."
+        strict_prompt = (
+            prompt
+            + "\n\nCRITICAL: Return ONLY raw JSON. No explanations, no markdown fences, no text before or after the JSON object."
+        )
         result = _call_gemini(strict_prompt)
         provider = "Gemini (retry)"
 
@@ -395,8 +471,13 @@ def generate_roadmap(
             detail="AI service unavailable. Please try again.",
         )
 
-    logger.info("🎯 CAREER ROADMAP │ role=%s │ goal=%s │ provider=%s │ time=%ss",
-                role, body.career_goal, provider, elapsed)
+    logger.info(
+        "🎯 CAREER ROADMAP │ role=%s │ goal=%s │ provider=%s │ time=%ss",
+        role,
+        body.career_goal,
+        provider,
+        elapsed,
+    )
 
     return {
         "roadmap": result,
@@ -408,6 +489,7 @@ def generate_roadmap(
 # ═══════════════════════════════════════════════════════════════════════
 # GET /api/career/saved
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.get("/saved")
 def get_saved_roadmaps(
@@ -436,6 +518,7 @@ def get_saved_roadmaps(
 # ═══════════════════════════════════════════════════════════════════════
 # POST /api/career/save
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @router.post("/save")
 def save_roadmap(

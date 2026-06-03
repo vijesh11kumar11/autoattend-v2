@@ -13,7 +13,7 @@ and carry the file path + capsule + student + access mode.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from jose import ExpiredSignatureError, JWTError, jwt
@@ -41,7 +41,7 @@ def generate_signed_capsule_url(
     """
     if mode not in {"view", "download"}:
         raise ValueError("mode must be 'view' or 'download'")
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload = {
         "file_path": file_path,
         "student_id": int(student_id),
@@ -63,8 +63,7 @@ def verify_signed_url(token: str) -> dict:
     if not token or not isinstance(token, str):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid signed URL")
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY,
-                             algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except ExpiredSignatureError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Signed URL expired")
     except JWTError:

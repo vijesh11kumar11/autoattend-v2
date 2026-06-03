@@ -2,6 +2,7 @@
   "cli": {
     "version": ">= 10.0.0"
   },
+  "_comment_ssl_pinning": "SSL pinning (#10): production currently uses JS-level pin awareness (app.json extra.sslPin) which is Expo Go compatible. REAL native certificate pinning (react-native-ssl-pinning or OkHttp CertificatePinner) requires a custom development client build (eas build --profile development) and must be validated on a PHYSICAL DEVICE against traceln.onrender.com before enabling in production, because a wrong/rotated pin will hard-fail all network calls. Rotate the pin by re-running the openssl command in src/utils/sslPinning.js and updating app.json extra.sslPin.",
   "build": {
     "development": {
       "developmentClient": true,

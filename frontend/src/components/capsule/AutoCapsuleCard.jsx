@@ -19,17 +19,19 @@ const fmt = (s) => {
 };
 
 export default function AutoCapsuleCard({ capsule }) {
-  const [query, setQuery]   = useState('');
+  const [query, setQuery] = useState('');
   const [result, setResult] = useState(null);
-  const [busy, setBusy]     = useState(false);
-  const [err, setErr]       = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   const chapters = capsule.chapters || [];
-  const myNote   = capsule.my_specific_note || capsule.student_specific_note;
+  const myNote = capsule.my_specific_note || capsule.student_specific_note;
 
   const askReplay = async () => {
     if (!query.trim()) return;
-    setBusy(true); setErr(''); setResult(null);
+    setBusy(true);
+    setErr('');
+    setResult(null);
     try {
       const r = await api.post(`/api/classpulse/capsules/${capsule.id}/smart-replay`, { query });
       setResult(r.data);
@@ -45,9 +47,13 @@ export default function AutoCapsuleCard({ capsule }) {
       <div className="flex items-start gap-3">
         <span className="text-3xl">🤖</span>
         <div className="flex-1">
-          <p className="text-[10px] uppercase tracking-wide font-semibold text-emerald-700">Auto-generated from live session</p>
+          <p className="text-[10px] uppercase tracking-wide font-semibold text-emerald-700">
+            Auto-generated from live session
+          </p>
           <h2 className="text-lg font-bold text-slate-800">{capsule.title}</h2>
-          {capsule.description && <p className="text-xs text-slate-500 mt-0.5">{capsule.description}</p>}
+          {capsule.description && (
+            <p className="text-xs text-slate-500 mt-0.5">{capsule.description}</p>
+          )}
         </div>
       </div>
 
@@ -62,7 +68,9 @@ export default function AutoCapsuleCard({ capsule }) {
         <div>
           <p className="text-xs font-semibold text-slate-600 mb-1">Key Points</p>
           <ul className="list-disc pl-5 text-sm text-slate-800 space-y-0.5">
-            {capsule.key_points.map((k, i) => <li key={i}>{k}</li>)}
+            {capsule.key_points.map((k, i) => (
+              <li key={i}>{k}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -72,8 +80,13 @@ export default function AutoCapsuleCard({ capsule }) {
           <p className="text-xs font-semibold text-slate-600 mb-1">📑 Chapters</p>
           <ul className="space-y-1 text-sm">
             {chapters.map((c, i) => (
-              <li key={i} className="flex gap-2 items-start bg-white/60 rounded p-2 border border-slate-100">
-                <span className="text-violet-600 font-mono text-xs flex-shrink-0">{fmt(c.timestamp_seconds || 0)}</span>
+              <li
+                key={i}
+                className="flex gap-2 items-start bg-white/60 rounded p-2 border border-slate-100"
+              >
+                <span className="text-violet-600 font-mono text-xs flex-shrink-0">
+                  {fmt(c.timestamp_seconds || 0)}
+                </span>
                 <div className="min-w-0">
                   <p className="font-medium text-slate-800">{c.title}</p>
                   {c.description && <p className="text-xs text-slate-500">{c.description}</p>}
@@ -86,7 +99,9 @@ export default function AutoCapsuleCard({ capsule }) {
 
       {capsule.has_recording && chapters.length > 0 && (
         <div className="bg-white/80 rounded-lg p-3 border border-violet-100">
-          <p className="text-xs font-semibold text-slate-600 mb-2">🔍 Smart Replay — jump to the moment</p>
+          <p className="text-xs font-semibold text-slate-600 mb-2">
+            🔍 Smart Replay — jump to the moment
+          </p>
           <div className="flex gap-2">
             <input
               className="flex-1 border rounded-lg px-3 py-1.5 text-sm"
@@ -107,11 +122,14 @@ export default function AutoCapsuleCard({ capsule }) {
           {result && (
             <div className="mt-3 bg-violet-50 border border-violet-200 rounded p-2 text-sm">
               <p className="font-semibold text-violet-800">{result.chapter_title}</p>
-              <p className="text-xs text-slate-600">⏱ {fmt(result.start_seconds)} – {fmt(result.end_seconds)} · {result.reason}</p>
+              <p className="text-xs text-slate-600">
+                ⏱ {fmt(result.start_seconds)} – {fmt(result.end_seconds)} · {result.reason}
+              </p>
               {result.recording_url && (
                 <a
                   href={`${result.recording_url}#t=${result.start_seconds}`}
-                  target="_blank" rel="noreferrer"
+                  target="_blank"
+                  rel="noreferrer"
                   className="inline-block mt-1 text-xs text-violet-700 underline"
                 >
                   ▶ Open recording at {fmt(result.start_seconds)}
@@ -139,7 +157,9 @@ export default function AutoCapsuleCard({ capsule }) {
       {capsule.mermaid_diagram && (
         <div>
           <p className="text-xs font-semibold text-slate-600 mb-1">Diagram</p>
-          <pre className="bg-slate-900 text-slate-100 text-xs rounded p-2 overflow-x-auto">{capsule.mermaid_diagram}</pre>
+          <pre className="bg-slate-900 text-slate-100 text-xs rounded p-2 overflow-x-auto">
+            {capsule.mermaid_diagram}
+          </pre>
         </div>
       )}
     </div>

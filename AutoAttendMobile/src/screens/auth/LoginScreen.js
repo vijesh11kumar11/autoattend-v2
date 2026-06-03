@@ -14,12 +14,7 @@
  * Requires: npx expo install expo-linear-gradient
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -37,47 +32,54 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient }  from 'expo-linear-gradient';
-import { SafeAreaView }    from 'react-native-safe-area-context';
-import { Ionicons }        from '@expo/vector-icons';
-import * as SecureStore    from 'expo-secure-store';
-import { useAuth }         from '../../context/AuthContext';
-import client              from '../../api/client';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
+import { useAuth } from '../../context/AuthContext';
+import client from '../../api/client';
 
-const REMEMBER_KEY    = 'aa_remember_identifier';
-const MAX_ATTEMPTS    = 5;
+const REMEMBER_KEY = 'aa_remember_identifier';
+const MAX_ATTEMPTS = 5;
 const COOLDOWN_SECONDS = 30;
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
 
-  const [identifier,   setIdentifier]   = useState('');
-  const [password,     setPassword]     = useState('');
-  const [showPw,       setShowPw]       = useState(false);
-  const [rememberMe,   setRememberMe]   = useState(false);
-  const [loading,      setLoading]      = useState(false);
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [deviceDialog, setDeviceDialog] = useState(false);
-  const [errors,       setErrors]       = useState({ identifier: '', password: '' });
-  const [cooldown,     setCooldown]     = useState(0);   // seconds remaining
+  const [errors, setErrors] = useState({ identifier: '', password: '' });
+  const [cooldown, setCooldown] = useState(0); // seconds remaining
 
-  const attemptsRef   = useRef(0);
+  const attemptsRef = useRef(0);
   const cooldownTimer = useRef(null);
-  const shakeAnim     = useRef(new Animated.Value(0)).current;
-  const passwordRef   = useRef(null);
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const passwordRef = useRef(null);
 
   // ── Restore remembered identifier from SecureStore ─────────────────────────
   useEffect(() => {
-    SecureStore.getItemAsync(REMEMBER_KEY).then((val) => {
-      if (val) {
-        setIdentifier(val);
-        setRememberMe(true);
-      }
-    }).catch(() => {});
+    SecureStore.getItemAsync(REMEMBER_KEY)
+      .then((val) => {
+        if (val) {
+          setIdentifier(val);
+          setRememberMe(true);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Cleanup cooldown timer on unmount
-  useEffect(() => () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (cooldownTimer.current) clearInterval(cooldownTimer.current);
+    },
+    []
+  );
 
   const startCooldown = useCallback(() => {
     setCooldown(COOLDOWN_SECONDS);
@@ -87,7 +89,7 @@ export default function LoginScreen({ navigation }) {
         if (s <= 1) {
           clearInterval(cooldownTimer.current);
           cooldownTimer.current = null;
-          attemptsRef.current = 0;     // reset after cooldown
+          attemptsRef.current = 0; // reset after cooldown
           return 0;
         }
         return s - 1;
@@ -97,9 +99,9 @@ export default function LoginScreen({ navigation }) {
 
   const validate = useCallback(() => {
     const next = { identifier: '', password: '' };
-    const id   = identifier.trim();
-    if (id.length < 3)         next.identifier = 'Enter at least 3 characters.';
-    if (password.length < 6)   next.password   = 'Password must be at least 6 characters.';
+    const id = identifier.trim();
+    if (id.length < 3) next.identifier = 'Enter at least 3 characters.';
+    if (password.length < 6) next.password = 'Password must be at least 6 characters.';
     setErrors(next);
     return !next.identifier && !next.password;
   }, [identifier, password]);
@@ -108,12 +110,12 @@ export default function LoginScreen({ navigation }) {
   const shake = useCallback(() => {
     shakeAnim.setValue(0);
     Animated.sequence([
-      Animated.timing(shakeAnim, { toValue:  14, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 14, duration: 55, useNativeDriver: true }),
       Animated.timing(shakeAnim, { toValue: -14, duration: 55, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue:  10, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 55, useNativeDriver: true }),
       Animated.timing(shakeAnim, { toValue: -10, duration: 55, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue:   5, duration: 55, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue:   0, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 5, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 55, useNativeDriver: true }),
     ]).start();
   }, [shakeAnim]);
 
@@ -159,7 +161,6 @@ export default function LoginScreen({ navigation }) {
       // ── Normal success ───────────────────────────────────────────────────
       await login(data.access_token, data.refresh_token);
       // AppNavigator switches to role-based tabs automatically.
-
     } catch (err) {
       const status = err.response?.status;
       const detail = err.response?.data?.detail ?? '';
@@ -172,7 +173,7 @@ export default function LoginScreen({ navigation }) {
       } else if (!err.response) {
         Alert.alert(
           'Connection Error',
-          'Cannot connect to server. Check your internet connection.',
+          'Cannot connect to server. Check your internet connection.'
         );
       } else {
         shake();
@@ -206,9 +207,7 @@ export default function LoginScreen({ navigation }) {
             </View>
 
             {/* ── Login card ───────────────────────────────────────────── */}
-            <Animated.View
-              style={[styles.card, { transform: [{ translateX: shakeAnim }] }]}
-            >
+            <Animated.View style={[styles.card, { transform: [{ translateX: shakeAnim }] }]}>
               <Text style={styles.cardTitle}>Sign In</Text>
 
               {/* Identifier */}
@@ -224,7 +223,10 @@ export default function LoginScreen({ navigation }) {
                   placeholder="Email or Roll Number"
                   placeholderTextColor="#94a3b8"
                   value={identifier}
-                  onChangeText={(t) => { setIdentifier(t); if (errors.identifier) setErrors((e) => ({ ...e, identifier: '' })); }}
+                  onChangeText={(t) => {
+                    setIdentifier(t);
+                    if (errors.identifier) setErrors((e) => ({ ...e, identifier: '' }));
+                  }}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -250,7 +252,10 @@ export default function LoginScreen({ navigation }) {
                   placeholder="Password"
                   placeholderTextColor="#94a3b8"
                   value={password}
-                  onChangeText={(t) => { setPassword(t); if (errors.password) setErrors((e) => ({ ...e, password: '' })); }}
+                  onChangeText={(t) => {
+                    setPassword(t);
+                    if (errors.password) setErrors((e) => ({ ...e, password: '' }));
+                  }}
                   secureTextEntry={!showPw}
                   returnKeyType="done"
                   onSubmitEditing={handleLogin}
@@ -290,12 +295,13 @@ export default function LoginScreen({ navigation }) {
                 disabled={loading || cooldown > 0}
                 activeOpacity={0.85}
               >
-                {loading
-                  ? <ActivityIndicator color="#ffffff" size="small" />
-                  : <Text style={styles.loginBtnText}>
-                      {cooldown > 0 ? `Try again in ${cooldown}s` : 'Sign In'}
-                    </Text>
-                }
+                {loading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.loginBtnText}>
+                    {cooldown > 0 ? `Try again in ${cooldown}s` : 'Sign In'}
+                  </Text>
+                )}
               </TouchableOpacity>
 
               {/* Forgot password */}
@@ -321,10 +327,7 @@ export default function LoginScreen({ navigation }) {
         animationType="fade"
         onRequestClose={() => setDeviceDialog(false)}
       >
-        <Pressable
-          style={styles.overlay}
-          onPress={() => setDeviceDialog(false)}
-        >
+        <Pressable style={styles.overlay} onPress={() => setDeviceDialog(false)}>
           <Pressable style={styles.dialogBox} onPress={() => {}}>
             <Ionicons name="phone-portrait-outline" size={44} color="#ef4444" />
             <Text style={styles.dialogTitle}>Device Already Registered</Text>
@@ -349,8 +352,8 @@ export default function LoginScreen({ navigation }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
-  flex:     { flex: 1 },
-  flexOne:  { flex: 1 },
+  flex: { flex: 1 },
+  flexOne: { flex: 1 },
 
   scrollContent: {
     flexGrow: 1,
@@ -375,7 +378,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 5,
   },
-  appName:    { fontSize: 26, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
+  appName: { fontSize: 26, fontWeight: '800', color: '#ffffff', letterSpacing: 0.5 },
   appTagline: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
 
   // ── Card ──────────────────────────────────────────────────────────────────
@@ -409,11 +412,11 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     height: 52,
   },
-  fieldIcon:  { marginRight: 10 },
+  fieldIcon: { marginRight: 10 },
   fieldInput: { flex: 1, fontSize: 15, color: '#1e293b', paddingVertical: 0 },
   fieldError: { borderColor: '#ef4444' },
-  errorText:  { fontSize: 12, color: '#ef4444', marginTop: -8, marginBottom: 10, marginLeft: 4 },
-  eyeBtn:     { padding: 4 },
+  errorText: { fontSize: 12, color: '#ef4444', marginTop: -8, marginBottom: 10, marginLeft: 4 },
+  eyeBtn: { padding: 4 },
 
   // ── Remember me ───────────────────────────────────────────────────────────
   rememberRow: {
@@ -440,7 +443,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   loginBtnDisabled: { opacity: 0.6 },
-  loginBtnText:     { color: '#ffffff', fontWeight: '700', fontSize: 16, letterSpacing: 0.4 },
+  loginBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 16, letterSpacing: 0.4 },
 
   // ── Forgot ────────────────────────────────────────────────────────────────
   forgotRow: { alignItems: 'center', paddingVertical: 4 },

@@ -9,8 +9,8 @@
  * authentication entirely (a critical data-leak risk for attendance reports).
  */
 
-import * as FileSystem from 'expo-file-system';
-import * as Sharing    from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
 import { Alert, Platform } from 'react-native';
 import { API_BASE_URL } from '../config';
@@ -18,16 +18,19 @@ import { API_BASE_URL } from '../config';
 const TOKEN_KEY = 'aa_auth_token';
 
 function sanitizeFileName(name) {
-  return String(name || 'report').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80);
+  return String(name || 'report')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .slice(0, 80);
 }
 
 function extFromContentType(ct) {
   if (!ct) return 'bin';
   const lower = String(ct).toLowerCase();
-  if (lower.includes('pdf'))   return 'pdf';
-  if (lower.includes('spreadsheetml') || lower.includes('excel') || lower.includes('xlsx')) return 'xlsx';
-  if (lower.includes('csv'))   return 'csv';
-  if (lower.includes('json'))  return 'json';
+  if (lower.includes('pdf')) return 'pdf';
+  if (lower.includes('spreadsheetml') || lower.includes('excel') || lower.includes('xlsx'))
+    return 'xlsx';
+  if (lower.includes('csv')) return 'csv';
+  if (lower.includes('json')) return 'json';
   return 'bin';
 }
 
@@ -43,12 +46,7 @@ function extFromContentType(ct) {
  *
  * @returns {Promise<string>} the local URI of the downloaded file
  */
-export async function downloadAuthenticated({
-  path,
-  fileName,
-  fallbackExt = 'pdf',
-  onProgress,
-}) {
+export async function downloadAuthenticated({ path, fileName, fallbackExt = 'pdf', onProgress }) {
   if (!path) throw new Error('downloadAuthenticated: path is required');
 
   const token = await SecureStore.getItemAsync(TOKEN_KEY);
@@ -57,28 +55,24 @@ export async function downloadAuthenticated({
   }
 
   const isAbs = /^https?:\/\//i.test(path);
-  const url   = isAbs ? path : `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const url = isAbs ? path : `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 
   const safeName = sanitizeFileName(fileName);
-  const tempUri  = `${FileSystem.cacheDirectory}${safeName}.${fallbackExt}`;
+  const tempUri = `${FileSystem.cacheDirectory}${safeName}.${fallbackExt}`;
 
   const headers = {
     Authorization: `Bearer ${token}`,
-    Accept:        'application/octet-stream, application/pdf, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*',
+    Accept:
+      'application/octet-stream, application/pdf, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*',
   };
 
   let resumable;
   try {
-    resumable = FileSystem.createDownloadResumable(
-      url,
-      tempUri,
-      { headers },
-      (progress) => {
-        if (typeof onProgress === 'function' && progress.totalBytesExpectedToWrite > 0) {
-          onProgress(progress.totalBytesWritten / progress.totalBytesExpectedToWrite);
-        }
-      },
-    );
+    resumable = FileSystem.createDownloadResumable(url, tempUri, { headers }, (progress) => {
+      if (typeof onProgress === 'function' && progress.totalBytesExpectedToWrite > 0) {
+        onProgress(progress.totalBytesWritten / progress.totalBytesExpectedToWrite);
+      }
+    });
     const result = await resumable.downloadAsync();
 
     if (!result || !result.uri) {
@@ -88,7 +82,9 @@ export async function downloadAuthenticated({
     const status = result.status ?? 0;
     if (status < 200 || status >= 300) {
       // Best-effort cleanup
-      try { await FileSystem.deleteAsync(result.uri, { idempotent: true }); } catch {}
+      try {
+        await FileSystem.deleteAsync(result.uri, { idempotent: true });
+      } catch {}
       if (status === 401 || status === 403) {
         throw new Error('You are not authorized to download this report.');
       }
@@ -133,7 +129,7 @@ export async function downloadAndShare({
         'Saved',
         Platform.OS === 'android'
           ? `File saved to cache:\n${uri}\n\nSharing is not available on this device.`
-          : `File saved.\nSharing is not available on this device.`,
+          : `File saved.\nSharing is not available on this device.`
       );
       return uri;
     }

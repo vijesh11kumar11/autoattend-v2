@@ -40,7 +40,11 @@ export default class ErrorBoundary extends React.Component {
         <Text style={styles.message} numberOfLines={4}>
           {this.state.error?.message ?? 'An unexpected error occurred.'}
         </Text>
-        <TouchableOpacity style={styles.btn} onPress={() => this.handleRestart()} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.btn}
+          onPress={() => this.handleRestart()}
+          activeOpacity={0.8}
+        >
           <Text style={styles.btnText}>Restart App</Text>
         </TouchableOpacity>
       </View>

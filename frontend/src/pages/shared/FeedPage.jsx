@@ -11,20 +11,20 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/axios';
 
 const CATEGORIES = [
-  { key: 'all',        label: 'All',            icon: '🌐' },
-  { key: 'jobs',       label: 'Jobs',           icon: '💼' },
-  { key: 'education',  label: 'Education',      icon: '🎓' },
-  { key: 'ai',         label: 'AI & Tech',      icon: '🤖' },
-  { key: 'technology', label: 'Technology',      icon: '💻' },
-  { key: 'future',     label: 'Future',         icon: '🚀' },
+  { key: 'all', label: 'All', icon: '🌐' },
+  { key: 'jobs', label: 'Jobs', icon: '💼' },
+  { key: 'education', label: 'Education', icon: '🎓' },
+  { key: 'ai', label: 'AI & Tech', icon: '🤖' },
+  { key: 'technology', label: 'Technology', icon: '💻' },
+  { key: 'future', label: 'Future', icon: '🚀' },
 ];
 
 const CAT_BADGE = {
-  jobs:       'bg-blue-100 text-blue-700',
-  education:  'bg-emerald-100 text-emerald-700',
-  ai:         'bg-purple-100 text-purple-700',
+  jobs: 'bg-blue-100 text-blue-700',
+  education: 'bg-emerald-100 text-emerald-700',
+  ai: 'bg-purple-100 text-purple-700',
   technology: 'bg-orange-100 text-orange-700',
-  future:     'bg-pink-100 text-pink-700',
+  future: 'bg-pink-100 text-pink-700',
 };
 
 function SkeletonCard() {
@@ -54,20 +54,28 @@ function FeedCard({ article, onReadMore }) {
   const badge = CAT_BADGE[article.category] || CAT_BADGE.education;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden
-                    hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col">
+    <div
+      className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden
+                    hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col"
+    >
       {/* Image */}
       <div className="relative h-44 overflow-hidden bg-gradient-to-br from-slate-200 to-indigo-100">
         {article.image_url && !imgError ? (
-          <img src={article.image_url} alt="" loading="lazy"
-               onError={() => setImgError(true)}
-               className="w-full h-full object-cover" />
+          <img
+            src={article.image_url}
+            alt=""
+            loading="lazy"
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-4xl opacity-30">
-            {CATEGORIES.find(c => c.key === article.category)?.icon || '📰'}
+            {CATEGORIES.find((c) => c.key === article.category)?.icon || '📰'}
           </div>
         )}
-        <span className={`absolute top-3 left-3 text-xs px-2.5 py-1 rounded-full font-medium ${badge} backdrop-blur-sm`}>
+        <span
+          className={`absolute top-3 left-3 text-xs px-2.5 py-1 rounded-full font-medium ${badge} backdrop-blur-sm`}
+        >
           {article.category}
         </span>
       </div>
@@ -94,14 +102,20 @@ function FeedCard({ article, onReadMore }) {
           </span>
           <div className="flex items-center gap-2">
             {article.source_url && (
-              <a href={article.source_url} target="_blank" rel="noopener noreferrer"
-                 onClick={e => e.stopPropagation()}
-                 className="text-xs text-slate-400 hover:text-blue-500">
+              <a
+                href={article.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs text-slate-400 hover:text-blue-500"
+              >
                 🔗 Source
               </a>
             )}
-            <button onClick={() => onReadMore(article)}
-                    className="text-xs px-3 py-1.5 bg-[#1a237e] text-white rounded-lg hover:bg-[#283593] transition-colors">
+            <button
+              onClick={() => onReadMore(article)}
+              className="text-xs px-3 py-1.5 bg-[#1a237e] text-white rounded-lg hover:bg-[#283593] transition-colors"
+            >
               Read Full Article
             </button>
           </div>
@@ -115,13 +129,13 @@ export default function FeedPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [articles, setArticles]   = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [category, setCategory]   = useState(searchParams.get('cat') || 'all');
-  const [page, setPage]           = useState(1);
-  const [hasMore, setHasMore]     = useState(false);
-  const [total, setTotal]         = useState(0);
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [category, setCategory] = useState(searchParams.get('cat') || 'all');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
@@ -139,7 +153,7 @@ export default function FeedPage() {
       const r = await api.get('/feed', { params });
       const d = r.data;
       if (append) {
-        setArticles(prev => [...prev, ...d.articles]);
+        setArticles((prev) => [...prev, ...d.articles]);
       } else {
         setArticles(d.articles);
       }
@@ -208,12 +222,17 @@ export default function FeedPage() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Education & Career Feed</h1>
-          <p className="text-sm text-slate-400 mt-1">Stay updated with the latest in tech, AI, jobs and education</p>
+          <p className="text-sm text-slate-400 mt-1">
+            Stay updated with the latest in tech, AI, jobs and education
+          </p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <button onClick={refresh} disabled={refreshing}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm
-                             text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50">
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm
+                             text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50"
+          >
             <span className={refreshing ? 'animate-spin' : ''}>🔄</span>
             {refreshing ? 'Refreshing…' : 'Refresh Feed'}
           </button>
@@ -225,11 +244,13 @@ export default function FeedPage() {
       <form onSubmit={handleSearch} className="relative">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
+              🔍
+            </span>
             <input
               type="text"
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search news… e.g. AI jobs, React, machine learning"
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm
                          text-slate-700 placeholder:text-slate-400
@@ -237,15 +258,21 @@ export default function FeedPage() {
                          transition-all"
             />
           </div>
-          <button type="submit" disabled={!searchQuery.trim()}
-                  className="px-5 py-2.5 bg-[#1a237e] text-white text-sm rounded-xl hover:bg-[#283593]
-                             transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          <button
+            type="submit"
+            disabled={!searchQuery.trim()}
+            className="px-5 py-2.5 bg-[#1a237e] text-white text-sm rounded-xl hover:bg-[#283593]
+                             transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
             Search
           </button>
           {activeSearch && (
-            <button type="button" onClick={clearSearch}
-                    className="px-4 py-2.5 bg-white border border-slate-200 text-sm text-slate-500 rounded-xl
-                               hover:bg-slate-50 transition-colors">
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="px-4 py-2.5 bg-white border border-slate-200 text-sm text-slate-500 rounded-xl
+                               hover:bg-slate-50 transition-colors"
+            >
               ✕ Clear
             </button>
           )}
@@ -258,14 +285,21 @@ export default function FeedPage() {
       </form>
 
       {/* Category Tabs */}
-      <div className={`flex gap-2 overflow-x-auto pb-1 scrollbar-hide ${activeSearch ? 'opacity-40 pointer-events-none' : ''}`}>
-        {CATEGORIES.map(c => (
-          <button key={c.key} onClick={() => setCategory(c.key)}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap
+      <div
+        className={`flex gap-2 overflow-x-auto pb-1 scrollbar-hide ${activeSearch ? 'opacity-40 pointer-events-none' : ''}`}
+      >
+        {CATEGORIES.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => setCategory(c.key)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap
                              transition-all duration-200 border
-                             ${category === c.key
-                               ? 'bg-[#1a237e] text-white border-[#1a237e] shadow-md shadow-indigo-200'
-                               : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                             ${
+                               category === c.key
+                                 ? 'bg-[#1a237e] text-white border-[#1a237e] shadow-md shadow-indigo-200'
+                                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                             }`}
+          >
             <span>{c.icon}</span>
             {c.label}
           </button>
@@ -276,7 +310,10 @@ export default function FeedPage() {
       {error && (
         <div className="card p-8 text-center">
           <p className="text-red-500 mb-3">{error}</p>
-          <button onClick={refresh} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+          <button
+            onClick={refresh}
+            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+          >
             🔄 Retry
           </button>
         </div>
@@ -285,7 +322,9 @@ export default function FeedPage() {
       {/* Loading skeletons */}
       {loading && !refreshing && (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => <SkeletonCard key={i} />)}
+          {[...Array(6)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       )}
 
@@ -301,16 +340,18 @@ export default function FeedPage() {
       {!loading && articles.length > 0 && (
         <>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {articles.map(a => (
+            {articles.map((a) => (
               <FeedCard key={a.id} article={a} onReadMore={readMore} />
             ))}
           </div>
 
           {hasMore && (
             <div className="text-center pt-4">
-              <button onClick={loadMore}
-                      className="px-6 py-2.5 bg-white border border-slate-200 rounded-lg text-sm
-                                 text-slate-600 hover:bg-slate-50 transition-all">
+              <button
+                onClick={loadMore}
+                className="px-6 py-2.5 bg-white border border-slate-200 rounded-lg text-sm
+                                 text-slate-600 hover:bg-slate-50 transition-all"
+              >
                 Load More
               </button>
             </div>

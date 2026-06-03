@@ -44,7 +44,17 @@ sentry-sdk[fastapi]>=2.18.0
 # All calls are guarded so the backend still runs without AWS creds.
 boto3==1.35.0
 
-# TODO: Enable Prometheus metrics when needed
-# To re-enable: uncomment the line below, run `pip install -r requirements.txt`,
+# OPTIONAL (opt-in): Prometheus metrics — intentionally disabled.
+# To enable: uncomment the line below, run `pip install -r requirements.txt`,
 # and set up a Prometheus scrape target pointing at /metrics.
 # prometheus-fastapi-instrumentator==0.9.7
+
+# ── Testing (issue #77) ─────────────────────────────────────────────
+# Comprehensive pytest suite under backend/tests. Run with `make test`
+# or `pytest tests/ -v`. httpx is already pinned above (>=0.28.1) and is
+# reused by Starlette's TestClient — NOT re-pinned to 0.27.0 to avoid a
+# version conflict.
+pytest==8.3.2
+pytest-asyncio==0.23.8
+pytest-timeout==2.3.1
+factory-boy==3.3.1

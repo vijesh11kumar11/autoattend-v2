@@ -8,6 +8,7 @@ All credentials are sourced from `settings` (read from env). The module
 is intentionally tolerant of missing credentials so the app keeps
 running in dev — calls that need S3 raise HTTPException(503).
 """
+
 from __future__ import annotations
 
 import logging
@@ -89,10 +90,10 @@ def _validate_upload(file_bytes: bytes, original_filename: str) -> str:
 
 
 _EXT_TO_CONTENT_TYPE = {
-    ".pdf":  "application/pdf",
-    ".jpg":  "image/jpeg",
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".png":  "image/png",
+    ".png": "image/png",
 }
 
 
@@ -132,9 +133,13 @@ def upload_leave_document(
     return s3_key
 
 
+# Prefixes that the read-presign helper is allowed to serve.
+_ALLOWED_KEY_PREFIXES = ("leave-documents/", "session-recordings/")
+
+
 def generate_signed_url(s3_key: str, expiry_seconds: int = 3600) -> str:
     """Return a pre-signed GET URL for the object. Raises 503 if AWS not set."""
-    if not s3_key or not s3_key.startswith("leave-documents/"):
+    if not s3_key or not s3_key.startswith(_ALLOWED_KEY_PREFIXES):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file key")
 
     client = get_s3_client()
@@ -150,3 +155,106 @@ def generate_signed_url(s3_key: str, expiry_seconds: int = 3600) -> str:
             status.HTTP_502_BAD_GATEWAY,
             "Failed to generate file URL",
         ) from exc
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Smart Replay — session recording (video) storage (issue #118)
+# ═══════════════════════════════════════════════════════════════════════
+
+_ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".m4v"}
+_VIDEO_EXT_TO_CONTENT_TYPE = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+}
+
+
+def is_s3_configured() -> bool:
+    """Public helper so callers can degrade gracefully when S3 is off."""
+    return _is_configured()
+
+
+def _build_recording_key(session_id: int, original_filename: str) -> tuple[str, str]:
+    name = os.path.basename(original_filename or "").strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing filename")
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in _ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Invalid video type — only MP4, WEBM, MOV, M4V are allowed",
+        )
+    safe_name = name.replace("/", "_").replace("\\", "_")
+    return f"session-recordings/{int(session_id)}/{uuid.uuid4().hex}_{safe_name}", ext
+
+
+def generate_recording_upload_url(
+    session_id: int,
+    original_filename: str,
+    expiry_seconds: int = 3600,
+) -> dict:
+    """
+    Return a pre-signed PUT URL so the browser can upload a session
+    recording straight to S3 (no proxying through the API). The caller
+    then persists the returned ``s3_key`` on ``LiveSession.recording_url``.
+    Raises 503 when S3 is not configured.
+    """
+    s3_key, ext = _build_recording_key(session_id, original_filename)
+    content_type = _VIDEO_EXT_TO_CONTENT_TYPE.get(ext, "application/octet-stream")
+    client = get_s3_client()
+    try:
+        url = client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": settings.AWS_S3_BUCKET_NAME,
+                "Key": s3_key,
+                "ContentType": content_type,
+                "ServerSideEncryption": "AES256",
+            },
+            ExpiresIn=int(expiry_seconds),
+        )
+    except Exception as exc:  # pragma: no cover - depends on AWS
+        logger.error("S3 recording presign (PUT) failed: %s", exc)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Failed to generate upload URL",
+        ) from exc
+    return {
+        "upload_url": url,
+        "s3_key": s3_key,
+        "content_type": content_type,
+        "expires_in": int(expiry_seconds),
+    }
+
+
+def upload_session_recording(
+    file_bytes: bytes,
+    original_filename: str,
+    session_id: int,
+) -> str:
+    """
+    Server-side upload of a recording (fallback when the browser cannot
+    PUT directly). Returns the S3 key. Raises HTTPException on errors.
+    """
+    if not file_bytes:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
+    s3_key, ext = _build_recording_key(session_id, original_filename)
+    client = get_s3_client()
+    try:
+        client.put_object(
+            Bucket=settings.AWS_S3_BUCKET_NAME,
+            Key=s3_key,
+            Body=file_bytes,
+            ContentType=_VIDEO_EXT_TO_CONTENT_TYPE.get(ext, "application/octet-stream"),
+            ServerSideEncryption="AES256",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - depends on AWS connectivity
+        logger.error("S3 recording put_object failed: %s", exc)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Failed to store recording",
+        ) from exc
+    return s3_key

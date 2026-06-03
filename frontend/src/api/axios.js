@@ -28,7 +28,8 @@ import axios from 'axios';
 function canvasHash() {
   try {
     const c = document.createElement('canvas');
-    c.width = 200; c.height = 50;
+    c.width = 200;
+    c.height = 50;
     const ctx = c.getContext('2d');
     ctx.textBaseline = 'top';
     ctx.font = '14px "Arial"';
@@ -66,8 +67,8 @@ function generateDeviceFingerprint() {
   return hash.toString(16).padStart(8, '0');
 }
 
-const DEVICE_KEY = 'aa_device_id';        // legacy localStorage key (read-only migration)
-const DEVICE_COOKIE = 'aa_device';        // new canonical store
+const DEVICE_KEY = 'aa_device_id'; // legacy localStorage key (read-only migration)
+const DEVICE_COOKIE = 'aa_device'; // new canonical store
 
 function readCookie(name) {
   const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -92,7 +93,11 @@ function getDeviceId() {
   }
   writeDeviceCookie(id);
   // Best-effort clean-up of legacy storage.
-  try { localStorage.removeItem(DEVICE_KEY); } catch (_) { /* ignore */ }
+  try {
+    localStorage.removeItem(DEVICE_KEY);
+  } catch (_) {
+    /* ignore */
+  }
   return id;
 }
 
@@ -102,7 +107,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
-  withCredentials: true,  // send httpOnly aa_token cookie on every request
+  withCredentials: true, // send httpOnly aa_token cookie on every request
 });
 
 // Defence in depth: marks every call as XHR so backend can reject
@@ -120,19 +125,20 @@ api.interceptors.request.use(
       try {
         // Dynamic import avoids a circular dep when axios is imported first.
         // Synchronous: the module is already loaded by JoinSessionPage.
-        // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
         const mod = window.__aaGuestStore;
         const guestToken = mod?.getGuestSession?.()?.token;
         if (guestToken) {
           config.headers['Authorization'] = `Bearer ${guestToken}`;
         }
-      } catch { /* no-op */ }
+      } catch {
+        /* no-op */
+      }
     }
-    config.headers['X-Device-ID']  = getDeviceId();
+    config.headers['X-Device-ID'] = getDeviceId();
     config.headers['X-Client-Type'] = 'web';
     return config;
   },
-  (error) => Promise.reject(error),
+  (error) => Promise.reject(error)
 );
 
 // Response interceptor
@@ -142,15 +148,19 @@ let _refreshInFlight = null;
 
 function refreshAccessToken() {
   if (!_refreshInFlight) {
-    _refreshInFlight = axios.post(
-      (import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api') +
-        '/auth/refresh',
-      {},
-      {
-        withCredentials: true,
-        headers: { 'X-Client-Type': 'web', 'X-Device-ID': getDeviceId() },
-      },
-    ).finally(() => { _refreshInFlight = null; });
+    _refreshInFlight = axios
+      .post(
+        (import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api') +
+          '/auth/refresh',
+        {},
+        {
+          withCredentials: true,
+          headers: { 'X-Client-Type': 'web', 'X-Device-ID': getDeviceId() },
+        }
+      )
+      .finally(() => {
+        _refreshInFlight = null;
+      });
   }
   return _refreshInFlight;
 }
@@ -159,7 +169,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error.response?.status;
-    const url    = error.config?.url || '';
+    const url = error.config?.url || '';
     const isPublicLiveCall =
       url.includes('/live/join/') ||
       url.includes('/live/sessions/') ||
@@ -177,20 +187,32 @@ api.interceptors.response.use(
         const cfg = { ...error.config, _retried: true };
         return api.request(cfg);
       } catch {
-        if (window.location.pathname !== '/login') {
+        const onAdmin = window.location.pathname.startsWith('/admin');
+        const target = onAdmin ? '/admin/login' : '/login';
+        if (window.location.pathname !== target) {
           // Tell LoginPage why we got bounced so we can surface a banner
           // instead of a silent redirect.
-          try { sessionStorage.setItem('aa_login_reason', 'session_expired'); } catch { /* ignore */ }
-          window.location.replace('/login');
+          try {
+            sessionStorage.setItem('aa_login_reason', 'session_expired');
+          } catch {
+            /* ignore */
+          }
+          window.location.replace(target);
         }
         return Promise.reject(error);
       }
     }
 
     if (status === 401 && !isPublicLiveCall) {
-      if (window.location.pathname !== '/login') {
-        try { sessionStorage.setItem('aa_login_reason', 'session_expired'); } catch { /* ignore */ }
-        window.location.replace('/login');
+      const onAdmin = window.location.pathname.startsWith('/admin');
+      const target = onAdmin ? '/admin/login' : '/login';
+      if (window.location.pathname !== target) {
+        try {
+          sessionStorage.setItem('aa_login_reason', 'session_expired');
+        } catch {
+          /* ignore */
+        }
+        window.location.replace(target);
       }
     } else if (status === 403 && !isPublicLiveCall) {
       const detail = error.response?.data?.detail || '';
@@ -200,9 +222,8 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  },
+  }
 );
 
 export default api;
 export { getDeviceId };
-
