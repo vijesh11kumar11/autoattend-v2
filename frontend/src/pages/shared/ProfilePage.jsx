@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI — Shared Profile Page  (#109 student profile, #110 staff profile)
+ * TRACELN — Shared Profile Page  (#109 student profile, #110 staff profile)
  *
  * Mounted by every role dashboard at /{role}/profile. Reads the current
  * user from GET /api/auth/me and exposes a dual-OTP password-change flow

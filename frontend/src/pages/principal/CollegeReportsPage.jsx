@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Principal: College Reports Page
+ * TRACELN v2.0 — Principal: College Reports Page
  *
  * Calls GET /api/principal/reports with optional dept_id + date range.
  * Features: filter bar, export CSV, flagged / defaulters per dept.

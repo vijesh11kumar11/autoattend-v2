@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Student Dashboard (PROMPT 7 Rebuild)
+ * TRACELN v2.0 — Student Dashboard (PROMPT 7 Rebuild)
  *
  * Routes served (within /student/*):
  *   dashboard  → StudentHome (rebuilt with activity rings, forecast, disputes)
@@ -644,7 +644,7 @@ function ScanQRStub() {
       <span className="text-5xl block">📱</span>
       <p className="font-semibold text-slate-600">Scan QR Code</p>
       <p className="text-sm max-w-md mx-auto">
-        QR scanning is available on the mobile app. Open the AutoAttend app on your phone, go to
+        QR scanning is available on the mobile app. Open the TRACELN app on your phone, go to
         "Scan QR", and scan the code displayed by your teacher.
       </p>
       <div className="bg-blue-50 rounded-xl p-4 mt-4 text-left max-w-sm mx-auto text-sm text-slate-600 space-y-1">

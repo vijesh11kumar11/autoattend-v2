@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Leave Requests Page (Teacher / HOD)
+ * TRACELN v2.0 — Leave Requests Page (Teacher / HOD)
  *
  * Tabs: Pending | Approved | Rejected | All
  * Each request card: student info, dates, reason, leave type badge

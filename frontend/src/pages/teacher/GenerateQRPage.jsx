@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Generate QR Page (Teacher)
+ * TRACELN v2.0 — Generate QR Page (Teacher)
  *
  * LEFT  : Session Setup card → QR Display card (after session starts)
  * RIGHT : Live Attendance Board with manual override

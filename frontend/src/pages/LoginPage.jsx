@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Login Page
+ * TRACELN v2.0 — Login Page
  *
  * Split-screen layout:
  *   LEFT  — branded dark-blue panel (logo, tagline, feature pills)
@@ -166,7 +166,7 @@ function TOTPInput({ value, onChange }) {
 // Main LoginPage
 // ═══════════════════════════════════════════════════════════════════════
 
-const COLLEGE_NAME = import.meta.env.VITE_COLLEGE_NAME || 'AutoAttend AI College';
+const COLLEGE_NAME = import.meta.env.VITE_COLLEGE_NAME || 'TRACELN College';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -329,7 +329,7 @@ export default function LoginPage() {
         {/* Logo + name */}
         <div className="flex items-center gap-3">
           <GraduationCapIcon className="w-10 h-10" />
-          <span className="text-white font-bold text-xl tracking-tight">AutoAttend AI</span>
+          <span className="text-white font-bold text-xl tracking-tight">TRACELN</span>
         </div>
 
         {/* Centre content */}
@@ -370,7 +370,7 @@ export default function LoginPage() {
             >
               <GraduationCapIcon className="w-5 h-5" />
             </div>
-            <span className="font-bold text-slate-800">AutoAttend AI</span>
+            <span className="font-bold text-slate-800">TRACELN</span>
           </div>
 
           <div className="space-y-1">

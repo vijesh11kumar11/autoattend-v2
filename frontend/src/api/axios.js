@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Axios instance
+ * TRACELN v2.0 — Axios instance
  *
  * • baseURL  = /api  (Vite proxies to FastAPI in dev)
  * • Auth     = httpOnly cookie `aa_token` (set by /api/auth/login).
@@ -36,9 +36,9 @@ function canvasHash() {
     ctx.fillStyle = '#f60';
     ctx.fillRect(125, 1, 62, 20);
     ctx.fillStyle = '#069';
-    ctx.fillText('AutoAttend🎓', 2, 15);
+    ctx.fillText('TRACELN🎓', 2, 15);
     ctx.fillStyle = 'rgba(102,204,0,0.7)';
-    ctx.fillText('AutoAttend🎓', 4, 17);
+    ctx.fillText('TRACELN🎓', 4, 17);
     const data = c.toDataURL();
     let hash = 0x811c9dc5;
     for (let i = 0; i < data.length; i++) {

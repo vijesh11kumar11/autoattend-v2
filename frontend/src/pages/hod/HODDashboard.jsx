@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — HOD Dashboard
+ * TRACELN v2.0 — HOD Dashboard
  *
  * Routes served (within /hod/*):
  *   dashboard     → HODOverview   (this file)

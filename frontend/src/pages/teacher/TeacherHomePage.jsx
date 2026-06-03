@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Teacher Dashboard Home (PROMPT 6 Rebuild)
+ * TRACELN v2.0 — Teacher Dashboard Home (PROMPT 6 Rebuild)
  *
  * 3-column layout:
  *   Col 1: Current Class hero + Today's Schedule timeline

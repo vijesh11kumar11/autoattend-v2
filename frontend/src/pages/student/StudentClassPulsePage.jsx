@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — ClassPulse (Student)
+ * TRACELN v2.0 — ClassPulse (Student)
  *
  * Two-panel session-aware learning hub for students:
  *   • Left  — subject list with attendance + capsule/wall counts

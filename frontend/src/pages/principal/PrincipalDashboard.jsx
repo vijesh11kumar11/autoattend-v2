@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Principal Dashboard
+ * TRACELN v2.0 — Principal Dashboard
  *
  * Routes served (within /principal/*):
  *   dashboard   → PrincipalOverview  (this file)

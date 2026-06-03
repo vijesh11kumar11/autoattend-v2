@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Principal: Departments Page
+ * TRACELN v2.0 — Principal: Departments Page
  *
  * Calls GET /api/principal/stats and renders department cards in a grid.
  */

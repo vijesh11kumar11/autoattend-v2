@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — i18n bootstrap (web)
+ * TRACELN v2.0 — i18n bootstrap (web)
  *
  * Minimal react-i18next setup. English only for now; no language detection and
  * no in-app language switcher. This is infrastructure so future translations

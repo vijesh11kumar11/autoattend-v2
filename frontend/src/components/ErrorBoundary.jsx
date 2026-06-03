@@ -1,5 +1,5 @@
 /**
- * ErrorBoundary — top-level React error boundary for AutoAttend web.
+ * ErrorBoundary — top-level React error boundary for TRACELN web.
  *
  * Catches any uncaught render-time error in the tree and shows a friendly
  * fallback instead of the dreaded blank white screen. Provides a "Reload"

@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Principal: Alerts Page
+ * TRACELN v2.0 — Principal: Alerts Page
  *
  * Features:
  *  • Defaulters list with checkboxes (individual + bulk selection)

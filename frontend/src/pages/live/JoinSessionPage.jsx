@@ -186,7 +186,7 @@ export default function JoinSessionPage() {
               onClick={() => navigate(`/login?next=/live/${joinCode}`)}
               className={`mt-5 w-full py-3 rounded-xl text-white font-bold bg-gradient-to-r ${VIOLET}`}
             >
-              Login to AutoAttend
+              Login to TRACELN
             </button>
             <p className="text-center text-xs text-slate-400 my-3">— or —</p>
             <input

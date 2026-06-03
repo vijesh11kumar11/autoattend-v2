@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — News Feed Page
+ * TRACELN v2.0 — News Feed Page
  *
  * Premium education & career news feed with category filtering,
  * skeleton loading, and card-based article display.

@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — ClassPulse (Teacher)
+ * TRACELN v2.0 — ClassPulse (Teacher)
  *
  * Session-aware learning hub for teachers:
  *  • Tab 1 — Overview: per-subject KPIs + attention list + recent activity

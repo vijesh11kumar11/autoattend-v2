@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Subject Analytics Page (PROMPT 6)
+ * TRACELN v2.0 — Subject Analytics Page (PROMPT 6)
  *
  * • Per-student attendance table with weekly trend sparkline
  * • Day-of-week attendance pattern

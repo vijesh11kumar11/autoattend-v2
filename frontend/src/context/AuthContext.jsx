@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Auth Context
+ * TRACELN v2.0 — Auth Context
  *
  * Web auth model:
  *   • JWT lives in an httpOnly `aa_token` cookie (set by the backend).

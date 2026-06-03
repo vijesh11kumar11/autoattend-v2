@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Navbar
+ * TRACELN v2.0 — Navbar
  *
  * Features:
  * • Page title (passed as prop)

@@ -1,5 +1,5 @@
 /**
- * useAgoraRTC — Core video engine hook for AutoAttend Live.
+ * useAgoraRTC — Core video engine hook for TRACELN Live.
  *
  * Wraps agora-rtc-sdk-ng for both teachers (host/publisher) and
  * students/guests (audience/subscriber). Returns:

@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Principal: Audit Log Page
+ * TRACELN v2.0 — Principal: Audit Log Page
  *
  * Three sections:
  *  1. Face Change Log       — who re-enrolled / reset a student's face

@@ -93,7 +93,7 @@ function BulkProgress({ result }) {
 function BulkAlertSection() {
   const DEFAULT_MSG =
     "Dear Parent, your ward's attendance has fallen below the required threshold. " +
-    'Please ensure regular attendance to avoid detention. — AutoAttend AI';
+    'Please ensure regular attendance to avoid detention. — TRACELN';
 
   const [count, setCount] = useState(null);
   const [message, setMessage] = useState(DEFAULT_MSG);

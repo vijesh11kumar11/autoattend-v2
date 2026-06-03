@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — DashboardLayout
+ * TRACELN v2.0 — DashboardLayout
  *
  * Shared wrapper for all role dashboards.
  * Renders Sidebar + Navbar + <main> content area.
@@ -64,7 +64,7 @@ export default function DashboardLayout({ children }) {
     () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   );
   const { pathname } = useLocation();
-  const title = TITLE_MAP[pathname] ?? 'AutoAttend AI';
+  const title = TITLE_MAP[pathname] ?? 'TRACELN';
 
   // Track viewport so we know whether to use the fixed sidebar margin (>=md)
   // or the slide-in drawer pattern (<md) introduced for #92.

@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI — Shared Notifications Inbox  (#111)
+ * TRACELN — Shared Notifications Inbox  (#111)
  *
  * Full-page version of the navbar notification bell. Consumes the same
  * GET /api/notifications/me endpoint, asks for a larger limit (50) and

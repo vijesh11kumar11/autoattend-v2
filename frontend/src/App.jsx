@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — App Router
+ * TRACELN v2.0 — App Router
  *
  * Public routes:   /login, /unauthorized
  * Protected routes use <PrivateRoute minRole="..."> wrapper.

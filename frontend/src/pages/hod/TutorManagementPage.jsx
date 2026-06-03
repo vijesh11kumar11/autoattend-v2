@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — HOD Tutor Management Page
+ * TRACELN v2.0 — HOD Tutor Management Page
  *
  * Three tabs:
  *   1. Assignments  — view / filter / delete existing tutor→student mappings

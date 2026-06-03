@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Teacher Tutor Dashboard
+ * TRACELN v2.0 — Teacher Tutor Dashboard
  *
  * • Summary cards: Total wards, Needs Attention, Pending (placeholder)
  * • Searchable student table with color-coded attendance badges

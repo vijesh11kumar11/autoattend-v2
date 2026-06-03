@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Offline Queue Context (web, issues #88 / #121)
+ * TRACELN v2.0 — Offline Queue Context (web, issues #88 / #121)
  *
  * Tracks online/offline state and the pending offline-queue length, and
  * auto-replays the queue when connectivity is restored. Provides the count

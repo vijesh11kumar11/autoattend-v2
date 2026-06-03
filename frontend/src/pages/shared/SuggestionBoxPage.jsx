@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Smart Suggestion Box
+ * TRACELN v2.0 — Smart Suggestion Box
  * Shared across all roles with role-specific tabs and content.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';

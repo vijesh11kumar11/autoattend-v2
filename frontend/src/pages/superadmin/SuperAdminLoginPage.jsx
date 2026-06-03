@@ -66,7 +66,7 @@ export default function SuperAdminLoginPage() {
             Internal Tooling
           </p>
           <h1 className="mt-2 text-2xl font-bold">Traceln Admin</h1>
-          <p className="mt-1 text-sm text-slate-400">AutoAttend AI — Super Admin Console</p>
+          <p className="mt-1 text-sm text-slate-400">TRACELN — Super Admin Console</p>
         </div>
 
         {error && (

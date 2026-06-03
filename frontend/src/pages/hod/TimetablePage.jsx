@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — HOD Timetable Management Page
+ * TRACELN v2.0 — HOD Timetable Management Page
  *
  * • Visual weekly grid (days as columns, time slots as rows)
  * • Color-coded cells with teacher, subject, room, section

@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Offline Indicator (web, issues #88 / #121)
+ * TRACELN v2.0 — Offline Indicator (web, issues #88 / #121)
  *
  * A slim yellow banner shown while the browser is offline (or while items are
  * still queued), plus a transient notice for rejection / sync / failure

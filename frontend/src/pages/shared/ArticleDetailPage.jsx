@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Article Detail Page
+ * TRACELN v2.0 — Article Detail Page
  *
  * Full article view with hero image, markdown body,
  * related articles, and back-to-feed navigation.

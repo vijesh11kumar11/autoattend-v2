@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Face Enrollment Page (Student only)
+ * TRACELN v2.0 — Face Enrollment Page (Student only)
  *
  * Mandatory for first-time students before accessing the dashboard.
  *

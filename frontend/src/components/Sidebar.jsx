@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Sidebar
+ * TRACELN v2.0 — Sidebar
  *
  * Features:
  * • Role-aware navigation (principal / hod / teacher / student)
@@ -190,7 +190,7 @@ export default function Sidebar({
             <div className="flex items-center gap-2 overflow-hidden">
               <span className="text-2xl leading-none">🎓</span>
               <span className="text-white font-bold text-sm whitespace-nowrap truncate">
-                AutoAttend AI
+                TRACELN
               </span>
             </div>
           )}

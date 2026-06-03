@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — HOD Sections Management
+ * TRACELN v2.0 — HOD Sections Management
  *
  * Features:
  * • Create / edit / delete sections (A, B, C…)

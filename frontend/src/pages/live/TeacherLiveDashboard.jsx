@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Teacher Live Dashboard (Prompt 4)
+ * TRACELN v2.0 — Teacher Live Dashboard (Prompt 4)
  *
  * Routes mounted under /teacher/live :
  *   - Pre-session panel (create / list)

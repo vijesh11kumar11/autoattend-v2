@@ -1,5 +1,5 @@
 /**
- * AutoAttend AI v2.0 — Web Offline Operation Queue (issues #88 / #121)
+ * TRACELN v2.0 — Web Offline Operation Queue (issues #88 / #121)
  *
  * Purely additive resilience layer. When a *write* operation fails because the
  * browser is offline (network error, no HTTP response), it is persisted to
