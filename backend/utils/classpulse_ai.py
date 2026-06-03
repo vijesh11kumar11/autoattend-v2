@@ -23,12 +23,12 @@ from typing import Optional
 import httpx
 
 from config import settings
+from utils.claude_ai import call_claude_sync
 
 logger = logging.getLogger(__name__)
 
 AI_TIMEOUT_SEC = 30
 PDF_TEXT_CHAR_LIMIT = 8000
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # Low-level provider calls (sync — wrapped in asyncio.to_thread for async)
@@ -105,7 +105,18 @@ def _parse_json(text: str) -> Optional[dict | list]:
 
 
 async def _ai_json(prompt: str, system: Optional[str] = None) -> Optional[dict | list]:
-    """Try Gemini → fallback Groq. Returns parsed JSON or None."""
+    """Try Claude → Gemini → Groq. Returns parsed JSON or None."""
+    raw = await asyncio.to_thread(
+        call_claude_sync,
+        prompt,
+        system or "You are an expert academic assistant. Return only valid JSON.",
+    )
+    parsed = _parse_json(raw) if raw else None
+    if parsed is not None:
+        logger.info("✅ ClassPulse AI: Claude returned valid JSON")
+        return parsed
+
+    logger.info("⚡ ClassPulse AI: Claude failed, falling back to Gemini")
     raw = await asyncio.to_thread(_call_gemini_sync, prompt, system)
     parsed = _parse_json(raw) if raw else None
     if parsed is not None:

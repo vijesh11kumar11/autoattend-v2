@@ -27,6 +27,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from config import settings
+from utils.claude_ai import call_claude_sync
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,18 @@ def _parse_json(text: str) -> Optional[dict | list]:
 
 
 async def _ai_json(prompt: str, system: Optional[str] = None) -> Optional[dict | list]:
-    """Try Gemini → Groq → DeepSeek. Returns parsed JSON or None."""
+    """Try Claude → Gemini → Groq → DeepSeek. Returns parsed JSON or None."""
+    raw = await asyncio.to_thread(
+        call_claude_sync,
+        prompt,
+        system or "You are an expert teaching assistant. Return only valid JSON.",
+    )
+    parsed = _parse_json(raw) if raw else None
+    if parsed is not None:
+        logger.info("✅ LiveAI: Claude OK")
+        return parsed
+
+    logger.info("⚡ LiveAI: Claude failed → Gemini")
     raw = await asyncio.to_thread(_call_gemini_sync, prompt, system)
     parsed = _parse_json(raw) if raw else None
     if parsed is not None:
@@ -183,6 +195,9 @@ async def _call_ai_text(prompt: str, system: Optional[str] = None) -> str:
     sys_txt = (
         system or "You are an expert, concise teaching assistant. Plain text only — no markdown."
     )
+    raw = await asyncio.to_thread(call_claude_sync, prompt, sys_txt, "fast")
+    if raw:
+        return raw
     raw = await asyncio.to_thread(_call_gemini_sync, prompt, sys_txt)
     if raw:
         return raw

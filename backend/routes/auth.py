@@ -26,7 +26,16 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 import qrcode
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
@@ -79,6 +88,7 @@ from utils.auth_utils import (
     verify_password,
     verify_totp_code,
 )
+from utils.email_utils import send_welcome_email
 from utils.otp_utils import (
     send_dual_otp,
     verify_dual_otp,
@@ -170,6 +180,7 @@ def login(
     request: Request,
     body: LoginRequest,
     response: Response,
+    background_tasks: BackgroundTasks,
     x_device_id: str = Header(default=""),
     x_client_type: str = Header(default="web"),
     db: Session = Depends(get_db),
@@ -382,6 +393,11 @@ def login(
                 user.id,
                 x_device_id,
             )
+            # First-login welcome email — best-effort, runs after the response
+            # so it never adds latency to or blocks the login. No-op when the
+            # student has no email or the welcome template is unconfigured.
+            if user.email:
+                background_tasks.add_task(send_welcome_email, user.email, user.name)
         elif existing_device.device_id != x_device_id:
             logger.warning(
                 "🎓 STUDENT LOGIN blocked │ student_id=%d │ device mismatch │ registered=%s │ got=%s",

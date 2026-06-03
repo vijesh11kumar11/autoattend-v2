@@ -31,6 +31,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import get_current_user
+from utils.claude_ai import call_claude_sync
 from utils.sanitization import clean_text
 
 logger = logging.getLogger(__name__)
@@ -480,6 +481,19 @@ IMPORTANT RULES:
 """
 
 
+def _call_claude(prompt: str) -> str:
+    """Call Claude Haiku (primary). Raises on failure so the chain falls through."""
+    raw = call_claude_sync(
+        prompt,
+        system="You are an expert institutional analyst. Return only valid JSON.",
+        max_tokens=4096,
+        temperature=0.3,
+    )
+    if not raw:
+        raise RuntimeError("Claude returned no content")
+    return raw
+
+
 def _call_gemini(prompt: str) -> str:
     """Call Gemini 2.0 Flash with timeout."""
     import google.genai as genai
@@ -548,6 +562,7 @@ def generate_ai_report(
     t0 = time.time()
 
     for attempt_provider, caller in [
+        ("claude", _call_claude),
         ("gemini", _call_gemini),
         ("groq", _call_groq),
         ("gemini", _call_gemini),

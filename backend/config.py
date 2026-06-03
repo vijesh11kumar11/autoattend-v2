@@ -42,6 +42,20 @@ class Settings(BaseSettings):
     MSG91_EMAIL_TEMPLATE_ID: str = "autoattend_email_otp"
     MSG91_EMAIL_FROM: str
     MSG91_EMAIL_DOMAIN: str = ""
+    # Transactional template emails (non-OTP). Empty = feature disabled
+    # (sender becomes a logged no-op; never blocks the calling flow).
+    MSG91_WELCOME_TEMPLATE_ID: str = ""
+    MSG91_NOTIFICATION_TEMPLATE_ID: str = ""
+
+    # ── WhatsApp parent/tutor alerts (MSG91 primary, Twilio fallback) ─
+    # Outbound alerts try MSG91 first when its WhatsApp integrated number +
+    # approved template are configured; otherwise they fall back to Twilio
+    # when Twilio creds are present. If neither is configured the send is a
+    # logged no-op (never raises) so callers keep working unchanged.
+    MSG91_WHATSAPP_INTEGRATED_NUMBER: str = ""
+    MSG91_WHATSAPP_TEMPLATE_NAME: str = ""
+    MSG91_WHATSAPP_NAMESPACE: str = ""
+    MSG91_WHATSAPP_LANG_CODE: str = "en_US"
 
     # ── Fast2SMS (Quick route SMS for notifications) ─────────────
     # REQUIRED in production. Empty string keeps SMS disabled but startup
@@ -56,9 +70,19 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
-    # ── Twilio WhatsApp (for parent alerts) ───────────────────────────
-    TWILIO_ACCOUNT_SID: str
-    TWILIO_AUTH_TOKEN: str
+    # ── Claude (Anthropic) — PRIMARY AI provider ──────────────────────
+    # Used first by every AI feature (ClassPulse, ClassPulse Live, Career,
+    # Suggestions); Gemini/Groq/DeepSeek remain automatic fallbacks. Empty
+    # key = Claude skipped, behaviour falls back to the previous providers.
+    # Haiku-only by design (cost-optimised — never Opus/Sonnet).
+    CLAUDE_API_KEY: str = ""
+    CLAUDE_MODEL_SMART: str = "claude-haiku-4-5-20251001"
+    CLAUDE_MODEL_FAST: str = "claude-haiku-4-5-20251001"
+    # ── Twilio WhatsApp (fallback for parent alerts — optional) ───────
+    # Optional: empty/placeholder means "not configured" and the WhatsApp
+    # helper skips Twilio. MSG91 is the primary provider.
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
     TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
 
     # ── App settings ──────────────────────────────────────────────────

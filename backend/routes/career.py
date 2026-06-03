@@ -32,6 +32,7 @@ from database import (
     get_db,
 )
 from utils.auth_utils import get_current_user
+from utils.claude_ai import call_claude_sync
 
 logger = logging.getLogger(__name__)
 
@@ -327,6 +328,16 @@ Return ONLY valid JSON matching this schema (no markdown, no code fences):
 # ═══════════════════════════════════════════════════════════════════════
 
 
+def _call_claude(prompt: str) -> dict | None:
+    raw = call_claude_sync(
+        prompt,
+        system="You are a career counsellor. Return only valid JSON.",
+        max_tokens=4096,
+        temperature=0.7,
+    )
+    return _parse_json(raw) if raw else None
+
+
 def _call_gemini(prompt: str) -> dict | None:
     api_key = settings.GEMINI_API_KEY
     if not api_key:
@@ -428,10 +439,15 @@ def generate_roadmap(
 
     prompt = _build_prompt(role, ctx, body)
 
-    # Try Gemini first, fallback to Groq
+    # Try Claude first, then Gemini, then Groq
     start = time.time()
-    result = _call_gemini(prompt)
-    provider = "Gemini"
+    result = _call_claude(prompt)
+    provider = "Claude"
+
+    if result is None:
+        logger.info("⚡ Claude failed, falling back to Gemini")
+        result = _call_gemini(prompt)
+        provider = "Gemini"
 
     if result is None:
         logger.info("⚡ Gemini failed, falling back to Groq")

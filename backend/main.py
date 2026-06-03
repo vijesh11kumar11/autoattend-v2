@@ -680,18 +680,30 @@ def _warn_optional_integrations():
             "{ok:false,error:'FAST2SMS_API_KEY not configured'}.",
         )
 
-    if not (settings.GEMINI_API_KEY or settings.GROQ_API_KEY or settings.DEEPSEEK_API_KEY):
+    if not (
+        settings.CLAUDE_API_KEY
+        or settings.GEMINI_API_KEY
+        or settings.GROQ_API_KEY
+        or settings.DEEPSEEK_API_KEY
+    ):
         _warn(
-            "GEMINI_API_KEY/GROQ_API_KEY/DEEPSEEK_API_KEY",
+            "CLAUDE_API_KEY/GEMINI_API_KEY/GROQ_API_KEY/DEEPSEEK_API_KEY",
             "All AI providers unconfigured — Career Roadmap and AI "
             "suggestion endpoints will return 503.",
         )
 
-    if not (settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN):
+    msg91_wa = bool(
+        settings.MSG91_AUTH_KEY
+        and settings.MSG91_WHATSAPP_INTEGRATED_NUMBER
+        and settings.MSG91_WHATSAPP_TEMPLATE_NAME
+    )
+    twilio_wa = bool(settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN)
+    if not msg91_wa and not twilio_wa:
         _warn(
-            "TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN",
-            "WhatsApp parent alerts via Twilio are disabled — "
-            "send_whatsapp_message() will no-op / return an error.",
+            "MSG91 WhatsApp / TWILIO credentials",
+            "WhatsApp parent alerts are disabled — no provider configured "
+            "(set MSG91_WHATSAPP_INTEGRATED_NUMBER + MSG91_WHATSAPP_TEMPLATE_NAME, "
+            "or Twilio creds). send_whatsapp_message() will no-op / return an error.",
         )
 
 

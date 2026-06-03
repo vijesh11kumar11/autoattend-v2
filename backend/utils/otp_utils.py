@@ -9,6 +9,9 @@ MSG91 is used ONLY for:
 Dual-channel: same OTP sent to both SMS and Email.
 BOTH channels must be independently verified (verify_dual_otp).
 OTP is stored as Argon2id hash — never plain text.
+
+SMS OTP: Fast2SMS primary, MSG91 fallback.
+Email OTP: MSG91 email (custom HTML body).
 """
 
 import logging
@@ -22,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import OTPChannel, OTPLog, OTPPurpose, User
+from utils.sms import send_sms
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +79,37 @@ def generate_otp() -> str:
 
 def send_sms_otp(phone: str, otp: str) -> bool:
     """
-    Send OTP via MSG91 SMS OTP API.
-    Returns True on success, False on any failure (never raises).
-    Never logs the actual OTP value.
+    Send OTP via SMS. Fast2SMS is the primary provider; MSG91 is the fallback.
+
+    Order:
+      1. Fast2SMS Quick Route (plain-text transactional message).
+      2. If Fast2SMS fails/unconfigured → MSG91 OTP API (template hash).
+
+    Returns True on success from either provider, False if both fail.
+    Never raises. Never logs the actual OTP value.
     """
+    # ── Primary: Fast2SMS ────────────────────────────────────────────
+    message = (
+        f"Your AutoAttend AI OTP is {otp}. "
+        "Valid for 10 minutes. Do NOT share this code with anyone."
+    )
+    try:
+        result = send_sms(phone, message)
+        if result.get("ok"):
+            return True
+        logger.warning(
+            "Fast2SMS OTP failed for phone ending %s (%s) — trying MSG91 fallback",
+            phone[-4:],
+            result.get("error"),
+        )
+    except Exception as exc:
+        logger.error(
+            "Fast2SMS OTP exception for phone ending %s: %s — trying MSG91 fallback",
+            phone[-4:],
+            exc,
+        )
+
+    # ── Fallback: MSG91 OTP API ──────────────────────────────────────
     url = "https://control.msg91.com/api/v5/otp"
     headers = {
         "authkey": settings.MSG91_AUTH_KEY,
@@ -93,10 +124,12 @@ def send_sms_otp(phone: str, otp: str) -> bool:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
         success = resp.status_code == 200
         if not success:
-            logger.warning("SMS OTP failed for phone ending %s: %s", phone[-4:], resp.text)
+            logger.warning(
+                "MSG91 OTP fallback failed for phone ending %s: %s", phone[-4:], resp.text
+            )
         return success
     except Exception as exc:
-        logger.error("SMS OTP exception for phone ending %s: %s", phone[-4:], exc)
+        logger.error("MSG91 OTP fallback exception for phone ending %s: %s", phone[-4:], exc)
         return False
 
 
@@ -113,8 +146,13 @@ _SUBJECT_MAP: dict[str, str] = {
 
 def send_email_otp(email: str, otp: str, name: str, purpose: str) -> bool:
     """
-    Send OTP via MSG91 Email API with a custom HTML body.
-    Returns True on success, False on any failure (never raises).
+    Send OTP via email.
+
+    Primary: MSG91 approved template `traceln_otp` (variables
+    {{student_name}}, {{otp}}). Fallback: custom HTML body (build_otp_email_html)
+    if the template send fails or no template id is configured.
+
+    Returns True on success from either path, False otherwise. Never raises.
     Never logs the actual OTP value.
     """
     url = "https://control.msg91.com/api/v5/email/send"
@@ -122,10 +160,41 @@ def send_email_otp(email: str, otp: str, name: str, purpose: str) -> bool:
         "authkey": settings.MSG91_AUTH_KEY,
         "Content-Type": "application/json",
     }
+
+    # ── Primary: MSG91 approved template ─────────────────────────────
+    if settings.MSG91_EMAIL_TEMPLATE_ID:
+        template_payload = {
+            "recipients": [
+                {
+                    "to": [{"name": name, "email": email}],
+                    "variables": {"student_name": name or "", "otp": otp},
+                }
+            ],
+            "from": {"name": settings.APP_NAME, "email": settings.MSG91_EMAIL_FROM},
+            "domain": settings.MSG91_EMAIL_DOMAIN,
+            "template_id": settings.MSG91_EMAIL_TEMPLATE_ID,
+        }
+        try:
+            resp = requests.post(url, json=template_payload, headers=headers, timeout=10)
+            if resp.status_code in (200, 202):
+                return True
+            logger.warning(
+                "Email OTP template send failed for %s: %s — trying HTML fallback",
+                mask_email(email),
+                resp.text,
+            )
+        except Exception as exc:
+            logger.error(
+                "Email OTP template exception for %s: %s — trying HTML fallback",
+                mask_email(email),
+                exc,
+            )
+
+    # ── Fallback: custom HTML body ───────────────────────────────────
     payload = {
         "to": [{"name": name, "email": email}],
         "from": {
-            "name": "AutoAttend AI",
+            "name": settings.APP_NAME,
             "email": settings.MSG91_EMAIL_FROM,
         },
         "subject": _SUBJECT_MAP.get(purpose, "AutoAttend AI OTP"),
@@ -135,10 +204,12 @@ def send_email_otp(email: str, otp: str, name: str, purpose: str) -> bool:
         resp = requests.post(url, json=payload, headers=headers, timeout=10)
         success = resp.status_code in (200, 202)
         if not success:
-            logger.warning("Email OTP failed for %s: %s", mask_email(email), resp.text)
+            logger.warning(
+                "Email OTP HTML fallback failed for %s: %s", mask_email(email), resp.text
+            )
         return success
     except Exception as exc:
-        logger.error("Email OTP exception for %s: %s", mask_email(email), exc)
+        logger.error("Email OTP HTML fallback exception for %s: %s", mask_email(email), exc)
         return False
 
 
