@@ -877,7 +877,7 @@ def send_parent_alert(
             continue
 
         # Try Twilio
-        whatsapp_status = send_whatsapp_message(stu.parent_phone, message)
+        whatsapp_status = send_whatsapp_message(stu.parent_phone, message, recipient_name=f"Parent of {stu.name}")
 
         log = AlertsLog(
             student_id=sid,

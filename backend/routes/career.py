@@ -189,7 +189,7 @@ def _hod_context(user_id: int, db: Session) -> dict:
         .filter(
             User.department_id == user.department_id,
             User.role == UserRole.teacher,
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .count()
     )
@@ -198,7 +198,7 @@ def _hod_context(user_id: int, db: Session) -> dict:
         .filter(
             User.department_id == user.department_id,
             User.role == UserRole.student,
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .count()
     )
@@ -223,7 +223,7 @@ def _principal_context(user_id: int, db: Session) -> dict:
         .filter(
             User.college_id == user.college_id,
             User.role == UserRole.teacher,
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .count()
     )
@@ -232,7 +232,7 @@ def _principal_context(user_id: int, db: Session) -> dict:
         .filter(
             User.college_id == user.college_id,
             User.role == UserRole.student,
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .count()
     )

@@ -58,7 +58,7 @@ def notify_parent_student_missed_live_session(
             tutor = db.query(User).filter(User.id == tutor_id).first()
             if tutor and tutor.phone:
                 try:
-                    send_whatsapp_message(tutor.phone, f"[Tutor alert] {msg}")
+                    send_whatsapp_message(tutor.phone, f"[Tutor alert] {msg}", recipient_name=tutor.name)
                 except Exception as e:
                     logger.warning("tutor whatsapp failed: %s", e)
                 try:
@@ -74,7 +74,7 @@ def notify_parent_student_missed_live_session(
                 f"Please follow up."
             )
             try:
-                send_whatsapp_message(student.parent_phone, parent_msg)
+                send_whatsapp_message(student.parent_phone, parent_msg, recipient_name=f"Parent of {student.name}")
             except Exception as e:
                 logger.warning("parent whatsapp failed: %s", e)
             try:

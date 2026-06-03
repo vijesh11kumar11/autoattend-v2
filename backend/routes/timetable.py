@@ -245,7 +245,7 @@ def create_entry(
             User.id == body.teacher_id,
             User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
             User.college_id == current_user["college_id"],
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .first()
     )
@@ -861,7 +861,7 @@ def start_from_timetable(
         User.course_id == subject.course_id,
         User.semester == subject.semester,
         User.role == UserRole.student,
-        User.is_active is True,
+        User.is_active.is_(True),
     ]
     if entry.section_id:
         student_filters.append(User.section_id == entry.section_id)

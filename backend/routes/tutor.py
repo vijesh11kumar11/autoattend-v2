@@ -202,7 +202,7 @@ def assign_students(
             User.id == body.tutor_id,
             User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
             User.college_id == current_user["college_id"],
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .first()
     )
@@ -226,7 +226,7 @@ def assign_students(
             .filter(
                 TutorAssignment.student_id == sid,
                 TutorAssignment.academic_year == body.academic_year,
-                TutorAssignment.is_active is True,
+                TutorAssignment.is_active.is_(True),
             )
             .first()
         )
@@ -293,7 +293,7 @@ def assign_by_roll_range(
             User.id == body.tutor_id,
             User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
             User.college_id == current_user["college_id"],
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .first()
     )
@@ -307,7 +307,7 @@ def assign_by_roll_range(
         db.query(User)
         .filter(
             User.role == UserRole.student,
-            User.is_active is True,
+            User.is_active.is_(True),
             User.roll_number.isnot(None),
             User.roll_number >= body.roll_start.strip(),
             User.roll_number <= body.roll_end.strip(),
@@ -356,7 +356,7 @@ def assign_by_section(
             User.id == body.tutor_id,
             User.role.in_([UserRole.teacher, UserRole.hod, UserRole.principal]),
             User.college_id == current_user["college_id"],
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .first()
     )
@@ -368,7 +368,7 @@ def assign_by_section(
         .filter(
             User.section_id == body.section_id,
             User.role == UserRole.student,
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .all()
     )
@@ -382,7 +382,7 @@ def assign_by_section(
             .filter(
                 TutorAssignment.student_id == student.id,
                 TutorAssignment.academic_year == body.academic_year,
-                TutorAssignment.is_active is True,
+                TutorAssignment.is_active.is_(True),
             )
             .first()
         )
@@ -502,7 +502,7 @@ def import_excel(
             .filter(
                 TutorAssignment.student_id == student.id,
                 TutorAssignment.academic_year == year,
-                TutorAssignment.is_active is True,
+                TutorAssignment.is_active.is_(True),
             )
             .first()
         )
@@ -556,7 +556,7 @@ def export_assignments_excel(
         db.query(TutorAssignment)
         .filter(
             TutorAssignment.academic_year == academic_year,
-            TutorAssignment.is_active is True,
+            TutorAssignment.is_active.is_(True),
         )
         .order_by(TutorAssignment.tutor_id)
         .all()
@@ -657,7 +657,7 @@ def deactivate_all(
         .join(User, TutorAssignment.tutor_id == User.id)
         .filter(
             TutorAssignment.academic_year == body.academic_year,
-            TutorAssignment.is_active is True,
+            TutorAssignment.is_active.is_(True),
             User.college_id == college_id,
         )
         .all()
@@ -694,7 +694,7 @@ def list_assignments(
     current_user: dict = Depends(hod_or_above),
     db: Session = Depends(get_db),
 ):
-    q = db.query(TutorAssignment).filter(TutorAssignment.is_active is True)
+    q = db.query(TutorAssignment).filter(TutorAssignment.is_active.is_(True))
 
     if tutor_id is not None:
         q = q.filter(TutorAssignment.tutor_id == tutor_id)
@@ -752,7 +752,7 @@ def unassigned_students(
     # All active students in college
     q = db.query(User).filter(
         User.role == UserRole.student,
-        User.is_active is True,
+        User.is_active.is_(True),
         User.college_id == current_user["college_id"],
     )
     if section_id is not None:
@@ -766,7 +766,7 @@ def unassigned_students(
         for row in db.query(TutorAssignment.student_id)
         .filter(
             TutorAssignment.academic_year == academic_year,
-            TutorAssignment.is_active is True,
+            TutorAssignment.is_active.is_(True),
         )
         .all()
     }
@@ -810,7 +810,7 @@ def my_ward_students(
         .filter(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active is True,
+            TutorAssignment.is_active.is_(True),
         )
         .all()
     )
@@ -879,7 +879,7 @@ def ward_student_full_report(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.student_id == student_id,
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active is True,
+            TutorAssignment.is_active.is_(True),
         )
         .first()
     )
@@ -983,7 +983,7 @@ def update_ward_contacts(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.student_id == student_id,
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active is True,
+            TutorAssignment.is_active.is_(True),
         )
         .first()
     )
@@ -1071,7 +1071,7 @@ def notify_ward(
         .filter(
             TutorAssignment.tutor_id == current_user["id"],
             TutorAssignment.academic_year == year,
-            TutorAssignment.is_active is True,
+            TutorAssignment.is_active.is_(True),
         )
         .all()
     }
@@ -1114,14 +1114,14 @@ def notify_ward(
 
             elif channel == "whatsapp":
                 # Send to BOTH student phone and parent phone
-                phones = set()
+                phones = []
                 if student.phone:
-                    phones.add(student.phone.strip())
-                if student.parent_phone:
-                    phones.add(student.parent_phone.strip())
+                    phones.append((student.phone.strip(), student.name))
+                if student.parent_phone and student.parent_phone.strip() != (student.phone or "").strip():
+                    phones.append((student.parent_phone.strip(), f"Parent of {student.name}"))
 
-                for phone in phones:
-                    wa = send_whatsapp_message(phone, msg)
+                for phone, rname in phones:
+                    wa = send_whatsapp_message(phone, msg, recipient_name=rname)
                     wa_ok = wa.get("ok", False)
                     db.add(
                         AlertsLog(

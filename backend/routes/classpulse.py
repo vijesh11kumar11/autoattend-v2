@@ -550,7 +550,7 @@ def _notify_tutor_quiz_fail(student_id: int, capsule_id: int, score: int) -> Non
             )
             if tutor.phone:
                 try:
-                    send_whatsapp_message(tutor.phone, wa_msg)
+                    send_whatsapp_message(tutor.phone, wa_msg, recipient_name=tutor.name)
                 except Exception as e:
                     logger.warning("tutor WA failed: %s", e)
                 try:

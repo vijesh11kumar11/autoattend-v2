@@ -74,10 +74,11 @@ def _to_e164(phone: str) -> str:
 # ─────────────────────────────────────────────────────────────────────
 
 
-def _send_via_msg91(phone: str, message: str) -> dict:
+def _send_via_msg91(phone: str, message: str, recipient_name: str = "") -> dict:
     """Send a WhatsApp message via the MSG91 WhatsApp template API."""
     try:
         recipient = _to_msg91_number(phone)
+        name = (recipient_name or "Friend").strip()
         template = {
             "name": settings.MSG91_WHATSAPP_TEMPLATE_NAME,
             "language": {
@@ -87,7 +88,10 @@ def _send_via_msg91(phone: str, message: str) -> dict:
             "to_and_components": [
                 {
                     "to": [recipient],
-                    "components": {"body_1": {"type": "text", "value": message}},
+                    "components": {
+                        "body_1": {"type": "text", "value": name},
+                        "body_2": {"type": "text", "value": message},
+                    },
                 }
             ],
         }
@@ -152,17 +156,19 @@ def _send_via_twilio(phone: str, message: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Public API (signature unchanged)
+# Public API
 # ─────────────────────────────────────────────────────────────────────
 
 
-def send_whatsapp_message(phone: str, message: str) -> dict:
+def send_whatsapp_message(phone: str, message: str, recipient_name: str = "") -> dict:
     """
     Send a WhatsApp message using MSG91 (primary) with Twilio fallback.
 
     Args:
-        phone:   Recipient phone number (E.164 or 10/12-digit Indian number).
-        message: Message body.
+        phone:          Recipient phone number (E.164 or 10/12-digit Indian number).
+        message:        Message body (maps to {{2}} in the MSG91 template).
+        recipient_name: Recipient's display name (maps to {{1}} in the MSG91 template).
+                        Falls back to "Friend" if not provided.
 
     Returns:
         {"ok": True,  "sid": "<provider_message_id>"}  on success
@@ -175,7 +181,7 @@ def send_whatsapp_message(phone: str, message: str) -> dict:
     twilio_ready = _is_twilio_configured()
 
     if msg91_ready:
-        result = _send_via_msg91(phone, message)
+        result = _send_via_msg91(phone, message, recipient_name)
         if result.get("ok"):
             return result
         if twilio_ready:

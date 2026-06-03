@@ -234,7 +234,7 @@ def send_bulk_alert(
             )
             continue
 
-        wa = send_whatsapp_message(stu.parent_phone, message)
+        wa = send_whatsapp_message(stu.parent_phone, message, recipient_name=f"Parent of {stu.name}")
         log = AlertsLog(
             student_id=sid,
             alert_type="low_attendance",
@@ -307,7 +307,7 @@ def send_custom_alert(
             "No parent phone number on record for this student.",
         )
 
-    wa = send_whatsapp_message(stu.parent_phone, message)
+    wa = send_whatsapp_message(stu.parent_phone, message, recipient_name=f"Parent of {stu.name}")
     log = AlertsLog(
         student_id=stu.id,
         alert_type="custom",

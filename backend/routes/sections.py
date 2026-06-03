@@ -110,7 +110,7 @@ def list_sections(
     for s in sections:
         count = (
             db.query(User)
-            .filter(User.section_id == s.id, User.role == UserRole.student, User.is_active is True)
+            .filter(User.section_id == s.id, User.role == UserRole.student, User.is_active.is_(True))
             .count()
         )
         course = db.query(Course).filter(Course.id == s.course_id).first()
@@ -245,7 +245,7 @@ def update_section(
     count = (
         db.query(User)
         .filter(
-            User.section_id == section.id, User.role == UserRole.student, User.is_active is True
+            User.section_id == section.id, User.role == UserRole.student, User.is_active.is_(True)
         )
         .count()
     )
@@ -321,7 +321,7 @@ def list_section_students(
         .filter(
             User.section_id == section_id,
             User.role == UserRole.student,
-            User.is_active is True,
+            User.is_active.is_(True),
         )
         .order_by(User.roll_number)
         .all()
