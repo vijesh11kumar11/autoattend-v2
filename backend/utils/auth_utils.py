@@ -34,6 +34,18 @@ from database import (
     get_db,
 )
 
+# ─────────────────────────────────────────────────────────────────────
+# Friends test fixtures — seeded by seed_friends_test.py.
+# These rolls bypass device binding and may switch devices/browsers
+# freely. Real student accounts are unaffected.
+# ─────────────────────────────────────────────────────────────────────
+TEST_STUDENT_ROLLS: frozenset[str] = frozenset({
+    "KCT23ECE001",
+    "KCT25ME001",
+    "KPR23CSE001",
+    "KCT23ECE002",
+})
+
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -655,7 +667,8 @@ def get_current_user(
     # ── Device binding check ──────────────────────────────────────────
     # Students must always send X-Device-Id header; staff may skip if
     # they haven't enrolled a device yet (e.g. web dashboard).
-    if user.role == UserRole.student:
+    # Friends-test rolls bypass this check so testers can switch devices.
+    if user.role == UserRole.student and user.roll_number not in TEST_STUDENT_ROLLS:
         device: DeviceRegistry | None = (
             db.query(DeviceRegistry)
             .filter(

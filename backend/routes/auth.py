@@ -60,6 +60,7 @@ from schemas.auth_schemas import (
 )
 from utils.auth_utils import (
     REFRESH_COOKIE_NAME,
+    TEST_STUDENT_ROLLS,
     any_authenticated,
     clear_auth_cookie,
     clear_refresh_cookie,
@@ -399,16 +400,32 @@ def login(
             if user.email:
                 background_tasks.add_task(send_welcome_email, user.email, user.name)
         elif existing_device.device_id != x_device_id:
-            logger.warning(
-                "🎓 STUDENT LOGIN blocked │ student_id=%d │ device mismatch │ registered=%s │ got=%s",
-                user.id,
-                existing_device.device_id,
-                x_device_id,
-            )
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                "Device mismatch. Use the device change flow to register a new device.",
-            )
+            # Friends-test rolls: silently re-bind to the new device so testers
+            # can hop between phones/browsers without manual DB resets. This
+            # bypass is gated to a hardcoded list (TEST_STUDENT_ROLLS) and has
+            # no effect on real student accounts.
+            if user.roll_number in TEST_STUDENT_ROLLS:
+                logger.info(
+                    "🧪 TEST STUDENT │ student_id=%d │ roll=%s │ re-binding device %s → %s",
+                    user.id,
+                    user.roll_number,
+                    existing_device.device_id,
+                    x_device_id,
+                )
+                existing_device.device_id = x_device_id
+                existing_device.bound_at = now
+                db.commit()
+            else:
+                logger.warning(
+                    "🎓 STUDENT LOGIN blocked │ student_id=%d │ device mismatch │ registered=%s │ got=%s",
+                    user.id,
+                    existing_device.device_id,
+                    x_device_id,
+                )
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "Device mismatch. Use the device change flow to register a new device.",
+                )
         else:
             logger.info("🎓 STUDENT LOGIN │ student_id=%d │ device matched ✓", user.id)
 
