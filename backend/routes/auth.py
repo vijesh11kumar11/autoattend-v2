@@ -163,11 +163,16 @@ def _totp_qr_base64(uri: str) -> str:
 
 
 def _get_user_by_identifier(identifier: str, db: Session) -> User | None:
-    """Find user by email (staff) or roll_number (student)."""
+    """Find user by email (staff) or roll_number (student).
+
+    Roll-number lookup is case-insensitive so mobile keyboards that
+    auto-capitalise or auto-lowercase the input still match.
+    """
     identifier = identifier.strip()
     if "@" in identifier:
         return db.query(User).filter(User.email == identifier.lower()).first()
-    return db.query(User).filter(User.roll_number == identifier).first()
+    # Normalise to uppercase — roll numbers are stored as e.g. KCT23ECE001
+    return db.query(User).filter(User.roll_number == identifier.upper()).first()
 
 
 # ═══════════════════════════════════════════════════════════════════════
