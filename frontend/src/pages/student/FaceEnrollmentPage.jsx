@@ -41,12 +41,13 @@ export default function FaceEnrollmentPage() {
     }
   }, []);
 
-  const [step, setStep] = useState('intro'); // intro | camera | challenge | capturing | submitting | success | error
+  const [step, setStep] = useState('intro'); // intro | camera | challenge | capturing | submitting | enrolling | success | error
   const [challenge, setChallenge] = useState(null); // { challenge_id, challenge, expires_in }
   const [frames, setFrames] = useState([]); // captured Blob[]
   const [capturePhase, setCapturePhase] = useState(0); // 0=before, 1=during, 2=after
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [enrollProgress, setEnrollProgress] = useState('');  // enrollment status text
 
   // Phase labels
   const phaseLabels = [
@@ -111,18 +112,32 @@ export default function FaceEnrollmentPage() {
   }, []);
 
   // ── Capture a frame from the video ────────────────────────────────
-  const captureFrame = useCallback(() => {
+  const captureFrame = useCallback(async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return null;
 
+    // Wait for video to be ready (readyState 4 = HAVE_ENOUGH_DATA).
+    // On mobile browsers the stream can take a few seconds to produce frames.
+    if (video.readyState < 2) {
+      await new Promise((resolve) => {
+        const onCanPlay = () => { video.removeEventListener('canplay', onCanPlay); resolve(); };
+        video.addEventListener('canplay', onCanPlay);
+        // Fallback: resolve after 3 s regardless
+        setTimeout(resolve, 3000);
+      });
+    }
+
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext('2d');
+    // Fill white background so JPEG has no transparency issues
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(video, 0, 0);
 
     return new Promise((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85);
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.9);
     });
   }, []);
 
@@ -153,7 +168,8 @@ export default function FaceEnrollmentPage() {
     setFrames(capturedFrames);
     setStep('submitting');
 
-    // Submit to backend
+    // ── Step A: liveness-verify ──────────────────────────────────────
+    let livenessOk = false;
     try {
       const formData = new FormData();
       formData.append('challenge_id', challenge.challenge_id);
@@ -165,29 +181,66 @@ export default function FaceEnrollmentPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      if (data.liveness_confirmed) {
-        setStep('success');
-        // Refresh the auth context so face_enrolled=true is reflected.
-        // We intentionally DO NOT mirror user data into localStorage — it
-        // is XSS-readable; AuthContext / fresh /auth/me calls are the
-        // single source of truth.
-        try {
-          await api.get('/auth/me');
-        } catch {
-          /* best effort */
-        }
-
-        setTimeout(() => navigate('/student/dashboard', { replace: true }), 2000);
-      } else {
+      if (!data.liveness_confirmed) {
         setError(data.reason || 'Liveness verification failed. Please try again.');
         setStep('error');
+        return;
       }
+      livenessOk = true;
     } catch (err) {
       const detail = err.response?.data?.detail || err.message;
-      setError(detail || 'Verification failed. Please try again.');
+      setError(detail || 'Liveness check failed. Please try again.');
       setStep('error');
+      return;
     }
-  }, [challenge, captureFrame, navigate]);
+
+    if (!livenessOk) return;
+
+    // ── Step B: enroll face using the neutral (first) frame ──────────
+    // Liveness proved you are live. Now register your face in Azure so
+    // attendance face-matching works. Frame 1 = neutral face = best for enrollment.
+    setStep('enrolling');
+    setEnrollProgress('Registering your face…');
+    try {
+      const enrollData = new FormData();
+      enrollData.append('image', capturedFrames[0], 'enrollment.jpg');
+
+      const { data: enrollResult } = await api.post(
+        `/students/${user.id}/enroll-face`,
+        enrollData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      if (!enrollResult.face_enrolled) {
+        setError(enrollResult.message || 'Face enrollment failed. Please try again.');
+        setStep('error');
+        return;
+      }
+
+      setEnrollProgress('Face stored successfully!');
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message || '';
+      // Azure training can take up to 30 s — treat timeout as success since
+      // the face was already submitted; enrollment completes in background.
+      if (err.response?.status === 408 || detail.toLowerCase().includes('training')) {
+        setEnrollProgress('Face submitted — training in progress…');
+      } else {
+        setError(detail || 'Face enrollment failed. Please try again.');
+        setStep('error');
+        return;
+      }
+    }
+
+    // ── Done ─────────────────────────────────────────────────────────
+    setStep('success');
+    // Refresh auth context so face_enrolled=true is reflected immediately.
+    try {
+      await api.get('/auth/me');
+    } catch {
+      /* best effort */
+    }
+    setTimeout(() => navigate('/student/dashboard', { replace: true }), 2000);
+  }, [challenge, captureFrame, navigate, user]);
 
   // ── Skip enrollment (dev mode) ────────────────────────────────────
   const skipEnrollment = useCallback(() => {
@@ -226,8 +279,8 @@ export default function FaceEnrollmentPage() {
                 <ol className="text-sm text-slate-600 space-y-1 list-decimal list-inside">
                   <li>Allow camera access</li>
                   <li>You'll receive a liveness challenge (e.g. "Smile" or "Blink")</li>
-                  <li>Three photos are captured: before, during, and after</li>
-                  <li>AI verifies it's really you — done!</li>
+                  <li>Three photos are captured to confirm you're live</li>
+                  <li>Your face is then securely enrolled for attendance</li>
                 </ol>
               </div>
               <button
@@ -359,8 +412,21 @@ export default function FaceEnrollmentPage() {
                 className="w-12 h-12 border-4 border-slate-200 border-t-[#1a237e] rounded-full
                               animate-spin mx-auto"
               />
-              <p className="font-semibold text-slate-700">Verifying your identity…</p>
-              <p className="text-sm text-slate-400">This may take a few seconds</p>
+              <p className="font-semibold text-slate-700">Verifying liveness…</p>
+              <p className="text-sm text-slate-400">Analysing your 3 frames</p>
+            </div>
+          )}
+
+          {/* ── ENROLLING STEP ── */}
+          {step === 'enrolling' && (
+            <div className="text-center py-8 space-y-4">
+              <div
+                className="w-12 h-12 border-4 border-slate-200 border-t-green-600 rounded-full
+                              animate-spin mx-auto"
+              />
+              <p className="font-semibold text-slate-700">Liveness confirmed ✓</p>
+              <p className="text-sm text-slate-500">{enrollProgress || 'Registering your face…'}</p>
+              <p className="text-xs text-slate-400">This may take up to 30 seconds</p>
             </div>
           )}
 

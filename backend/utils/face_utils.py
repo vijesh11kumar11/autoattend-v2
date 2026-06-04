@@ -523,10 +523,11 @@ def check_training_status(group_id: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════
 
 _LIVENESS_CHALLENGES = ["blink", "smile", "turn_left", "turn_right", "open_mouth"]
-_LIVENESS_EXPIRY_SECONDS = 30
+_LIVENESS_EXPIRY_SECONDS = 90  # generous — 3×3s countdown + Azure latency + slow connections
 
-# Minimum landmark distance (pixels) between frames to prove movement
-_MIN_LANDMARK_SHIFT = 2.0
+# Minimum landmark distance (pixels) between frames to prove movement.
+# 1.0 px is sufficient for 640×480 webcam frames; 2.0 was too strict.
+_MIN_LANDMARK_SHIFT = 1.0
 
 # Minimum yaw delta (degrees) to confirm a head turn
 _MIN_YAW_DELTA = 15.0
@@ -634,37 +635,50 @@ def verify_liveness_frames(
     # 2. Detect faces in all 3 frames (detection_02 for attribute support)
     detected: list = []
     for i, frame_bytes in enumerate(frames):
-        try:
-            _validate_image_size(frame_bytes)
-            stream = _image_stream(frame_bytes)
-            faces = client.face.detect_with_stream(
-                image=stream,
-                detection_model="detection_02",
-                recognition_model="recognition_04",
-                return_face_id=False,
-                return_face_landmarks=True,
-                return_face_attributes=["headPose", "smile"],
-            )
-            if not faces:
-                record.used = True
-                db.commit()
+        # Retry up to 3 times on transient Azure errors (e.g. 429 rate-limit)
+        for _attempt in range(3):
+            try:
+                _validate_image_size(frame_bytes)
+                stream = _image_stream(frame_bytes)
+                faces = client.face.detect_with_stream(
+                    image=stream,
+                    detection_model="detection_02",
+                    recognition_model="recognition_04",
+                    return_face_id=False,
+                    return_face_landmarks=True,
+                    return_face_attributes=["headPose", "smile"],
+                )
+                if not faces:
+                    # No face → mark used so student must retry with fresh challenge
+                    record.used = True
+                    db.commit()
+                    return {
+                        "liveness_confirmed": False,
+                        "reason": f"No face detected in frame {i + 1}. Ensure your face is well-lit and centred.",
+                    }
+                detected.append(faces[0])
+                break  # success — stop retrying
+            except APIErrorException as exc:
+                err_msg = getattr(exc, "message", str(exc))
+                logger.error(
+                    "verify_liveness_frames Azure error frame %d attempt %d: %s",
+                    i, _attempt + 1, err_msg,
+                )
+                if _attempt < 2:
+                    time.sleep(1)  # back-off before retry
+                    continue
+                # 3rd failure — do NOT mark challenge used; student can retry
                 return {
                     "liveness_confirmed": False,
-                    "reason": f"No face detected in frame {i + 1}.",
+                    "reason": "Face analysis service is busy. Please wait a moment and try again.",
                 }
-            detected.append(faces[0])
-        except APIErrorException as exc:
-            logger.error("verify_liveness_frames Azure error frame %d: %s", i, exc.message)
-            return {
-                "liveness_confirmed": False,
-                "reason": "Face analysis failed. Please try again.",
-            }
-        except Exception as exc:
-            logger.error("verify_liveness_frames error frame %d: %s", i, exc)
-            return {
-                "liveness_confirmed": False,
-                "reason": "Frame analysis error. Please try again.",
-            }
+            except Exception as exc:
+                logger.error("verify_liveness_frames error frame %d: %s", i, exc)
+                # Do NOT mark challenge used on unexpected errors either
+                return {
+                    "liveness_confirmed": False,
+                    "reason": "Frame analysis error. Please try again.",
+                }
 
     # 3. Nose-tip landmark shift (frames 0 → 2) proves movement
     try:

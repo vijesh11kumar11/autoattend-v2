@@ -33,11 +33,16 @@ from utils.auth_utils import (
     create_face_verify_token,
     hod_or_above,
     student_only,
+    TEST_STUDENT_ROLLS,
 )
 from utils.face_utils import (
     create_liveness_challenge,
+    get_face_client,
     verify_liveness_frames,
     verify_student_face,
+    _detect_single_face,
+    _image_stream,
+    _validate_image_size,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,19 +142,44 @@ def face_verify(
         )
 
     # ── 5. Azure Face verification ────────────────────────────────────
-    logger.info(
-        "🙍 FACE VERIFY │ student_id=%d │ calling Azure Face API (image=%d bytes)",
-        student_id,
-        len(image_bytes),
+    # TEST BYPASS: test accounts that have face_enrolled=True but no azure_person_id
+    # (manually set via mark_test_face_enrolled.py) get a presence-only check.
+    # This proves a real person is holding the camera without requiring Azure Identify.
+    # Once re-enrolled via FaceEnrollmentPage, they get full face matching.
+    is_test_roll = (
+        student
+        and student.roll_number
+        and student.roll_number.upper() in TEST_STUDENT_ROLLS
     )
-    result = verify_student_face(student_id, image_bytes, db)
+    if is_test_roll and not student.azure_person_id:
+        logger.info(
+            "🔬 FACE VERIFY TEST BYPASS │ student_id=%d │ no azure_person_id │ presence check only",
+            student_id,
+        )
+        try:
+            _validate_image_size(image_bytes)
+            _detect_single_face(get_face_client(), image_bytes)
+            result = {"verified": True, "confidence": 1.0, "test_bypass": True}
+        except ValueError as exc:
+            result = {"verified": False, "confidence": 0.0, "reason": str(exc)}
+        except Exception as exc:
+            logger.error("FACE VERIFY TEST BYPASS detect error: %s", exc)
+            # On Azure error during bypass, still allow (test accounts only)
+            result = {"verified": True, "confidence": 0.9, "test_bypass": True, "degraded": True}
+    else:
+        logger.info(
+            "🙍 FACE VERIFY │ student_id=%d │ calling Azure Face API (image=%d bytes)",
+            student_id,
+            len(image_bytes),
+        )
+        result = verify_student_face(student_id, image_bytes, db)
     confidence = result.get("confidence", 0.0)
     logger.info(
-        "🙍 FACE VERIFY │ student_id=%d │ result: verified=%s │ confidence=%.2f%% │ reason=%s",
+        "🙍 FACE VERIFY │ student_id=%d │ verified=%s │ confidence=%.2f%% │ test_bypass=%s",
         student_id,
         result.get("verified"),
         confidence * 100,
-        result.get("reason", "match"),
+        result.get("test_bypass", False),
     )
 
     # ── 6. Log audit record regardless of outcome ─────────────────────

@@ -459,26 +459,55 @@ export default function ScanQRScreen({ navigation }) {
     [submitLiveness]
   );
 
-  // ─── POST face/liveness-check ─────────────────────────────────────────────
+  // ─── POST face/liveness-verify ────────────────────────────────────────────
+  // NOTE: Mobile uses the same /face/liveness-verify endpoint as the web.
+  // It requires challenge_id (obtained via POST /face/liveness-session) and
+  // exactly 3 frames as multipart fields frame1/frame2/frame3.
   const submitLiveness = useCallback(async () => {
-    const form = new FormData();
-    form.append('session_id', faceSessionId);
-    livenessFrames.current.forEach((uri, i) => {
-      form.append('frames', { uri, type: 'image/jpeg', name: `frame${i}.jpg` });
-    });
-    try {
-      await client.post('/face/liveness-check', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      goTo(STATES.QR_SCAN);
-    } catch {
+    if (livenessFrames.current.length < 3) {
       Alert.alert(
         'Liveness Check Failed',
-        'Liveness check failed. Please try again in good lighting.',
+        'Could not capture all 3 frames. Please try again.',
+        [{ text: 'Try Again', onPress: () => goTo(STATES.FACE) }]
+      );
+      return;
+    }
+    try {
+      // 1. Get a fresh challenge (the framework requires a single-use challenge_id)
+      const { data: challengeData } = await client.post('/face/liveness-session');
+      const challengeId = challengeData.challenge_id;
+
+      // 2. Submit the 3 frames against that challenge
+      const form = new FormData();
+      form.append('challenge_id', String(challengeId));
+      ['frame1', 'frame2', 'frame3'].forEach((key, i) => {
+        form.append(key, {
+          uri: livenessFrames.current[i],
+          type: 'image/jpeg',
+          name: `${key}.jpg`,
+        });
+      });
+      const { data } = await client.post('/face/liveness-verify', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (data.liveness_confirmed) {
+        goTo(STATES.QR_SCAN);
+      } else {
+        Alert.alert(
+          'Liveness Check Failed',
+          data.reason || 'Please try again in good lighting.',
+          [{ text: 'Try Again', onPress: () => goTo(STATES.FACE) }]
+        );
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail || 'Liveness check failed.';
+      Alert.alert(
+        'Liveness Check Failed',
+        detail,
         [{ text: 'Try Again', onPress: () => goTo(STATES.FACE) }]
       );
     }
-  }, [faceSessionId, goTo]);
+  }, [goTo]);
 
   // ─── QR scan handler ──────────────────────────────────────────────────────
   const handleBarCode = useCallback(
