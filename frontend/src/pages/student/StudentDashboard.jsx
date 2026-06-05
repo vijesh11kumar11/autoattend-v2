@@ -26,6 +26,7 @@ import NotificationsInboxPage from '../shared/NotificationsInboxPage';
 import StudentClassPulsePage from './StudentClassPulsePage';
 import StudentKnowledgeGraphPage from '../live/StudentKnowledgeGraphPage';
 import SmartReplayPage from '../live/SmartReplayPage';
+import ScanQRPage from './ScanQRPage';
 
 // ── helpers ───────────────────────────────────────────────────────────
 const THRESHOLD = 75;
@@ -638,28 +639,6 @@ function StudentHome() {
 }
 
 // ── Stubs for other student routes ────────────────────────────────────
-function ScanQRStub() {
-  return (
-    <div className="card p-10 text-center text-slate-400 space-y-3">
-      <span className="text-5xl block">📱</span>
-      <p className="font-semibold text-slate-600">Scan QR Code</p>
-      <p className="text-sm max-w-md mx-auto">
-        QR scanning is available on the mobile app. Open the TRACELN app on your phone, go to
-        "Scan QR", and scan the code displayed by your teacher.
-      </p>
-      <div className="bg-blue-50 rounded-xl p-4 mt-4 text-left max-w-sm mx-auto text-sm text-slate-600 space-y-1">
-        <p className="font-semibold text-slate-700">How it works:</p>
-        <ol className="list-decimal list-inside space-y-1">
-          <li>Teacher starts an attendance session</li>
-          <li>A rotating QR code is displayed</li>
-          <li>Scan it with the mobile app</li>
-          <li>Face verification confirms your identity</li>
-          <li>Attendance is marked automatically!</li>
-        </ol>
-      </div>
-    </div>
-  );
-}
 function AttendanceDetailPage() {
   const { user } = useAuth();
   const [summary, setSummary] = useState(null);
@@ -1475,7 +1454,7 @@ export default function StudentDashboard() {
     <DashboardLayout>
       <Routes>
         <Route path="dashboard" element={<StudentHome />} />
-        <Route path="scan-qr" element={<ScanQRStub />} />
+        <Route path="scan-qr" element={<ScanQRPage />} />
         <Route path="attendance" element={<AttendanceDetailPage />} />
         <Route path="timetable" element={<StudentTimetablePage />} />
         <Route path="leaves" element={<StudentLeavePage />} />

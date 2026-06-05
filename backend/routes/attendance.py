@@ -61,6 +61,7 @@ from schemas.attendance_schemas import (
 )
 from utils.audit_helpers import audit_admin_action
 from utils.auth_utils import (
+    TEST_STUDENT_ROLLS,
     any_authenticated,
     require_recent_auth,
     student_only,
@@ -301,6 +302,78 @@ def start_session(
         total_students=len(students),
         started_at=now,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GET /api/attendance/active-session
+#   Student — returns the currently-active attendance session(s) for the
+#   subjects the student is enrolled in. The web Scan-QR flow calls this
+#   first so it can run face verification (which needs a real session_id)
+#   BEFORE the student scans the rotating QR code.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@router.get("/active-session")
+def get_active_session(
+    current_user: dict = Depends(student_only),
+    db: Session = Depends(get_db),
+):
+    """
+    Return active attendance sessions for the logged-in student's subjects.
+
+    A student "belongs" to a subject when their course_id + semester match
+    the subject. Returns a list (usually 0 or 1) so the client can pick if
+    two subjects happen to be live at once.
+    """
+    student: Optional[User] = db.query(User).filter(User.id == current_user["id"]).first()
+    if not student:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found.")
+
+    sessions = (
+        db.query(AttendanceSession)
+        .join(Subject, Subject.id == AttendanceSession.subject_id)
+        .filter(
+            AttendanceSession.status == SessionStatus.active,
+            Subject.course_id == student.course_id,
+            Subject.semester == student.semester,
+        )
+        .all()
+    )
+
+    result = []
+    for s in sessions:
+        subject = db.query(Subject).filter(Subject.id == s.subject_id).first()
+        # Has this student already been marked present/late/excused?
+        record = (
+            db.query(AttendanceRecord)
+            .filter(
+                AttendanceRecord.session_id == s.id,
+                AttendanceRecord.student_id == student.id,
+            )
+            .first()
+        )
+        already_marked = bool(
+            record
+            and record.status
+            in {
+                AttendanceStatus.present,
+                AttendanceStatus.late,
+                AttendanceStatus.medical_leave,
+                AttendanceStatus.duty_leave,
+            }
+        )
+        result.append(
+            {
+                "session_id": s.id,
+                "subject_name": subject.name if subject else "",
+                "subject_code": subject.code if subject else "",
+                "requires_gps": s.teacher_latitude is not None
+                and s.teacher_longitude is not None,
+                "already_marked": already_marked,
+            }
+        )
+
+    return {"active_sessions": result}
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -568,7 +641,17 @@ def mark_attendance(
 
     # ── STEP 5 — GPS check ────────────────────────────────────────────
     gps_flagged = False
-    if session.teacher_latitude is not None and session.teacher_longitude is not None:
+    _is_test_roll = bool(
+        student and student.roll_number and student.roll_number.upper() in TEST_STUDENT_ROLLS
+    )
+    if _is_test_roll:
+        # TEST BYPASS: seeded test accounts can mark attendance from anywhere
+        # so friends can verify the full flow remotely. Real students still
+        # go through the full GPS proximity check below.
+        logger.info("🔬 STEP 5 │ GPS TEST BYPASS │ student_id=%d", student_id)
+        checks["gps_verified"] = True
+        gps_distance = None
+    elif session.teacher_latitude is not None and session.teacher_longitude is not None:
         logger.info("📍 STEP 5 │ GPS check starting")
         logger.info(
             "📍 STEP 5 │ Teacher  GPS │ lat=%.6f │ lon=%.6f",

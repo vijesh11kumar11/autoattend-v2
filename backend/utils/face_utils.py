@@ -705,6 +705,13 @@ def verify_liveness_frames(
         # Non-fatal: fall through to attribute checks
 
     # 4. Challenge-specific attribute check
+    #
+    # The nose-tip MOVEMENT check above is the hard anti-photo gate (a static
+    # photo produces no movement). The per-challenge attribute deltas below are
+    # treated as a SOFT signal: if Azure reports the action clearly we log a
+    # pass, but we no longer hard-fail a genuine student whose smile/turn was
+    # subtle — on phone cameras those deltas are unreliable and were causing
+    # repeated false rejections. Movement already proved the frame is live.
     try:
         if challenge in ("turn_left", "turn_right"):
             yaw0 = (
@@ -714,26 +721,21 @@ def verify_liveness_frames(
                 detected[2].face_attributes.head_pose.yaw if detected[2].face_attributes else None
             )
             if yaw0 is not None and yaw2 is not None:
-                if abs(yaw0 - yaw2) < _MIN_YAW_DELTA:
-                    record.used = True
-                    db.commit()
-                    return {
-                        "liveness_confirmed": False,
-                        "reason": f"Head turn not detected. Please turn your head {'left' if challenge == 'turn_left' else 'right'}.",
-                    }
+                yaw_delta = abs(yaw0 - yaw2)
+                logger.info(
+                    "verify_liveness_frames: yaw_delta=%.1f challenge='%s' (soft check)",
+                    yaw_delta,
+                    challenge,
+                )
 
         elif challenge == "smile":
             sm0 = detected[0].face_attributes.smile if detected[0].face_attributes else None
             sm2 = detected[2].face_attributes.smile if detected[2].face_attributes else None
             if sm0 is not None and sm2 is not None:
-                smile_delta = abs(sm0 - sm2)
-                if smile_delta < _MIN_SMILE_DELTA:
-                    record.used = True
-                    db.commit()
-                    return {
-                        "liveness_confirmed": False,
-                        "reason": "Smile not detected. Please smile clearly at the camera.",
-                    }
+                logger.info(
+                    "verify_liveness_frames: smile_delta=%.2f (soft check)",
+                    abs(sm0 - sm2),
+                )
 
         # blink / open_mouth: rely on nose-tip movement check only (attributes
         # for eyelid/lip aperture require SDK v1.x server-side compute)
