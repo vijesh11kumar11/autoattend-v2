@@ -110,6 +110,39 @@ const api = axios.create({
   withCredentials: true, // send httpOnly aa_token cookie on every request
 });
 
+// ── Bearer-token fallback (Safari / cross-site cookie blocking) ──────────
+// Safari's ITP and some mobile browsers block cross-site (SameSite=None)
+// cookies between traceln.vercel.app and traceln.onrender.com. When that
+// happens the httpOnly aa_token cookie never reaches the API and every
+// request 401s. To stay functional we ALSO keep the JWT returned in the
+// login/refresh response body and send it as `Authorization: Bearer`.
+// The cookie remains primary; this is a same-origin sessionStorage fallback.
+const AUTH_TOKEN_KEY = 'aa_auth_token';
+
+function setAuthToken(token) {
+  try {
+    if (token) sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+  } catch {
+    /* private mode — ignore */
+  }
+}
+
+function getAuthToken() {
+  try {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function clearAuthToken() {
+  try {
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 // Defence in depth: marks every call as XHR so backend can reject
 // non-XHR cross-origin POST attempts (anti-CSRF heuristic).
 api.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
@@ -134,6 +167,13 @@ api.interceptors.request.use(
         /* no-op */
       }
     }
+    // Bearer fallback: attach stored JWT when the request has no explicit
+    // Authorization header (i.e. not a guest live call). Harmless when the
+    // cookie also works — the backend reads the header first, cookie second.
+    if (!config.headers['Authorization']) {
+      const stored = getAuthToken();
+      if (stored) config.headers['Authorization'] = `Bearer ${stored}`;
+    }
     config.headers['X-Device-ID'] = getDeviceId();
     config.headers['X-Client-Type'] = 'web';
     return config;
@@ -148,6 +188,7 @@ let _refreshInFlight = null;
 
 function refreshAccessToken() {
   if (!_refreshInFlight) {
+    const stored = getAuthToken();
     _refreshInFlight = axios
       .post(
         (import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : '/api') +
@@ -155,9 +196,20 @@ function refreshAccessToken() {
         {},
         {
           withCredentials: true,
-          headers: { 'X-Client-Type': 'web', 'X-Device-ID': getDeviceId() },
+          headers: {
+            'X-Client-Type': 'web',
+            'X-Device-ID': getDeviceId(),
+            // Safari blocks the cross-site aa_refresh cookie; pass the last
+            // known access token so the backend can still identify the user.
+            ...(stored ? { Authorization: `Bearer ${stored}` } : {}),
+          },
         }
       )
+      .then((res) => {
+        // Capture the rotated access token for the Bearer fallback.
+        if (res?.data?.access_token) setAuthToken(res.data.access_token);
+        return res;
+      })
       .finally(() => {
         _refreshInFlight = null;
       });
@@ -225,5 +277,6 @@ api.interceptors.response.use(
   }
 );
 
+export { setAuthToken, clearAuthToken, getAuthToken };
 export default api;
 export { getDeviceId };

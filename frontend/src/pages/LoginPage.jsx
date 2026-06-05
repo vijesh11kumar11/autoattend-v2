@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import api from '../api/axios';
+import api, { setAuthToken } from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
 // ── SVG: Graduation Cap logo ──────────────────────────────────────────
@@ -233,6 +233,10 @@ export default function LoginPage() {
         password,
       });
 
+      // Safari/cross-site cookie fallback: keep the JWT so axios can send
+      // it as a Bearer header when the httpOnly cookie is blocked by ITP.
+      if (data.access_token) setAuthToken(data.access_token);
+
       // Persist (or clear) the remembered identifier. We deliberately
       // never store the password — only the username/roll-no/email so
       // it pre-fills next visit on this device.
@@ -290,6 +294,8 @@ export default function LoginPage() {
         totp_session_token: totpToken,
         code: totpCode.trim(),
       });
+      // Safari/cross-site cookie fallback: store the JWT for the Bearer header.
+      if (data.access_token) setAuthToken(data.access_token);
       // Cookie is now set by the server — pull /me to populate user.
       const user = await login();
       redirectByRole(user.role);

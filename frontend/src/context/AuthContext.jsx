@@ -18,7 +18,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api/axios';
+import api, { clearAuthToken } from '../api/axios';
 
 // Role hierarchy (higher = more privilege)
 const ROLE_HIERARCHY = {
@@ -83,6 +83,7 @@ export function AuthProvider({ children }) {
     } catch {
       // ignore network errors — still log out client-side
     }
+    clearAuthToken();
     setUser(null);
     navigate('/login', { replace: true });
   }, [navigate]);

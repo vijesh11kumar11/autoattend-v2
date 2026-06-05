@@ -369,6 +369,41 @@ def liveness_verify(
             )
         frames.append(frame_bytes)
 
+    # TEST BYPASS: test accounts get a presence-only liveness check.
+    # Strict motion deltas (yaw/smile/landmark shift) are unreliable on phone
+    # cameras and block friends from enrolling. For test rolls we only require
+    # that a real face is detected in the captured frames.
+    student: Optional[User] = (
+        db.query(User).filter(User.id == current_user["id"]).first()
+    )
+    is_test_roll = (
+        student
+        and student.roll_number
+        and student.roll_number.upper() in TEST_STUDENT_ROLLS
+    )
+    if is_test_roll:
+        logger.info(
+            "🔬 LIVENESS TEST BYPASS │ student_id=%d │ presence-only check",
+            current_user["id"],
+        )
+        # Mark the challenge used so it can't be replayed.
+        challenge_record.used = True
+        db.commit()
+        try:
+            _detect_single_face(get_face_client(), frames[1] or frames[0])
+            return {"liveness_confirmed": True, "reason": "test_bypass", "test_bypass": True}
+        except ValueError as exc:
+            return {"liveness_confirmed": False, "reason": str(exc)}
+        except Exception as exc:
+            logger.error("LIVENESS TEST BYPASS detect error: %s", exc)
+            # On Azure error during bypass, still allow (test accounts only).
+            return {
+                "liveness_confirmed": True,
+                "reason": "test_bypass_degraded",
+                "test_bypass": True,
+                "degraded": True,
+            }
+
     result = verify_liveness_frames(challenge_id, frames, db)
     logger.info(
         "🧐 LIVENESS verify result │ student_id=%d │ confirmed=%s │ reason=%s",
