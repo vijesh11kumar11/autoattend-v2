@@ -707,6 +707,37 @@ def _warn_optional_integrations():
         )
 
 
+# Ensure the Azure Face PersonGroup exists before any enrollment or
+# verification request can be served. Called once from _lifespan.
+# Non-fatal: a transient Azure outage logs loudly but never prevents the
+# API from booting.
+def _bootstrap_face_person_group():
+    if not settings.AZURE_FACE_KEY or not settings.AZURE_FACE_ENDPOINT:
+        logger.warning(
+            "⚠️  Azure Face credentials not configured — skipping PersonGroup bootstrap."
+        )
+        return
+    try:
+        from utils.face_utils import ensure_person_group
+
+        ok = ensure_person_group(
+            settings.AZURE_PERSON_GROUP_ID,
+            settings.COLLEGE_NAME,
+        )
+        if ok:
+            logger.info(
+                "✅ Azure PersonGroup '%s' ready.", settings.AZURE_PERSON_GROUP_ID
+            )
+        else:
+            logger.error(
+                "🚨 Azure PersonGroup '%s' could NOT be ensured — face "
+                "enrollment/verification will fail until this is resolved.",
+                settings.AZURE_PERSON_GROUP_ID,
+            )
+    except Exception as exc:  # never block startup on Azure issues
+        logger.error("🚨 PersonGroup bootstrap raised unexpectedly: %s", exc)
+
+
 # Logging configuration — invoked from _lifespan.
 def _configure_logging():
     """
@@ -992,6 +1023,7 @@ async def _lifespan(app: FastAPI):
     _configure_logging()
     _validate_security_config()
     _warn_optional_integrations()
+    _bootstrap_face_person_group()
     if not scheduler.running:
         scheduler.start()
         logger.info("🕒 APScheduler started (6 jobs)")
