@@ -365,6 +365,7 @@ def get_active_session(
         result.append(
             {
                 "session_id": s.id,
+                "subject_id": s.subject_id,
                 "subject_name": subject.name if subject else "",
                 "subject_code": subject.code if subject else "",
                 "requires_gps": s.teacher_latitude is not None

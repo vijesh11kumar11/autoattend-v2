@@ -175,20 +175,34 @@ export default function ScanQRScreen({ navigation }) {
     return () => clearInterval(id);
   }, []);
 
-  // ─── Load subjects ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      setSubjectsLoading(true);
-      try {
-        const { data } = await client.get('/faculty/subjects/my-classes');
-        setSubjects(Array.isArray(data) ? data : (data.subjects ?? []));
-      } catch {
-        Alert.alert('Error', 'Could not load your subjects. Check your connection.');
-      } finally {
-        setSubjectsLoading(false);
-      }
-    })();
+  // ─── Load active attendance sessions ──────────────────────────────────────
+  // /attendance/active-session returns sessions for the student's course+semester.
+  // We map them to the same {id, name, ...} shape the rest of the component uses.
+  const loadActiveSessions = useCallback(async () => {
+    setSubjectsLoading(true);
+    try {
+      const { data } = await client.get('/attendance/active-session');
+      const sessions = data.active_sessions ?? [];
+      setSubjects(
+        sessions.map((s) => ({
+          id: s.session_id,
+          session_id: s.session_id,
+          subject_id: s.subject_id,
+          name: s.subject_name,
+          code: s.subject_code,
+          already_marked: s.already_marked,
+        }))
+      );
+    } catch {
+      Alert.alert('Error', 'Could not load active sessions. Check your connection.');
+    } finally {
+      setSubjectsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadActiveSessions();
+  }, [loadActiveSessions]);
 
   // ─── GPS permission + tracking ─────────────────────────────────────────────
   useEffect(() => {
@@ -352,12 +366,15 @@ export default function ScanQRScreen({ navigation }) {
       );
       return;
     }
-    // Generate a client-side session ID sent to face/verify
-    const sessionId = `${user?.id ?? 'u'}_${Date.now()}`;
-    setFaceSessionId(sessionId);
+    if (selectedSubject.already_marked) {
+      Alert.alert('Already Marked', 'Your attendance is already recorded for this session.');
+      return;
+    }
+    // Use the real AttendanceSession.id from the backend (not a client-generated fake).
+    setFaceSessionId(selectedSubject.session_id);
     setQrScanned(false);
     goTo(STATES.FACE);
-  }, [selectedSubject, camPermission, requestCamPerm, locGranted, user, goTo]);
+  }, [selectedSubject, camPermission, requestCamPerm, locGranted, goTo]);
 
   // ─── Capture face photo ───────────────────────────────────────────────────
   const captureFace = useCallback(async () => {
@@ -873,9 +890,14 @@ export default function ScanQRScreen({ navigation }) {
         <Text style={styles.idleClock}>{clockStr}</Text>
       </View>
 
-      {/* Subject dropdown */}
+      {/* Active session picker */}
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Which class are you attending?</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <Text style={[styles.sectionLabel, { marginBottom: 0 }]}>Which class are you attending?</Text>
+          <Pressable onPress={loadActiveSessions} hitSlop={8}>
+            <Ionicons name="refresh-outline" size={18} color="#64748b" />
+          </Pressable>
+        </View>
         {subjectsLoading ? (
           <ActivityIndicator color="#1a237e" style={{ marginTop: 12 }} />
         ) : (
@@ -921,7 +943,7 @@ export default function ScanQRScreen({ navigation }) {
                   )}
                 </Pressable>
               )}
-              ListEmptyComponent={<Text style={styles.dropdownEmpty}>No subjects found</Text>}
+              ListEmptyComponent={<Text style={styles.dropdownEmpty}>No active sessions — ask your teacher to start one</Text>}
             />
           </View>
         )}
