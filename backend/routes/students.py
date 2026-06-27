@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from database import FaceChangeLog, Subject, Timetable, User, UserRole, get_db
 from utils.auth_utils import any_authenticated
 from utils.face_utils import (
-    check_training_status,
     enroll_student_face,
 )
 
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/students", tags=["Students"])
 
 _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png"}
-_MAX_ENROLL_IMAGE_BYTES = 6 * 1024 * 1024  # 6 MB (Azure hard limit)
+_MAX_ENROLL_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB (Rekognition inline-bytes limit)
 _TRAIN_POLL_INTERVAL = 2  # seconds between training status polls
 _TRAIN_POLL_TIMEOUT = 30  # max seconds to wait for training
 
@@ -139,35 +138,22 @@ def enroll_face(
         )
         db.commit()
 
-    # ── 8. Poll for training completion (max 30 s) ────────────────────
-    from config import settings as _s
-
-    deadline = time.monotonic() + _TRAIN_POLL_TIMEOUT
-    training_status = "running"
-    while time.monotonic() < deadline:
-        training_status = check_training_status(_s.AZURE_PERSON_GROUP_ID)
-        if training_status == "succeeded":
-            break
-        if training_status == "failed":
-            break
-        time.sleep(_TRAIN_POLL_INTERVAL)
-
+    # Rekognition indexes synchronously — no training poll needed.
     logger.info(
-        "✅ FACE ENROLL success │ student_id=%d │ azure_person=%s │ training=%s",
+        "✅ FACE ENROLL success │ student_id=%d │ face_id=%s",
         student_id,
         result["azure_person_id"],
-        training_status,
     )
 
     return {
         "success": True,
+        # face_enrolled mirrors the field name used across the rest of the API
+        # (/auth/login, /auth/me, /face/enrollment-status) and is what the web
+        # FaceEnrollmentPage checks to confirm success.
+        "face_enrolled": True,
         "azure_person_id": result["azure_person_id"],
-        "training_status": training_status,
-        "message": (
-            "Face enrolled successfully. Student can now use face verification."
-            if training_status == "succeeded"
-            else "Face enrolled. Training is still in progress — recognition will be available shortly."
-        ),
+        "training_status": "succeeded",
+        "message": "Face enrolled successfully. Student can now use face verification.",
     }
 
 

@@ -51,7 +51,7 @@ router = APIRouter(prefix="/api/face", tags=["Face"])
 limiter = Limiter(key_func=get_remote_address)
 
 _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png"}
-_MAX_FACE_IMAGE_BYTES = 6 * 1024 * 1024  # 6 MB
+_MAX_FACE_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB (Rekognition inline-bytes limit)
 _MAX_VERIFY_ATTEMPTS = 5  # per student per session
 
 

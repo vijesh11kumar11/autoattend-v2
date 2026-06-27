@@ -1,19 +1,30 @@
 """
-AutoAttend AI v2.0 — Azure Face API Utilities
+AutoAttend AI v2.0 — AWS Rekognition Face Utilities
 
 Handles:
-  • PersonGroup management (one group per college)
-  • Student face enrollment (train PersonGroup after add)
-  • Face verification via Identify API (confidence ≥ 0.80)
+  • Collection management (one collection per college)
+  • Student face enrollment (index_faces — no training step required)
+  • Face verification via search_faces_by_image (similarity ≥ 80)
   • Face deletion + audit log
-  • Training-status polling
   • Liveness detection (challenge-response with 3-frame analysis)
 
-Azure SDK: azure-cognitiveservices-vision-face==0.6.0
-Recognition model: recognition_04  (latest, most accurate)
-Detection model:   detection_03    (recommended for recognition_04)
+AWS SDK: boto3==1.35.0  (Rekognition client, region from settings.AWS_REGION)
 
-All Azure calls are wrapped in try/except.
+Migration note (Azure → AWS Rekognition):
+  • PersonGroup            → Collection
+  • Person + person_id     → ExternalImageId = str(student_id), FaceId per image
+  • PersonGroup training    → REMOVED (Rekognition indexes synchronously)
+  • face.detect_with_stream → detect_faces
+  • face.identify           → search_faces_by_image
+  • add_face_from_stream     → index_faces
+  • Confidence scale 0.80    → Rekognition Similarity is 0-100; normalised to 0-1
+  • Image size limit 6 MB    → 5 MB
+  • Landmark shift (pixels)   → ratios 0-1 (threshold 1.0px → 0.01)
+
+The Rekognition FaceId is stored in the existing `azure_person_id` DB column
+(reused, not renamed) so no schema migration is required.
+
+All AWS calls are wrapped in try/except.
 HTTPException is never raised here — callers (routes) do that.
 """
 
@@ -24,11 +35,8 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
-from azure.cognitiveservices.vision.face import FaceClient
-from azure.cognitiveservices.vision.face.models import (
-    APIErrorException,
-)
-from msrest.authentication import CognitiveServicesCredentials
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from sqlalchemy.orm import Session
 
 from config import settings
@@ -36,11 +44,12 @@ from database import FaceChangeLog, LivenessChallenge, User
 
 logger = logging.getLogger(__name__)
 
-# ─── Azure image size limit ────────────────────────────────────────────
-_MAX_IMAGE_BYTES = 6 * 1024 * 1024  # 6 MB
+# ─── Rekognition image size limit ──────────────────────────────────────
+# Rekognition accepts up to 5 MB for raw image bytes passed inline.
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 # ─── Singleton client ─────────────────────────────────────────────────
-_face_client: Optional[FaceClient] = None
+_face_client = None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -48,48 +57,50 @@ _face_client: Optional[FaceClient] = None
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def get_face_client() -> FaceClient:
+def get_face_client():
     """
-    Return a cached FaceClient. Creates one on first call.
+    Return a cached Rekognition client. Creates one on first call.
     Thread-safe enough for FastAPI single-process workers.
     """
     global _face_client
     if _face_client is None:
-        _face_client = FaceClient(
-            settings.AZURE_FACE_ENDPOINT,
-            CognitiveServicesCredentials(settings.AZURE_FACE_KEY),
+        _face_client = boto3.client(
+            "rekognition",
+            region_name=settings.AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
         )
     return _face_client
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 2. PersonGroup bootstrap — call once on app startup
+# 2. Collection bootstrap — call once on app startup
 # ═══════════════════════════════════════════════════════════════════════
 
 
 def ensure_person_group(group_id: str, college_name: str) -> bool:
     """
-    Create the PersonGroup if it does not already exist.
-    Uses recognition_04 (latest model, highest accuracy).
-    Returns True if the group is ready, False on unexpected error.
+    Create the Rekognition Collection if it does not already exist.
+    Returns True if the collection is ready, False on unexpected error.
+
+    (Name kept as ensure_person_group so main.py's startup bootstrap call
+    is unchanged; `college_name` is accepted for signature compatibility
+    but Rekognition collections have no display name.)
     """
     client = get_face_client()
     try:
-        client.person_group.create(
-            person_group_id=group_id,
-            name=college_name,
-            recognition_model="recognition_04",
-        )
-        logger.info("PersonGroup '%s' created.", group_id)
+        client.create_collection(CollectionId=group_id)
+        logger.info("Rekognition collection '%s' created.", group_id)
         return True
-    except APIErrorException as exc:
-        # "PersonGroupExists" is expected on every subsequent startup
-        if "PersonGroupExists" in str(exc.message):
-            logger.debug("PersonGroup '%s' already exists — skipping create.", group_id)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        # "ResourceAlreadyExistsException" is expected on every subsequent startup
+        if code == "ResourceAlreadyExistsException":
+            logger.debug("Collection '%s' already exists — skipping create.", group_id)
             return True
-        logger.error("ensure_person_group error: %s", exc.message)
+        logger.error("ensure_person_group error: %s", exc)
         return False
-    except Exception as exc:
+    except (BotoCoreError, Exception) as exc:
         logger.error("ensure_person_group unexpected error: %s", exc)
         return False
 
@@ -100,34 +111,36 @@ def ensure_person_group(group_id: str, college_name: str) -> bool:
 
 
 def _image_stream(image_bytes: bytes) -> io.BytesIO:
-    """Wrap bytes in a seekable BytesIO stream (Azure SDK requires seek)."""
+    """Wrap bytes in a seekable BytesIO stream (kept for callers that import it)."""
     stream = io.BytesIO(image_bytes)
     stream.seek(0)
     return stream
 
 
 def _validate_image_size(image_bytes: bytes) -> None:
-    """Raise ValueError if image exceeds Azure's 6 MB per-image limit."""
+    """Raise ValueError if image exceeds Rekognition's 5 MB inline-bytes limit."""
     if len(image_bytes) > _MAX_IMAGE_BYTES:
         raise ValueError(
             f"Image too large ({len(image_bytes) // (1024*1024)} MB). "
-            "Maximum allowed size is 6 MB."
+            "Maximum allowed size is 5 MB."
         )
 
 
-def _detect_single_face(client: FaceClient, image_bytes: bytes) -> object:
+# Minimum face sharpness (Rekognition Quality.Sharpness, 0-100; higher = sharper).
+# Rejects heavily blurred photos. 20 is permissive enough for phone selfies.
+_MIN_SHARPNESS = 20.0
+
+
+def _detect_single_face(client, image_bytes: bytes) -> dict:
     """
-    Detect faces and return the single DetectedFace.
-    Raises ValueError if 0 or 2+ faces found.
+    Detect faces and return the single FaceDetail dict.
+    Raises ValueError if 0 or 2+ faces found, or the face is too blurry.
     """
-    stream = _image_stream(image_bytes)
-    faces = client.face.detect_with_stream(
-        image=stream,
-        detection_model="detection_03",
-        recognition_model="recognition_04",
-        return_face_id=True,
-        return_face_attributes=["blur", "exposure", "noise"],
+    response = client.detect_faces(
+        Image={"Bytes": image_bytes},
+        Attributes=["ALL"],
     )
+    faces = response.get("FaceDetails", [])
     if not faces:
         raise ValueError("No face detected in the image. Please use a clear front-facing photo.")
     if len(faces) > 1:
@@ -137,13 +150,21 @@ def _detect_single_face(client: FaceClient, image_bytes: bytes) -> object:
 
     face = faces[0]
 
-    # Quality gate: reject high blur
-    if face.face_attributes and face.face_attributes.blur:
-        blur_level = face.face_attributes.blur.blur_level
-        if str(blur_level).lower() == "high":
-            raise ValueError("Image is too blurry. Please take a sharper photo in good lighting.")
+    # Quality gate: reject low sharpness (Azure's "blur=high" equivalent)
+    quality = face.get("Quality") or {}
+    sharpness = quality.get("Sharpness")
+    if sharpness is not None and sharpness < _MIN_SHARPNESS:
+        raise ValueError("Image is too blurry. Please take a sharper photo in good lighting.")
 
     return face
+
+
+def _nose_tip(face_detail: dict) -> Optional[dict]:
+    """Return the noseTip landmark {X, Y} (ratios 0-1) from a FaceDetail, or None."""
+    for landmark in face_detail.get("Landmarks", []) or []:
+        if landmark.get("Type") == "noseTip":
+            return landmark
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -157,51 +178,76 @@ def enroll_student_face(
     db: Session,
 ) -> dict:
     """
-    Enroll (or re-enroll) a student's face in the Azure PersonGroup.
+    Enroll (or re-enroll) a student's face in the Rekognition collection.
 
     Steps:
       a) Size validation
       b) Detect exactly 1 face, check quality
-      c) Create Person in PersonGroup
-      d) Add face to Person
-      e) Trigger PersonGroup training
-      f) Persist azure_person_id to DB
+      c) Delete any previously-indexed face for this student (re-enroll cleanup)
+      d) index_faces with ExternalImageId = str(student_id)
+      e) Persist FaceId to DB (azure_person_id column, reused)
 
-    Returns: {success: True, azure_person_id: str}
+    Returns: {success: True, azure_person_id: str}   (azure_person_id == Rekognition FaceId)
     On any error returns: {success: False, error: str}
     """
     client = get_face_client()
     try:
         _validate_image_size(image_bytes)
-        _detect_single_face(client, image_bytes)  # validates quality
+        _detect_single_face(client, image_bytes)  # validates exactly-1 + quality
 
-        # Create Person (one Person = one student across all their face images)
-        person = client.person_group_person.create(
-            person_group_id=settings.AZURE_PERSON_GROUP_ID,
-            name=f"student_{student_id}",
+        # Re-enroll cleanup: drop the student's prior FaceId so the collection
+        # does not accumulate stale vectors. Best-effort — never blocks enrollment.
+        existing = db.query(User).filter(User.id == student_id).first()
+        old_face_id = existing.azure_person_id if existing else None
+        if old_face_id:
+            try:
+                client.delete_faces(
+                    CollectionId=settings.AZURE_PERSON_GROUP_ID,
+                    FaceIds=[old_face_id],
+                )
+                logger.info(
+                    "Removed stale FaceId %s for student_id=%d before re-enroll",
+                    old_face_id,
+                    student_id,
+                )
+            except (ClientError, BotoCoreError) as exc:
+                logger.warning(
+                    "Could not delete stale FaceId %s for student_id=%d: %s",
+                    old_face_id,
+                    student_id,
+                    exc,
+                )
+
+        # Index the new face. QualityFilter rejects poor-quality detections;
+        # MaxFaces=1 since we already validated a single face above.
+        index_result = client.index_faces(
+            CollectionId=settings.AZURE_PERSON_GROUP_ID,
+            Image={"Bytes": image_bytes},
+            ExternalImageId=str(student_id),
+            MaxFaces=1,
+            QualityFilter="AUTO",
+            DetectionAttributes=[],
         )
-        logger.info("Created Person %s for student_id=%d", person.person_id, student_id)
 
-        # Add face image to the Person
-        client.person_group_person.add_face_from_stream(
-            person_group_id=settings.AZURE_PERSON_GROUP_ID,
-            person_id=person.person_id,
-            image=_image_stream(image_bytes),
-        )
+        face_records = index_result.get("FaceRecords", [])
+        if not face_records:
+            logger.warning(
+                "index_faces returned no FaceRecords for student_id=%d (quality filtered)",
+                student_id,
+            )
+            return {
+                "success": False,
+                "error": "Face could not be enrolled. Please use a clearer, well-lit photo.",
+            }
 
-        # Trigger async training so Identify works with new face data
-        client.person_group.train(settings.AZURE_PERSON_GROUP_ID)
-        logger.info(
-            "PersonGroup '%s' training triggered after enrolling student_id=%d",
-            settings.AZURE_PERSON_GROUP_ID,
-            student_id,
-        )
+        face_id = str(face_records[0]["Face"]["FaceId"])
+        logger.info("Indexed FaceId %s for student_id=%d", face_id, student_id)
 
-        # Persist to DB
+        # Persist to DB (FaceId stored in the reused azure_person_id column)
         now = datetime.now(tz=UTC)
         db.query(User).filter(User.id == student_id).update(
             {
-                "azure_person_id": str(person.person_id),
+                "azure_person_id": face_id,
                 "face_enrolled": True,
                 "face_enrolled_at": now,
             },
@@ -209,19 +255,19 @@ def enroll_student_face(
         )
         db.commit()
 
-        return {"success": True, "azure_person_id": str(person.person_id)}
+        return {"success": True, "azure_person_id": face_id}
 
     except ValueError as exc:
-        # Validation errors (blur, multiple faces, size) — not Azure faults
+        # Validation errors (blur, multiple faces, size) — not AWS faults
         logger.warning("enroll_student_face validation error: %s", exc)
         return {"success": False, "error": str(exc)}
-    except APIErrorException as exc:
+    except (ClientError, BotoCoreError) as exc:
         logger.error(
-            "enroll_student_face Azure error for student_id=%d: %s",
+            "enroll_student_face AWS error for student_id=%d: %s",
             student_id,
-            exc.message,
+            exc,
         )
-        return {"success": False, "error": "Azure Face API error. Please try again."}
+        return {"success": False, "error": "Face service error. Please try again."}
     except Exception as exc:
         logger.error(
             "enroll_student_face unexpected error for student_id=%d: %s",
@@ -235,7 +281,11 @@ def enroll_student_face(
 # 4. Verify student face
 # ═══════════════════════════════════════════════════════════════════════
 
+# Rekognition Similarity is 0-100. We pass 80.0 to the API and normalise the
+# returned similarity to 0-1 for storage so the rest of the system (audit
+# face_confidence, frontend confidence*100) keeps the existing 0-1 contract.
 _CONFIDENCE_THRESHOLD = 0.80
+_REKOGNITION_MATCH_THRESHOLD = 80.0
 
 
 def verify_student_face(
@@ -244,10 +294,11 @@ def verify_student_face(
     db: Session,
 ) -> dict:
     """
-    Verify a student's face against their enrolled PersonGroup entry.
+    Verify a student's face against the college Rekognition collection.
 
-    Uses Identify (not Verify) so the PersonGroup remains the ground truth,
-    making re-enrollments transparent and multi-image-capable.
+    Uses search_faces_by_image so the collection remains the ground truth,
+    making re-enrollments transparent and multi-image-capable. The matched
+    face's ExternalImageId must equal str(student_id).
 
     Returns: {verified: bool, confidence: float, reason: str, azure_person_id?: str}
     Never logs image bytes.
@@ -267,34 +318,22 @@ def verify_student_face(
     try:
         _validate_image_size(image_bytes)
 
-        # 2. Detect submitted face
-        detected = _detect_single_face(client, image_bytes)
-        face_id = str(detected.face_id)
+        # 2. Validate the submitted image contains exactly one clear face.
+        _detect_single_face(client, image_bytes)
 
-        # 3. Check training is ready before Identify
-        training_status = check_training_status(settings.AZURE_PERSON_GROUP_ID)
-        if training_status != "succeeded":
-            logger.warning(
-                "verify_student_face: PersonGroup training status='%s' — aborting",
-                training_status,
-            )
-            return {
-                "verified": False,
-                "confidence": 0.0,
-                "reason": "Face recognition service is warming up. Please try again shortly.",
-            }
-
-        # 4. Identify in PersonGroup
-        results = client.face.identify(
-            face_ids=[face_id],
-            person_group_id=settings.AZURE_PERSON_GROUP_ID,
-            max_num_of_candidates_returned=1,
-            confidence_threshold=_CONFIDENCE_THRESHOLD,
+        # 3. Search the collection (Rekognition indexes synchronously — no
+        #    training-status gate is needed, unlike Azure).
+        results = client.search_faces_by_image(
+            CollectionId=settings.AZURE_PERSON_GROUP_ID,
+            Image={"Bytes": image_bytes},
+            MaxFaces=1,
+            FaceMatchThreshold=_REKOGNITION_MATCH_THRESHOLD,
         )
 
-        if not results or not results[0].candidates:
+        matches = results.get("FaceMatches", [])
+        if not matches:
             logger.info(
-                "verify_student_face: no candidates — student_id=%d confidence=0",
+                "verify_student_face: no match — student_id=%d confidence=0",
                 student_id,
             )
             return {
@@ -303,18 +342,19 @@ def verify_student_face(
                 "reason": "Face not matched. Please try again or contact your HOD.",
             }
 
-        candidate = results[0].candidates[0]
-        confidence = round(float(candidate.confidence), 4)
-        matched_person = str(candidate.person_id)
+        match = matches[0]
+        # Normalise 0-100 → 0-1 to keep the existing system-wide contract.
+        confidence = round(float(match["Similarity"]) / 100.0, 4)
+        matched_external_id = str(match["Face"].get("ExternalImageId", ""))
+        matched_face_id = str(match["Face"].get("FaceId", ""))
 
-        # 5. Cross-check matched person == enrolled student's person
-        if matched_person != str(student.azure_person_id):
+        # 4. Cross-check matched face belongs to THIS student.
+        if matched_external_id != str(student_id):
             logger.warning(
                 "verify_student_face: PERSON MISMATCH — student_id=%d "
-                "enrolled=%s matched=%s confidence=%.4f",
+                "matched_external_id=%s confidence=%.4f",
                 student_id,
-                student.azure_person_id,
-                matched_person,
+                matched_external_id,
                 confidence,
             )
             return {
@@ -343,7 +383,7 @@ def verify_student_face(
         return {
             "verified": True,
             "confidence": confidence,
-            "azure_person_id": matched_person,
+            "azure_person_id": matched_face_id,
         }
 
     except ValueError as exc:
@@ -353,16 +393,38 @@ def verify_student_face(
             exc,
         )
         return {"verified": False, "confidence": 0.0, "reason": str(exc)}
-    except APIErrorException as exc:
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        # An empty collection (no faces indexed yet) raises this on search.
+        if code == "InvalidParameterException":
+            logger.info(
+                "verify_student_face: no searchable faces — student_id=%d", student_id
+            )
+            return {
+                "verified": False,
+                "confidence": 0.0,
+                "reason": "Face not matched. Please try again or contact your HOD.",
+            }
         logger.error(
-            "verify_student_face Azure error for student_id=%d: %s",
+            "verify_student_face AWS error for student_id=%d: %s",
             student_id,
-            exc.message,
+            exc,
         )
         return {
             "verified": False,
             "confidence": 0.0,
-            "reason": "Azure Face API error. Please try again.",
+            "reason": "Face service error. Please try again.",
+        }
+    except BotoCoreError as exc:
+        logger.error(
+            "verify_student_face AWS transport error for student_id=%d: %s",
+            student_id,
+            exc,
+        )
+        return {
+            "verified": False,
+            "confidence": 0.0,
+            "reason": "Face service error. Please try again.",
         }
     except Exception as exc:
         logger.error(
@@ -389,8 +451,8 @@ def delete_student_face(
     db: Session,
 ) -> bool:
     """
-    Remove a student's Person from the Azure PersonGroup and clear DB face fields.
-    Writes a FaceChangeLog audit entry regardless of Azure success.
+    Remove a student's face from the Rekognition collection and clear DB face fields.
+    Writes a FaceChangeLog audit entry regardless of AWS success.
 
     Returns True on full success, False on any error.
     """
@@ -403,23 +465,23 @@ def delete_student_face(
 
     old_person_id = student.azure_person_id
 
-    # 1. Delete Person from Azure (best-effort — continue even if already gone)
+    # 1. Delete the FaceId from Rekognition (best-effort — continue if already gone)
     if old_person_id:
         try:
-            client.person_group_person.delete(
-                person_group_id=settings.AZURE_PERSON_GROUP_ID,
-                person_id=old_person_id,
+            client.delete_faces(
+                CollectionId=settings.AZURE_PERSON_GROUP_ID,
+                FaceIds=[old_person_id],
             )
             logger.info(
-                "delete_student_face: deleted Person %s for student_id=%d",
+                "delete_student_face: deleted FaceId %s for student_id=%d",
                 old_person_id,
                 student_id,
             )
-        except APIErrorException as exc:
+        except (ClientError, BotoCoreError) as exc:
             logger.error(
-                "delete_student_face Azure error for student_id=%d: %s",
+                "delete_student_face AWS error for student_id=%d: %s",
                 student_id,
-                exc.message,
+                exc,
             )
             return False
         except Exception as exc:
@@ -461,61 +523,12 @@ def delete_student_face(
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 6. Training status check (with retry)
-# ═══════════════════════════════════════════════════════════════════════
-
-
-def check_training_status(group_id: str) -> str:
-    """
-    Return the PersonGroup training status: "succeeded" | "running" | "failed".
-    Retries up to 3 times with a 1-second delay between attempts.
-    Falls back to "failed" on any Azure error.
-    """
-    client = get_face_client()
-    for attempt in range(1, 4):
-        try:
-            status = client.person_group.get_training_status(group_id)
-            result = str(status.status).lower()
-
-            # TrainingStatusType values: nonstarted, running, succeeded, failed
-            if result in ("succeeded", "running", "failed"):
-                logger.debug(
-                    "check_training_status: group='%s' status='%s' attempt=%d",
-                    group_id,
-                    result,
-                    attempt,
-                )
-                return result
-
-            # nonstarted → treat as running (training queued but not begun)
-            return "running"
-
-        except APIErrorException as exc:
-            logger.error(
-                "check_training_status Azure error (attempt %d): %s",
-                attempt,
-                exc.message,
-            )
-        except Exception as exc:
-            logger.error(
-                "check_training_status unexpected error (attempt %d): %s",
-                attempt,
-                exc,
-            )
-
-        if attempt < 3:
-            time.sleep(1)
-
-    return "failed"
-
-
-# ═══════════════════════════════════════════════════════════════════════
 # Liveness Detection — Challenge-Response (3-frame analysis)
 #
-# NOTE: Azure's official Face Liveness Detection SDK (azure-ai-vision-face)
-# is available for Android/iOS native apps and can replace this approach
-# when a stable React Native binding is released. For now, this
-# server-side challenge-response is secure enough for college use:
+# Rekognition has a managed Face Liveness flow (StartFaceLivenessSession) that
+# requires the AWS Amplify FaceLivenessDetector UI component, which has no
+# stable React Native binding yet. For now this server-side challenge-response
+# is secure enough for college use:
 #   • Challenge is random and single-use
 #   • 3 frames must show consistent face presence
 #   • Face landmark positions must shift between frames (proves video)
@@ -523,11 +536,12 @@ def check_training_status(group_id: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════
 
 _LIVENESS_CHALLENGES = ["blink", "smile", "turn_left", "turn_right", "open_mouth"]
-_LIVENESS_EXPIRY_SECONDS = 90  # generous — 3×3s countdown + Azure latency + slow connections
+_LIVENESS_EXPIRY_SECONDS = 90  # generous — 3×3s countdown + AWS latency + slow connections
 
-# Minimum landmark distance (pixels) between frames to prove movement.
-# 1.0 px is sufficient for 640×480 webcam frames; 2.0 was too strict.
-_MIN_LANDMARK_SHIFT = 1.0
+# Minimum landmark distance between frames to prove movement.
+# Rekognition landmark X/Y are RATIOS (0-1) of image dimensions, so the
+# threshold is a fraction of the frame, not pixels. 0.01 ≈ 1% of frame width.
+_MIN_LANDMARK_SHIFT = 0.01
 
 # Minimum yaw delta (degrees) to confirm a head turn
 _MIN_YAW_DELTA = 15.0
@@ -538,10 +552,10 @@ _MIN_SMILE_DELTA = 0.3
 
 def create_liveness_challenge(student_id: int, db: Session) -> dict:
     """
-    Generate a random liveness challenge, store it in the DB with a 30-second
-    expiry, and return it to the client.
+    Generate a random liveness challenge, store it in the DB with an expiry,
+    and return it to the client.
 
-    Returns: {challenge_id, challenge, expires_in: 30}
+    Returns: {challenge_id, challenge, expires_in}
     On error returns: {error: str}
     """
     try:
@@ -592,14 +606,12 @@ def verify_liveness_frames(
       2. Face detected in all 3 frames
       3. Face nose-tip landmark shifts between frame 1 and frame 3
          (proves live video, not a static photo replay)
-      4. Challenge-specific attribute change:
-           turn_left / turn_right → headpose.yaw delta ≥ _MIN_YAW_DELTA
-           smile                  → smile delta ≥ _MIN_SMILE_DELTA
+      4. Challenge-specific attribute change (soft signal, logged only):
+           turn_left / turn_right → Pose.Yaw delta
+           smile                  → Smile confidence delta
            blink / open_mouth     → nose-tip movement check only
-             (eyelid & lip landmark attributes need SDK v1.x; accepted here
-              as long as face movement is detected)
 
-    Uses detection_02 (supports headpose + smile; detection_03 does not).
+    Uses Rekognition detect_faces(Attributes=["ALL"]) for Pose/Smile/Landmarks.
 
     Returns: {liveness_confirmed: bool, reason: str}
     """
@@ -632,22 +644,18 @@ def verify_liveness_frames(
     if len(frames) != 3:
         return {"liveness_confirmed": False, "reason": "Exactly 3 frames are required."}
 
-    # 2. Detect faces in all 3 frames (detection_02 for attribute support)
+    # 2. Detect faces in all 3 frames
     detected: list = []
     for i, frame_bytes in enumerate(frames):
-        # Retry up to 3 times on transient Azure errors (e.g. 429 rate-limit)
+        # Retry up to 3 times on transient AWS errors (e.g. throttling)
         for _attempt in range(3):
             try:
                 _validate_image_size(frame_bytes)
-                stream = _image_stream(frame_bytes)
-                faces = client.face.detect_with_stream(
-                    image=stream,
-                    detection_model="detection_02",
-                    recognition_model="recognition_04",
-                    return_face_id=False,
-                    return_face_landmarks=True,
-                    return_face_attributes=["headPose", "smile"],
+                response = client.detect_faces(
+                    Image={"Bytes": frame_bytes},
+                    Attributes=["ALL"],
                 )
+                faces = response.get("FaceDetails", [])
                 if not faces:
                     # No face → mark used so student must retry with fresh challenge
                     record.used = True
@@ -658,11 +666,14 @@ def verify_liveness_frames(
                     }
                 detected.append(faces[0])
                 break  # success — stop retrying
-            except APIErrorException as exc:
-                err_msg = getattr(exc, "message", str(exc))
+            except ValueError as exc:
+                # Frame too large — not retryable
+                logger.warning("verify_liveness_frames frame %d validation error: %s", i, exc)
+                return {"liveness_confirmed": False, "reason": str(exc)}
+            except (ClientError, BotoCoreError) as exc:
                 logger.error(
-                    "verify_liveness_frames Azure error frame %d attempt %d: %s",
-                    i, _attempt + 1, err_msg,
+                    "verify_liveness_frames AWS error frame %d attempt %d: %s",
+                    i, _attempt + 1, exc,
                 )
                 if _attempt < 2:
                     time.sleep(1)  # back-off before retry
@@ -680,19 +691,20 @@ def verify_liveness_frames(
                     "reason": "Frame analysis error. Please try again.",
                 }
 
-    # 3. Nose-tip landmark shift (frames 0 → 2) proves movement
+    # 3. Nose-tip landmark shift (frames 0 → 2) proves movement.
+    #    Rekognition landmark X/Y are ratios (0-1) of image dimensions.
     try:
-        lm0 = detected[0].face_landmarks
-        lm2 = detected[2].face_landmarks
-        if lm0 and lm2 and lm0.nose_tip and lm2.nose_tip:
-            dx = abs(lm0.nose_tip.x - lm2.nose_tip.x)
-            dy = abs(lm0.nose_tip.y - lm2.nose_tip.y)
+        nt0 = _nose_tip(detected[0])
+        nt2 = _nose_tip(detected[2])
+        if nt0 and nt2:
+            dx = abs(nt0["X"] - nt2["X"])
+            dy = abs(nt0["Y"] - nt2["Y"])
             movement = (dx**2 + dy**2) ** 0.5
             if movement < _MIN_LANDMARK_SHIFT:
                 record.used = True
                 db.commit()
                 logger.info(
-                    "verify_liveness_frames: insufficient movement=%.2f challenge_id=%d",
+                    "verify_liveness_frames: insufficient movement=%.4f challenge_id=%d",
                     movement,
                     challenge_id,
                 )
@@ -704,41 +716,33 @@ def verify_liveness_frames(
         logger.warning("verify_liveness_frames landmark check error: %s", exc)
         # Non-fatal: fall through to attribute checks
 
-    # 4. Challenge-specific attribute check
-    #
-    # The nose-tip MOVEMENT check above is the hard anti-photo gate (a static
-    # photo produces no movement). The per-challenge attribute deltas below are
-    # treated as a SOFT signal: if Azure reports the action clearly we log a
-    # pass, but we no longer hard-fail a genuine student whose smile/turn was
-    # subtle — on phone cameras those deltas are unreliable and were causing
-    # repeated false rejections. Movement already proved the frame is live.
+    # 4. Challenge-specific attribute check (SOFT signal — logged, never hard-fails).
+    #    The nose-tip MOVEMENT check above is the hard anti-photo gate. On phone
+    #    cameras the per-challenge deltas are unreliable and caused repeated false
+    #    rejections, so they are logged for diagnostics only.
     try:
         if challenge in ("turn_left", "turn_right"):
-            yaw0 = (
-                detected[0].face_attributes.head_pose.yaw if detected[0].face_attributes else None
-            )
-            yaw2 = (
-                detected[2].face_attributes.head_pose.yaw if detected[2].face_attributes else None
-            )
+            yaw0 = (detected[0].get("Pose") or {}).get("Yaw")
+            yaw2 = (detected[2].get("Pose") or {}).get("Yaw")
             if yaw0 is not None and yaw2 is not None:
-                yaw_delta = abs(yaw0 - yaw2)
                 logger.info(
                     "verify_liveness_frames: yaw_delta=%.1f challenge='%s' (soft check)",
-                    yaw_delta,
+                    abs(yaw0 - yaw2),
                     challenge,
                 )
 
         elif challenge == "smile":
-            sm0 = detected[0].face_attributes.smile if detected[0].face_attributes else None
-            sm2 = detected[2].face_attributes.smile if detected[2].face_attributes else None
+            # Rekognition Smile = {Value: bool, Confidence: 0-100}; use confidence
+            # as a 0-1 proxy for the old Azure smile intensity.
+            sm0 = (detected[0].get("Smile") or {}).get("Confidence")
+            sm2 = (detected[2].get("Smile") or {}).get("Confidence")
             if sm0 is not None and sm2 is not None:
                 logger.info(
-                    "verify_liveness_frames: smile_delta=%.2f (soft check)",
-                    abs(sm0 - sm2),
+                    "verify_liveness_frames: smile_conf_delta=%.2f (soft check)",
+                    abs(sm0 - sm2) / 100.0,
                 )
 
-        # blink / open_mouth: rely on nose-tip movement check only (attributes
-        # for eyelid/lip aperture require SDK v1.x server-side compute)
+        # blink / open_mouth: rely on nose-tip movement check only
 
     except Exception as exc:
         logger.warning("verify_liveness_frames attribute check error: %s", exc)
