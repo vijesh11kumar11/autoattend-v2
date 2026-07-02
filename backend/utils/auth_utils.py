@@ -38,13 +38,12 @@ from database import (
 # Friends test fixtures — seeded by seed_friends_test.py.
 # These rolls bypass device binding and may switch devices/browsers
 # freely. Real student accounts are unaffected.
+#
+# NOTE: Emptied to enforce real face identity, liveness, GPS, and device
+# binding for the seeded test rolls (real-enforcement verification).
+# Repopulate this set to re-enable the test bypasses.
 # ─────────────────────────────────────────────────────────────────────
-TEST_STUDENT_ROLLS: frozenset[str] = frozenset({
-    "KCT23ECE001",
-    "KCT25ME001",
-    "KPR23CSE001",
-    "KCT23ECE002",
-})
+TEST_STUDENT_ROLLS: frozenset[str] = frozenset()
 
 logger = logging.getLogger(__name__)
 
