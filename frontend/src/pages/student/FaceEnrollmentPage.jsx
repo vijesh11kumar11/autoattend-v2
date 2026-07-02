@@ -234,13 +234,15 @@ export default function FaceEnrollmentPage() {
     // ── Done ─────────────────────────────────────────────────────────
     setStep('success');
     // Refresh auth context so face_enrolled=true is reflected immediately.
+    // updateAuth() calls fetchMe() → setUser(), writing the fresh face_enrolled: true
+    // into React state before navigate() runs so the PrivateRoute guard lets us through.
     try {
-      await api.get('/auth/me');
+      await updateAuth();
     } catch {
       /* best effort */
     }
     setTimeout(() => navigate('/student/dashboard', { replace: true }), 2000);
-  }, [challenge, captureFrame, navigate, user]);
+  }, [challenge, captureFrame, navigate, user, updateAuth]);
 
   // ── Skip enrollment (dev mode) ────────────────────────────────────
   const skipEnrollment = useCallback(() => {
